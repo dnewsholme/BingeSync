@@ -11,10 +11,12 @@ BingeSync is a lightweight, self-hosted web service that replicates **Trakt.tv**
 ### Key Invariants
 - **Multi-User Isolation**: Every user account has a distinct `user_id` and unique `webhook_token`. Scrobbles, history, timeline, stats, and active sessions are strictly scoped per-user.
 - **Single-Binary Delivery**: The web frontend (`web/dist`) is embedded into the Rust binary at compile time via `rust-embed`. The Docker container runs a single minimal Debian slim image with no external runtime dependencies.
-- **Dual Authentication**:
-  - **OpenID Connect (OIDC)** with PKCE (RFC 7636) for SSO (Authentik, Keycloak, Authelia, Google, Okta).
+- **Dual Authentication & Role Control**:
+  - **OpenID Connect (OIDC)** with PKCE (RFC 7636) for SSO (Authentik, Keycloak, Authelia, Google, Okta) with automatic `groups` scope evaluation. Users in `admin`/`admins`/`administrator`/`administrators` groups are assigned the `admin` role; others receive `user`.
+  - **OIDC Back-Channel Logout 1.0**: Receives `logout_token` at `/api/v1/auth/backchannel-logout` when user access is revoked, terminated, or group membership removed in IdP, invalidating active sessions and existing JWTs immediately.
   - **Dev / Local Login**: Headless or local login for testing and standalone deployments without an external IdP.
   - Signed JWT tokens passed via `Authorization: Bearer <token>` or HTTP-only `bingesync_token` cookie.
+- **Admin Management & Cascading Deletion**: Admins can manage registered users via the API and web UI. Deleting a user cascade-deletes all associated scrobbles, active sessions, and database records in an atomic transaction.
 - **Plex Webhook Compatibility**: Plex sends `multipart/form-data` with a `payload` JSON field, but BingeSync also accepts direct `application/json` payloads. Webhooks are accepted at `/api/v1/webhooks/plex/{token}` or `/api/v1/webhooks/plex?token={token}`.
 
 ---
@@ -53,7 +55,7 @@ BingeSync/
 │   │   └── oidc.rs          # OIDC discovery, PKCE auth URL, and code exchange
 │   └── api/
 │       ├── mod.rs           # Router assembly and middleware (CORS, extensions)
-│       ├── auth.rs          # /api/v1/auth/* endpoints
+│       ├── auth.rs          # /api/v1/auth/* endpoints (login, callback, backchannel-logout)
 │       ├── webhooks.rs      # /api/v1/webhooks/plex/* webhook handlers
 │       ├── history.rs       # /api/v1/history (search, filters, pagination, CRUD)
 │       ├── timeline.rs      # /api/v1/timeline daily grouping
@@ -62,7 +64,7 @@ BingeSync/
 │       ├── integrations.rs  # /api/v1/integrations/* Radarr & Sonarr library check & cleanup
 │       ├── admin.rs         # /api/v1/admin/users user management and cascade deletion
 │       └── user.rs          # /api/v1/user/webhook & token regeneration
-├── kubernetes.yaml          # Production Kubernetes manifest (PVC, Deployment, Service, Ingress)
+├── bingesync.yaml           # Production Kubernetes manifest (Longhorn PVC, Deployment, Service, Ingress)
 ├── tests/
 │   └── api_tests.rs         # Integration test suite (13 tests covering full API)
 └── web/
@@ -136,6 +138,12 @@ Tests in `tests/api_tests.rs` cover:
 - Active session playback state (`now-playing`)
 - Manual scrobble creation, search, filtering, and deletion
 - Multipart `form-data` Plex webhook parsing
+- Subpath routing and embedded static asset delivery
+- Timeline and history rich filters (genre, director, actor, rating, watch status)
+- Trakt history and ratings import from JSON and CSV
+- Delete by show, batch delete, and delete by date
+- Admin user management, list users, and cascading data deletion
+- OpenID Connect Back-Channel Logout token validation, session termination, and token invalidation
 
 ### Run Playwright E2E UI Tests
 ```bash
@@ -144,14 +152,13 @@ npm install
 npx playwright test
 ```
 Playwright tests in `web/tests/e2e.spec.js` cover:
-- User sign-in flow
-- "+ Log Watch" modal and timeline rendering
-- History search and filtering pills
-- Binge statistics calculations
-- Webhook copy and regeneration
-- Plex webhook trigger simulation and real-time UI refresh
-- Scrobble deletion flow
+- User sign-in flow, "+ Log Watch" modal, and timeline rendering
 - Multi-user separation in the web UI
+- Trakt history and rating import flow in the web UI
+- Timeline search, filtering, and delete by date
+- Show detail modal IMDb link and delete all scrobbles for show
+- Multi-select batch delete in History view
+- Admin role and user management: list users, verify backchannel URL, and delete user
 
 ### Run the App Locally
 ```bash

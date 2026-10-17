@@ -27,8 +27,8 @@ Designed for self-hosters and families, BingeSync features **multi-user support*
 - 🔐 **OpenID Connect (OIDC) SSO**: Enterprise-grade authentication compatible with Authentik, Keycloak, Authelia, Okta, and Google (with PKCE RFC 7636).
 - ⚡ **Lightweight Single-Binary**: Written in Rust (`axum`, `tokio`, `sqlx`) with the web frontend embedded directly into the binary via `rust-embed`.
 - 🗄️ **Zero-Maintenance SQLite**: Fast, crash-safe embedded database running with Write-Ahead Logging (`WAL`) mode and automatic schema migrations.
-- ☸️ **Kubernetes Ready**: Complete manifest (`kubernetes.yaml`) with PersistentVolumeClaim, Deployment, Service, and Ingress.
-- 🧪 **Thoroughly Tested**: 10 Rust backend integration tests and 6 Playwright browser E2E tests.
+- ☸️ **Kubernetes Ready**: Complete manifest (`bingesync.yaml`) with Longhorn PersistentVolumeClaim integration, Deployment, Service, and Ingress.
+- 🧪 **Thoroughly Tested**: 13 Rust backend integration tests and 7 Playwright browser E2E tests.
 
 ---
 
@@ -74,13 +74,45 @@ docker compose up -d
 
 ## ☸️ Kubernetes Deployment
 
-Deploy BingeSync to Kubernetes using the included [`kubernetes.yaml`](kubernetes.yaml):
+Deploy BingeSync to Kubernetes using the included [`bingesync.yaml`](bingesync.yaml):
 
 ```bash
-kubectl apply -f kubernetes.yaml
+kubectl apply -f bingesync.yaml
 ```
 
-The manifest includes a persistent volume claim for SQLite storage, a single-replica deployment, service, secret, and an ingress with configurable TLS and subpath.
+The manifest includes a permission-initializing initContainer for Longhorn storage, a single-replica deployment with SQLite WAL mode, ClusterIP service, secret, and an ingress with Traefik TLS and subpath support.
+
+---
+
+## 🔐 OpenID Connect (OIDC) & Administration
+
+BingeSync supports full Single Sign-On (SSO) with PKCE (RFC 7636) and OpenID Connect Back-Channel Logout 1.0.
+
+### IdP Configuration URLs
+Configure the following URLs in your Identity Provider (Authentik, PocketID, Keycloak, Authelia, Okta):
+
+| Setting / Field | Value | Description |
+|---|---|---|
+| **Redirect / Callback URI** | `${APP_URL}/api/v1/auth/callback` | OAuth2 callback where the IdP sends the user after login |
+| **Post-Logout Redirect URI** | `${APP_URL}/` | URL where the user's browser is returned after logout |
+| **Back-Channel Logout URL** | `${APP_URL}/api/v1/auth/backchannel-logout` | Server-to-server endpoint that receives `logout_token` when user access is revoked |
+
+*(Note: Alias `${APP_URL}/api/v1/auth/backchannel_logout` is also supported).*
+
+### Groups & Role Assignment
+* BingeSync requests the `openid email profile groups` scopes during authorization.
+* If a user belongs to an `admin`, `admins`, `administrator`, or `administrators` group in your IdP (evaluated from `groups` or `roles` claims), BingeSync automatically assigns them the **Admin** role upon login.
+* Standard users receive the **User** role.
+
+### Admin User Management & Cascading Deletion
+* Users with the Admin role can access the dedicated **Users** tab in the top navigation bar.
+* Admins can inspect all registered users, their join date, scrobble count, and role badge.
+* Admins can permanently delete user accounts. Deleting a user initiates an atomic transaction that cascade-deletes all of their logged scrobbles, active playback sessions, and database records.
+* Self-deletion is prevented to ensure active administrative access remains.
+
+### Back-Channel Logout & Immediate Revocation
+* When an IdP revokes user access (e.g. user is disabled, deleted, or removed from groups), it issues a signed JWT `logout_token` to `/api/v1/auth/backchannel-logout`.
+* BingeSync verifies the token per OpenID Connect Back-Channel Logout 1.0, purges active playback sessions, and invalidates all existing user session tokens immediately (`401 Unauthorized`).
 
 ---
 
