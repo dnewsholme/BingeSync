@@ -234,6 +234,7 @@ const el = {
   formUserSettings: document.getElementById('form-user-settings'),
   btnSaveUserSettings: document.getElementById('btn-save-user-settings'),
   userSettingsStatus: document.getElementById('user-settings-status'),
+  userSettingPlexUsername: document.getElementById('user-setting-plex-username'),
   userSettingRadarrUrl: document.getElementById('user-setting-radarr-url'),
   userSettingRadarrApiKey: document.getElementById('user-setting-radarr-api-key'),
   userSettingSonarrUrl: document.getElementById('user-setting-sonarr-url'),
@@ -1690,11 +1691,13 @@ el.btnRegenToken.addEventListener('click', async () => {
   }
 });
 
-// User Settings (Connected Services: Radarr, Sonarr, Tautulli)
+// User Settings (Connected Services: Plex, Radarr, Sonarr, Tautulli)
 async function loadUserSettings() {
   if (!el.formUserSettings) return;
   try {
     const s = await api.getUserSettings();
+    if (el.userSettingPlexUsername) el.userSettingPlexUsername.value = s.plex_username || '';
+
     if (el.userSettingRadarrUrl) el.userSettingRadarrUrl.value = s.radarr_url || '';
     applySecretField(el.userSettingRadarrApiKey, s.radarr_api_key, s.radarr_api_key_masked);
 
@@ -1723,6 +1726,7 @@ if (el.formUserSettings) {
 
     try {
       const payload = {
+        plex_username: el.userSettingPlexUsername ? el.userSettingPlexUsername.value.trim() : null,
         radarr_url: el.userSettingRadarrUrl ? el.userSettingRadarrUrl.value.trim() : null,
         radarr_api_key: getSecretValue(el.userSettingRadarrApiKey),
         sonarr_url: el.userSettingSonarrUrl ? el.userSettingSonarrUrl.value.trim() : null,

@@ -86,12 +86,14 @@ async fn test_plex_webhook_scrobble_movie_and_episode() {
     let (app, pool, config) = setup_test_app().await;
 
     // Create user 1
-    let user1 = bingesync::api::auth::get_or_create_user(
+    let user1 = bingesync::api::auth::get_or_create_user_with_sid(
         &pool,
         "alice@bingesync.local",
         "Alice",
         None,
         None,
+        None,
+        Some("alice_plex"),
         false,
     )
     .await
@@ -3009,12 +3011,14 @@ async fn test_openapi_spec_and_swagger_ui() {
 async fn test_plex_webhook_internal_thumb_and_refresh_metadata_endpoint() {
     let (app, pool, config) = setup_test_app().await;
 
-    let user = bingesync::api::auth::get_or_create_user(
+    let user = bingesync::api::auth::get_or_create_user_with_sid(
         &pool,
         "southpark_fan@bingesync.local",
         "South Park Fan",
         None,
         None,
+        None,
+        Some("sp_fan"),
         false,
     )
     .await
@@ -3216,4 +3220,192 @@ async fn test_user_settings_isolation_and_credentials() {
     let status_b: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(status_b["radarr_configured"], false);
     assert_eq!(status_b["sonarr_configured"], false);
+}
+
+#[tokio::test]
+async fn test_plex_webhook_username_filtering() {
+    let (app, pool, config) = setup_test_app().await;
+
+    // 1. Create user with preferred_username = "tester_plex"
+    let user = bingesync::api::auth::get_or_create_user_with_sid(
+        &pool,
+        "tester@bingesync.local",
+        "Tester",
+        None,
+        None,
+        None,
+        Some("tester_plex"),
+        false,
+    )
+    .await
+    .unwrap();
+
+    let token = create_jwt(&user.id, &user.email, &config.jwt_secret).unwrap();
+
+    // 2. Incoming webhook from another user on the Plex server ("other_plex_user")
+    let other_user_payload = json!({
+        "event": "media.scrobble",
+        "user": true,
+        "Account": { "title": "other_plex_user" },
+        "Metadata": {
+            "type": "movie",
+            "title": "Unwanted Movie",
+            "year": 2021,
+            "duration": 6000000
+        }
+    });
+
+    let req = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/webhooks/plex/{}", user.webhook_token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(other_user_payload.to_string()))
+        .unwrap();
+
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let resp_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(resp_json["status"], "ignored");
+    assert_eq!(resp_json["reason"], "username_mismatch");
+    assert_eq!(resp_json["account"], "other_plex_user");
+
+    // Verify no scrobbles exist in database
+    let scrobble_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE user_id = ?")
+        .bind(&user.id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(scrobble_count, 0);
+
+    // Also verify playback session is ignored for other user
+    let other_play_payload = json!({
+        "event": "media.play",
+        "user": true,
+        "Account": { "title": "other_plex_user" },
+        "Metadata": {
+            "type": "movie",
+            "title": "Playing Elsewhere",
+            "year": 2023,
+            "duration": 5000000
+        }
+    });
+    let req = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/webhooks/plex/{}", user.webhook_token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(other_play_payload.to_string()))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let session_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM active_sessions WHERE user_id = ?")
+        .bind(&user.id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(session_count, 0);
+
+    // 3. Webhook from matching user ("tester_plex")
+    let valid_payload = json!({
+        "event": "media.scrobble",
+        "user": true,
+        "Account": { "title": "tester_plex" },
+        "Metadata": {
+            "type": "movie",
+            "title": "Wanted Movie 1",
+            "year": 2022,
+            "duration": 7200000
+        }
+    });
+
+    let req = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/webhooks/plex/{}", user.webhook_token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(valid_payload.to_string()))
+        .unwrap();
+
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+
+    let scrobble_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE user_id = ?")
+        .bind(&user.id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(scrobble_count, 1);
+
+    // 4. Update user settings with custom comma-separated plex_username filter: "custom_plex, living_room"
+    let update_req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/user/settings")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(json!({
+            "plex_username": "custom_plex, living_room"
+        }).to_string()))
+        .unwrap();
+    let resp = app.clone().oneshot(update_req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // Now "tester_plex" should be ignored because custom filter overrides it
+    let req = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/webhooks/plex/{}", user.webhook_token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(valid_payload.to_string()))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let resp_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(resp_json["status"], "ignored");
+
+    // But "Custom_Plex" (case insensitive) and "living_room" should be allowed
+    let custom_payload = json!({
+        "event": "media.scrobble",
+        "user": true,
+        "Account": { "title": "Custom_Plex" },
+        "Metadata": {
+            "type": "movie",
+            "title": "Wanted Movie 2",
+            "year": 2023,
+            "duration": 6000000
+        }
+    });
+    let req = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/webhooks/plex/{}", user.webhook_token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(custom_payload.to_string()))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+
+    let living_payload = json!({
+        "event": "media.scrobble",
+        "user": true,
+        "Account": { "title": "living_room" },
+        "Metadata": {
+            "type": "movie",
+            "title": "Wanted Movie 3",
+            "year": 2024,
+            "duration": 5400000
+        }
+    });
+    let req = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/webhooks/plex/{}", user.webhook_token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(living_payload.to_string()))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+
+    let final_scrobble_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE user_id = ?")
+        .bind(&user.id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(final_scrobble_count, 3);
 }

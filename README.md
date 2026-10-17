@@ -200,7 +200,9 @@ BingeSync provides a comprehensive REST API:
 ### Image Cache
 - `GET  /api/v1/images/:filename` — Serves cached media poster images from disk with immutable caching headers.
 
-### User Settings
+### User Settings & Connected Services
+- `GET  /api/v1/user/settings` — Retrieve personal settings (Plex username filter, Radarr, Sonarr, Tautulli credentials with secrets masked).
+- `POST /api/v1/user/settings` — Update personal settings and Plex username filter.
 - `GET  /api/v1/user/webhook` — Retrieve current webhook token and URL.
 - `POST /api/v1/user/regenerate-token` — Invalidate previous token and generate a new one.
 

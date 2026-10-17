@@ -11,6 +11,8 @@ use crate::{api::AppState, auth::AuthUser};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserSettingsResponse {
+    pub plex_username: Option<String>,
+
     pub radarr_url: Option<String>,
     pub radarr_api_key_configured: bool,
     pub radarr_api_key_masked: Option<String>,
@@ -31,6 +33,7 @@ pub type UserSettingsView = UserSettingsResponse;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct UpdateUserSettingsRequest {
+    pub plex_username: Option<String>,
     pub radarr_url: Option<String>,
     pub radarr_api_key: Option<String>,
     pub sonarr_url: Option<String>,
@@ -81,6 +84,8 @@ pub async fn get_user_settings_handler(
     State(state): State<AppState>,
     auth: AuthUser,
 ) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
+    let plex_username = get_user_setting(&state.pool, &auth.user_id, "plex_username").await;
+
     let radarr_url = get_user_setting(&state.pool, &auth.user_id, "radarr_url").await;
     let radarr_api_key = get_user_setting(&state.pool, &auth.user_id, "radarr_api_key").await;
 
@@ -91,6 +96,8 @@ pub async fn get_user_settings_handler(
     let tautulli_api_key = get_user_setting(&state.pool, &auth.user_id, "tautulli_api_key").await;
 
     let resp = UserSettingsResponse {
+        plex_username,
+
         radarr_url,
         radarr_api_key_configured: radarr_api_key.as_ref().map(|k| !k.trim().is_empty()).unwrap_or(false),
         radarr_api_key_masked: radarr_api_key.as_deref().map(mask_secret),
@@ -116,6 +123,10 @@ pub async fn update_user_settings_handler(
     auth: AuthUser,
     Json(payload): Json<UpdateUserSettingsRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
+    if let Some(ref val) = payload.plex_username {
+        let _ = set_user_setting(&state.pool, &auth.user_id, "plex_username", val.trim()).await;
+    }
+
     if let Some(ref val) = payload.radarr_url {
         let _ = set_user_setting(&state.pool, &auth.user_id, "radarr_url", val.trim()).await;
     }

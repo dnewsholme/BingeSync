@@ -71,6 +71,11 @@ test.describe('BingeSync Web UI & Webhooks', () => {
     await page.click('#btn-copy-webhook');
     await expect(page.locator('#copy-status')).toBeVisible();
 
+    // Configure Plex username filter in Connected Services
+    await page.fill('#user-setting-plex-username', 'playwright_plex');
+    await page.click('#btn-save-user-settings');
+    await expect(page.locator('#user-settings-status')).toContainText('Settings saved successfully!');
+
     // 7. Simulate Plex sending a webhook event using the user's personal webhook URL
     const plexPayload = {
       event: 'media.scrobble',
@@ -1065,11 +1070,14 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     await page.click('#btn-dev-submit');
 
     // Navigate to Settings
+    const settingsLoaded = page.waitForResponse(resp => resp.url().includes('/api/v1/user/settings') && resp.status() === 200);
     await page.click('#tab-settings');
+    await settingsLoaded;
     await expect(page.locator('#view-settings')).toBeVisible();
     await expect(page.locator('#card-user-services')).toBeVisible();
 
     // Fill in personal service settings
+    await page.fill('#user-setting-plex-username', 'daryl_plex, family');
     await page.fill('#user-setting-radarr-url', 'http://10.0.0.100:7878');
     await page.fill('#user-setting-radarr-api-key', 'my_radarr_key_abc');
     await page.fill('#user-setting-sonarr-url', 'http://10.0.0.100:8989');
@@ -1080,7 +1088,8 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     await page.click('#btn-save-user-settings');
     await expect(page.locator('#user-settings-status')).toContainText('Settings saved successfully!');
 
-    // Verify redaction on user settings
+    // Verify values persisted
+    await expect(page.locator('#user-setting-plex-username')).toHaveValue('daryl_plex, family');
     await expect(page.locator('#user-setting-radarr-api-key')).toHaveValue(/^my.*•/);
     await expect(page.locator('#user-setting-tautulli-api-key')).toHaveValue(/^my.*•/);
 

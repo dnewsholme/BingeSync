@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
   <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
-  <script type="module" crossorigin src="./assets/index-CTRN9rDn.js"></script>
+  <script type="module" crossorigin src="./assets/index-BfE-apfF.js"></script>
   <link rel="stylesheet" crossorigin href="./assets/index-znQX6pe5.css">
 </head>
 <body>
@@ -382,12 +382,27 @@
               Connected Services
             </h2>
             <p class="card-desc">
-              Configure your personal Radarr, Sonarr, and Tautulli credentials. These settings are specific to your user account.
+              Configure your personal Plex username filter, Radarr, Sonarr, and Tautulli credentials. These settings are specific to your user account.
             </p>
 
             <form id="form-user-settings" style="margin-top: 18px;">
-              <!-- Radarr -->
+              <!-- Plex Username Filter -->
               <div class="settings-group-header">
+                <span class="badge-pill" style="background: rgba(234, 179, 8, 0.15); color: #eab308; border: 1px solid rgba(234, 179, 8, 0.3);">Plex</span>
+                <strong>Plex Account Filtering</strong>
+              </div>
+              <div class="form-row">
+                <div class="form-group col-full">
+                  <label for="user-setting-plex-username">Plex Username(s)</label>
+                  <input type="text" id="user-setting-plex-username" class="form-control" placeholder="e.g. your_plex_username (comma-separated for multiple)" spellcheck="false" />
+                  <small style="color: var(--text-muted); font-size: 0.8rem; margin-top: 4px; display: block;">
+                    Only record scrobbles matching these Plex username(s). When left blank, scrobbles default to matching your BingeSync username or display name.
+                  </small>
+                </div>
+              </div>
+
+              <!-- Radarr -->
+              <div class="settings-group-header" style="margin-top: 16px;">
                 <span class="arr-badge arr-badge-radarr">Radarr</span>
                 <strong>Movie Library & Cleanup</strong>
               </div>

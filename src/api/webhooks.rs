@@ -98,6 +98,55 @@ async fn process_webhook(
         "Received Plex webhook"
     );
 
+    // Filter by Plex account username if present
+    let account_title = payload
+        .account
+        .as_ref()
+        .and_then(|a| a.title.as_deref())
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty());
+
+    if let Some(account_title) = account_title {
+        let configured_plex_user =
+            crate::api::user_settings::get_user_setting(&state.pool, &user.id, "plex_username").await;
+
+        let allowed_usernames: Vec<String> = if let Some(ref cfg) = configured_plex_user {
+            let list: Vec<String> = cfg
+                .split(',')
+                .map(|s| s.trim().to_lowercase())
+                .filter(|s| !s.is_empty())
+                .collect();
+            if list.is_empty() {
+                get_default_user_candidates(&user)
+            } else {
+                list
+            }
+        } else {
+            get_default_user_candidates(&user)
+        };
+
+        let matches = allowed_usernames
+            .iter()
+            .any(|allowed| allowed == &account_title.to_lowercase());
+
+        if !matches {
+            tracing::info!(
+                user_id = %user.id,
+                account_title = %account_title,
+                allowed = ?allowed_usernames,
+                "Ignored Plex webhook: username does not match allowed Plex username(s)"
+            );
+            return Ok((
+                StatusCode::OK,
+                Json(serde_json::json!({
+                    "status": "ignored",
+                    "reason": "username_mismatch",
+                    "account": account_title
+                })),
+            ));
+        }
+    }
+
     let metadata = match payload.metadata {
         Some(m) => m,
         None => {
@@ -459,4 +508,35 @@ async fn parse_multipart_payload(
     let payload_str = payload_opt.ok_or_else(|| "No 'payload' field found in multipart form data".to_string())?;
     serde_json::from_str(&payload_str)
         .map_err(|e| format!("Failed to deserialize payload JSON: {}", e))
+}
+
+fn get_default_user_candidates(user: &User) -> Vec<String> {
+    let mut candidates = Vec::new();
+    if let Some(ref pref) = user.preferred_username {
+        let trimmed = pref.trim().to_lowercase();
+        if !trimmed.is_empty() && !candidates.contains(&trimmed) {
+            candidates.push(trimmed);
+        }
+    }
+    let display_trimmed = user.display_name.trim().to_lowercase();
+    if !display_trimmed.is_empty() && !candidates.contains(&display_trimmed) {
+        candidates.push(display_trimmed.clone());
+    }
+    for word in display_trimmed.split_whitespace() {
+        let w = word.trim().to_lowercase();
+        if !w.is_empty() && !candidates.contains(&w) {
+            candidates.push(w);
+        }
+    }
+    if let Some(email_prefix) = user.email.split('@').next() {
+        let prefix_trimmed = email_prefix.trim().to_lowercase();
+        if !prefix_trimmed.is_empty() && !candidates.contains(&prefix_trimmed) {
+            candidates.push(prefix_trimmed);
+        }
+    }
+    let email_trimmed = user.email.trim().to_lowercase();
+    if !email_trimmed.is_empty() && !candidates.contains(&email_trimmed) {
+        candidates.push(email_trimmed);
+    }
+    candidates
 }

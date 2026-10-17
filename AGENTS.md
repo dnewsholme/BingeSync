@@ -17,7 +17,7 @@ BingeSync is a lightweight, self-hosted web service that replicates **Trakt.tv**
   - **Dev / Local Login**: Headless or local login for testing and standalone deployments without an external IdP.
   - Signed JWT tokens passed via `Authorization: Bearer <token>` or HTTP-only `bingesync_token` cookie.
 - **Admin Management & Cascading Deletion**: Admins can manage registered users via the API and web UI. Deleting a user cascade-deletes all associated scrobbles, active sessions, and database records in an atomic transaction.
-- **Plex Webhook Compatibility**: Plex sends `multipart/form-data` with a `payload` JSON field, but BingeSync also accepts direct `application/json` payloads. Webhooks are accepted at `/api/v1/webhooks/plex/{token}` or `/api/v1/webhooks/plex?token={token}`.
+- **Plex Webhook Compatibility & Username Filtering**: Plex sends `multipart/form-data` with a `payload` JSON field, but BingeSync also accepts direct `application/json` payloads. Webhooks are accepted at `/api/v1/webhooks/plex/{token}` or `/api/v1/webhooks/plex?token={token}`. Incoming webhooks are filtered against the user's configured Plex username(s) in User Settings (or default username/display name candidates) so that playback from other users sharing the same Plex server is gracefully ignored with HTTP 200 OK (`status: "ignored", reason: "username_mismatch"`).
 
 ---
 
