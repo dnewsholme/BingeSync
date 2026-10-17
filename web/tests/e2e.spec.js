@@ -808,11 +808,20 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     // Verify task cards exist (poster_cache and tvdb_metadata)
     const taskCards = page.locator('.task-card');
     await expect(taskCards).toHaveCount(2);
-    await expect(page.locator('.task-card', { hasText: 'Media Poster & Thumbnail Caching' })).toBeVisible();
+    const posterCard = page.locator('.task-card', { hasText: 'Media Poster & Thumbnail Caching' });
+    await expect(posterCard).toBeVisible();
     await expect(page.locator('.task-card', { hasText: 'TheTVDB v4 Metadata Enrichment' })).toBeVisible();
 
+    // Verify schedule selector and next run time are displayed
+    await expect(posterCard.locator('.task-schedule-select')).toBeVisible();
+    await expect(posterCard.locator('.task-next-run')).toBeVisible();
+
+    // Change schedule interval to 6 hours
+    await posterCard.locator('.task-schedule-select').selectOption('6');
+    await expect(posterCard.locator('.schedule-save-status')).toHaveText(/Saving\.\.\.|Saved!/, { timeout: 3000 });
+
     // Trigger run now on a task
-    const runBtn = page.locator('.task-card', { hasText: 'Media Poster & Thumbnail Caching' }).locator('.btn-trigger-task');
+    const runBtn = posterCard.locator('.btn-trigger-task');
     await runBtn.click();
     await expect(runBtn).toBeVisible();
 

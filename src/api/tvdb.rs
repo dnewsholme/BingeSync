@@ -399,13 +399,17 @@ pub fn start_metadata_worker(state: AppState) -> tokio::task::JoinHandle<()> {
                 state.task_tracker.set_tvdb_idle(0, "TVDB API key not configured").await;
             }
 
-            // Wait for new scrobbles or 4-hour periodic timer
+            let interval_hours = state.get_task_interval_hours("tvdb_metadata").await;
+            let next_run = (chrono::Utc::now() + chrono::Duration::hours(interval_hours as i64)).to_rfc3339();
+            state.task_tracker.set_tvdb_next_run(Some(next_run)).await;
+
+            // Wait for new scrobbles or configurable periodic timer
             tokio::select! {
                 _ = state.metadata_notify.notified() => {
                     failed_lookups.clear();
                     tokio::time::sleep(Duration::from_millis(100)).await;
                 }
-                _ = tokio::time::sleep(Duration::from_secs(4 * 3600)) => {
+                _ = tokio::time::sleep(Duration::from_secs(interval_hours * 3600)) => {
                     failed_lookups.clear();
                 }
             }
@@ -471,6 +475,11 @@ pub async fn process_missing_metadata_batch(
 
         let cache_key = format!("{}:{}:{:?}", item.media_type, search_title.to_lowercase(), item.year);
         if failed_lookups.contains(&cache_key) {
+            let _ = sqlx::query("UPDATE scrobbles SET metadata_updated_at = datetime('now') WHERE id = ?")
+                .bind(&item.id)
+                .execute(&state.pool)
+                .await;
+            processed_count += 1;
             continue;
         }
 
@@ -482,11 +491,23 @@ pub async fn process_missing_metadata_batch(
             Ok(Some(res)) => res,
             _ => {
                 // Mark metadata_updated_at so we don't query TVDB on every loop for unmatchable items
-                let _ = sqlx::query("UPDATE scrobbles SET metadata_updated_at = datetime('now') WHERE id = ?")
+                if is_episode {
+                    let show_name = item.grandparent_title.as_deref().unwrap_or(&item.title);
+                    let _ = sqlx::query(
+                        "UPDATE scrobbles SET metadata_updated_at = datetime('now') WHERE id = ? OR (grandparent_title IS NOT NULL AND LOWER(TRIM(grandparent_title)) = LOWER(TRIM(?)))"
+                    )
                     .bind(&item.id)
+                    .bind(show_name)
                     .execute(&state.pool)
                     .await;
+                } else {
+                    let _ = sqlx::query("UPDATE scrobbles SET metadata_updated_at = datetime('now') WHERE id = ?")
+                        .bind(&item.id)
+                        .execute(&state.pool)
+                        .await;
+                }
                 failed_lookups.insert(cache_key);
+                processed_count += 1;
                 continue;
             }
         };
@@ -522,13 +543,14 @@ pub async fn process_missing_metadata_batch(
                     directors = COALESCE(NULLIF(directors, ''), ?),
                     overview = CASE WHEN overview IS NULL OR overview = '' THEN ? ELSE overview END,
                     metadata_updated_at = datetime('now')
-                WHERE grandparent_title = ? OR (media_type = 'episode' AND title = ?)
+                WHERE id = ? OR (grandparent_title IS NOT NULL AND LOWER(TRIM(grandparent_title)) = LOWER(TRIM(?))) OR (media_type = 'episode' AND LOWER(TRIM(title)) = LOWER(TRIM(?)))
                 "#
             )
             .bind(&meta.genres)
             .bind(&meta.actors)
             .bind(&meta.directors)
             .bind(&meta.overview)
+            .bind(&item.id)
             .bind(show_name)
             .bind(show_name)
             .execute(&state.pool)

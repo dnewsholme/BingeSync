@@ -321,6 +321,10 @@ async fn process_webhook(
         existing.id
     } else {
         let new_id = Uuid::new_v4().to_string();
+        let has_full_meta = genres.as_deref().map(|g| !g.is_empty()).unwrap_or(false)
+            && overview.as_deref().map(|o| !o.is_empty()).unwrap_or(false);
+        let meta_updated = if has_full_meta { Some(now_str.clone()) } else { None };
+
         sqlx::query(
             r#"
             INSERT INTO scrobbles (
@@ -328,8 +332,8 @@ async fn process_webhook(
                 season_number, episode_number, year, overview, thumb_url,
                 rating_key, guid, duration_ms, user_rating,
                 genres, directors, actors, watch_status, progress_percent, view_offset_ms,
-                watched_at, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                metadata_updated_at, watched_at, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             "#,
         )
         .bind(&new_id)
@@ -353,6 +357,7 @@ async fn process_webhook(
         .bind(watch_status)
         .bind(progress_percent)
         .bind(view_offset_val)
+        .bind(meta_updated)
         .bind(&now_str)
         .bind(&now_str)
         .execute(&state.pool)
@@ -367,7 +372,9 @@ async fn process_webhook(
         if thumb_url.is_none() {
             state.image_notify.notify_one();
         }
-        state.metadata_notify.notify_one();
+        if !has_full_meta {
+            state.metadata_notify.notify_one();
+        }
 
         new_id
     };

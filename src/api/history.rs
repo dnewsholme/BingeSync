@@ -688,7 +688,7 @@ pub async fn refresh_scrobble_metadata(
                             directors = COALESCE(?, directors),
                             overview = COALESCE(?, overview),
                             metadata_updated_at = ?
-                        WHERE grandparent_title = ? OR (media_type = 'episode' AND title = ?)
+                        WHERE id = ? OR (grandparent_title IS NOT NULL AND LOWER(TRIM(grandparent_title)) = LOWER(TRIM(?))) OR (media_type = 'episode' AND LOWER(TRIM(title)) = LOWER(TRIM(?)))
                         "#,
                     )
                     .bind(&meta.genres)
@@ -696,6 +696,7 @@ pub async fn refresh_scrobble_metadata(
                     .bind(&meta.directors)
                     .bind(&meta.overview)
                     .bind(&now_str)
+                    .bind(&scrobble.id)
                     .bind(show_name)
                     .bind(show_name)
                     .execute(&state.pool)

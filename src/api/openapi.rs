@@ -622,6 +622,33 @@ pub const OPENAPI_SPEC_JSON: &str = r###"{
                         "403": { "description": "Admin access required" }
                     }
                 }
+            },
+            "/api/v1/admin/tasks/{id}/schedule": {
+                "post": {
+                    "tags": ["Admin"],
+                    "summary": "Update periodic schedule for background task",
+                    "security": [{ "BearerAuth": [] }],
+                    "parameters": [
+                        { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+                    ],
+                    "requestBody": {
+                        "required": true,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "interval_hours": { "type": "integer", "minimum": 1, "maximum": 168 }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "responses": {
+                        "200": { "description": "Task schedule updated" },
+                        "403": { "description": "Admin access required" }
+                    }
+                }
             }
         },
         "components": {

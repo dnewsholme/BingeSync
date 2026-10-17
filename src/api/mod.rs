@@ -76,6 +76,32 @@ impl AppState {
         }
         self.config.scrobble_threshold_percent
     }
+
+    pub async fn get_task_interval_hours(&self, task_id: &str) -> u64 {
+        let key = match task_id {
+            "image_cache" | "images" => "task_image_cache_interval_hours",
+            "tvdb_metadata" | "tvdb" => "task_tvdb_metadata_interval_hours",
+            _ => return 4,
+        };
+        if let Some(val) = settings::get_db_setting(&self.pool, key).await {
+            if let Ok(hours) = val.trim().parse::<u64>() {
+                if (1..=168).contains(&hours) {
+                    return hours;
+                }
+            }
+        }
+        4
+    }
+
+    pub async fn set_task_interval_hours(&self, task_id: &str, hours: u64) -> Result<(), sqlx::Error> {
+        let key = match task_id {
+            "image_cache" | "images" => "task_image_cache_interval_hours",
+            "tvdb_metadata" | "tvdb" => "task_tvdb_metadata_interval_hours",
+            _ => return Ok(()),
+        };
+        let clamped = hours.clamp(1, 168);
+        settings::set_db_setting(&self.pool, key, &clamped.to_string()).await
+    }
 }
 
 pub fn create_api_router(state: AppState) -> Router {
@@ -142,6 +168,7 @@ pub fn create_api_router(state: AppState) -> Router {
         .route("/api/v1/admin/logs", get(logs::get_admin_logs_handler).delete(logs::clear_admin_logs_handler))
         .route("/api/v1/admin/tasks", get(jobs::get_admin_tasks_handler))
         .route("/api/v1/admin/tasks/{id}/run", post(jobs::trigger_admin_task_handler))
+        .route("/api/v1/admin/tasks/{id}/schedule", post(jobs::update_admin_task_schedule_handler))
         // OpenAPI specification and Swagger UI
         .route("/api/v1/openapi.json", get(openapi::get_openapi_json))
         .route("/docs", get(openapi::get_swagger_ui))

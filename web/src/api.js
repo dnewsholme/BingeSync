@@ -198,4 +198,9 @@ export const api = {
   clearAdminLogs: () => request('/admin/logs', { method: 'DELETE' }),
   getAdminTasks: () => request('/admin/tasks'),
   triggerAdminTask: (taskId) => request(`/admin/tasks/${taskId}/run`, { method: 'POST' }),
+  updateAdminTaskSchedule: (taskId, intervalHours) =>
+    request(`/admin/tasks/${taskId}/schedule`, {
+      method: 'POST',
+      body: JSON.stringify({ interval_hours: intervalHours }),
+    }),
 };

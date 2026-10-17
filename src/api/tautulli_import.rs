@@ -429,16 +429,30 @@ async fn fetch_tautulli_users_data(
         base = base.trim_end_matches("/api").trim_end_matches('/').to_string();
     }
 
-    let mut candidates = vec![format!("{}/api/v2", base)];
+    let mut candidates = vec![
+        format!("{}/api/v2", base),
+        format!("{}/api/v2/", base),
+    ];
     if !base.ends_with("/tautulli") {
         candidates.push(format!("{}/tautulli/api/v2", base));
+        candidates.push(format!("{}/tautulli/api/v2/", base));
     }
+    if !base.ends_with("/plexpy") {
+        candidates.push(format!("{}/plexpy/api/v2", base));
+        candidates.push(format!("{}/plexpy/api/v2/", base));
+    }
+    candidates.push(format!("{}/api", base));
 
     let mut last_status = None;
     let mut last_err = None;
 
     for endpoint in &candidates {
-        let target_url = format!("{}?apikey={}&cmd=get_users", endpoint, api_key.trim());
+        let target_url = if endpoint.contains('?') {
+            format!("{}&apikey={}&cmd=get_users", endpoint, api_key.trim())
+        } else {
+            format!("{}?apikey={}&cmd=get_users", endpoint, api_key.trim())
+        };
+
         match client.get(&target_url).send().await {
             Ok(resp) => {
                 let status = resp.status();
@@ -464,9 +478,23 @@ async fn fetch_tautulli_users_data(
                         }
                     }
                 } else if status == StatusCode::NOT_FOUND {
+                    let body = resp.text().await.unwrap_or_default();
+                    tracing::warn!(
+                        endpoint = %endpoint,
+                        status = %status,
+                        body = %body,
+                        "Tautulli endpoint returned 404 Not Found"
+                    );
                     last_status = Some(status);
                     continue;
                 } else {
+                    let body = resp.text().await.unwrap_or_default();
+                    tracing::warn!(
+                        endpoint = %endpoint,
+                        status = %status,
+                        body = %body,
+                        "Tautulli endpoint returned non-success status"
+                    );
                     return Err((
                         StatusCode::BAD_GATEWAY,
                         Json(serde_json::json!({
@@ -482,7 +510,14 @@ async fn fetch_tautulli_users_data(
     }
 
     let err_msg = if let Some(st) = last_status {
-        format!("Tautulli server responded with status: {} (tested: {})", st, candidates.join(", "))
+        if st == StatusCode::NOT_FOUND {
+            format!(
+                "Tautulli server responded with status: 404 Not Found (tested: {}). Please verify that 'Enable API' is checked in Tautulli under Settings > Web Interface > API, and that any configured HTTP Root / Base Path is included in your Tautulli URL.",
+                candidates.join(", ")
+            )
+        } else {
+            format!("Tautulli server responded with status: {} (tested: {})", st, candidates.join(", "))
+        }
     } else {
         last_err.unwrap_or_else(|| format!("Failed to reach Tautulli API (tested: {})", candidates.join(", ")))
     };

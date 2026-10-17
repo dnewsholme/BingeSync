@@ -71,15 +71,19 @@ pub fn start_image_cache_worker(state: AppState) -> tokio::task::JoinHandle<()> 
                 continue;
             }
 
-            // If nothing was processed (either queue is empty or all failed), wait for notification or 4-hour timer
+            let interval_hours = state.get_task_interval_hours("image_cache").await;
+            let next_run = (chrono::Utc::now() + chrono::Duration::hours(interval_hours as i64)).to_rfc3339();
+            state.task_tracker.set_image_next_run(Some(next_run)).await;
+
+            // If nothing was processed (either queue is empty or all failed), wait for notification or configurable periodic timer
             tokio::select! {
                 _ = state.image_notify.notified() => {
                     failed_lookups.clear();
                     // Small debounce to let bulk transactions settle
                     tokio::time::sleep(Duration::from_millis(100)).await;
                 }
-                _ = tokio::time::sleep(Duration::from_secs(4 * 3600)) => {
-                    // Periodic run every 4 hours: clear failed lookups to re-verify any missing artwork
+                _ = tokio::time::sleep(Duration::from_secs(interval_hours * 3600)) => {
+                    // Periodic run: clear failed lookups to re-verify any missing artwork
                     failed_lookups.clear();
                 }
             }

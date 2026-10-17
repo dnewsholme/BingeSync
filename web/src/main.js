@@ -2882,10 +2882,13 @@ function renderAdminTasks(tasks) {
     const statusClass = `task-status-${t.status || 'idle'}`;
     const lastRunTime = t.last_run_at || t.last_run;
     const lastSuccessTime = t.last_success_at || t.last_success;
+    const nextRunTime = t.next_run_at || t.next_run;
     const lastRunStr = lastRunTime ? new Date(lastRunTime).toLocaleString() : 'Never';
     const lastSuccessStr = lastSuccessTime ? new Date(lastSuccessTime).toLocaleString() : 'Never';
+    const nextRunStr = nextRunTime ? new Date(nextRunTime).toLocaleString() : 'Pending next cycle';
     const msg = t.last_message || t.message || 'Idle';
     const pending = t.items_pending != null ? t.items_pending : 0;
+    const intervalHours = t.interval_hours || 4;
 
     return `
       <div class="task-card" data-task-id="${t.id}">
@@ -2909,6 +2912,24 @@ function renderAdminTasks(tasks) {
             <span>Processed Items:</span>
             <strong>${t.items_processed} processed (${pending} pending)</strong>
           </div>
+          <div class="task-meta-row" style="align-items: center;">
+            <span>Run Schedule:</span>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <select class="input-select task-schedule-select" data-task-id="${t.id}" style="padding: 3px 8px; font-size: 0.85rem; width: auto; background: var(--bg-card); color: var(--text-main); border: 1px solid var(--border-color); border-radius: 4px;">
+                <option value="1" ${intervalHours === 1 ? 'selected' : ''}>Every 1 hour</option>
+                <option value="2" ${intervalHours === 2 ? 'selected' : ''}>Every 2 hours</option>
+                <option value="4" ${intervalHours === 4 ? 'selected' : ''}>Every 4 hours (Default)</option>
+                <option value="6" ${intervalHours === 6 ? 'selected' : ''}>Every 6 hours</option>
+                <option value="12" ${intervalHours === 12 ? 'selected' : ''}>Every 12 hours</option>
+                <option value="24" ${intervalHours === 24 ? 'selected' : ''}>Every 24 hours (Daily)</option>
+              </select>
+              <span class="schedule-save-status" data-task-id="${t.id}" style="font-size: 0.75rem; color: #34d399;"></span>
+            </div>
+          </div>
+          <div class="task-meta-row">
+            <span>Next Scheduled Run:</span>
+            <strong class="task-next-run">${nextRunStr}</strong>
+          </div>
           <div class="task-meta-row">
             <span>Last Started:</span>
             <strong>${lastRunStr}</strong>
@@ -2927,6 +2948,26 @@ function renderAdminTasks(tasks) {
       </div>
     `;
   }).join('');
+
+  el.adminTasksContainer.querySelectorAll('.task-schedule-select').forEach(select => {
+    select.addEventListener('change', async (e) => {
+      const taskId = select.dataset.taskId;
+      const hours = parseInt(e.target.value, 10);
+      const statusSpan = el.adminTasksContainer.querySelector(`.schedule-save-status[data-task-id="${taskId}"]`);
+      if (statusSpan) statusSpan.textContent = 'Saving...';
+      try {
+        await api.updateAdminTaskSchedule(taskId, hours);
+        if (statusSpan) {
+          statusSpan.textContent = 'Saved!';
+          setTimeout(() => { if (statusSpan) statusSpan.textContent = ''; }, 2500);
+        }
+        await loadAdminTasks();
+      } catch (err) {
+        alert('Failed to update task schedule: ' + err.message);
+        if (statusSpan) statusSpan.textContent = '';
+      }
+    });
+  });
 
   el.adminTasksContainer.querySelectorAll('.btn-trigger-task').forEach(btn => {
     btn.addEventListener('click', async () => {

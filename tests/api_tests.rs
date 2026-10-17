@@ -2403,10 +2403,47 @@ async fn test_admin_settings_logs_and_tasks_management() {
     let tasks_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     let tasks = tasks_json["tasks"].as_array().unwrap();
     assert_eq!(tasks.len(), 2);
-    assert!(tasks.iter().any(|t| t["id"] == "image_cache"));
-    assert!(tasks.iter().any(|t| t["id"] == "tvdb_metadata"));
+    let image_task = tasks.iter().find(|t| t["id"] == "image_cache").unwrap();
+    let tvdb_task = tasks.iter().find(|t| t["id"] == "tvdb_metadata").unwrap();
+    assert_eq!(image_task["schedule"], "Every 4 hours");
+    assert_eq!(image_task["interval_hours"], 4);
+    assert!(image_task["next_run_at"].is_string());
+    assert_eq!(tvdb_task["schedule"], "Every 4 hours");
+    assert!(tvdb_task["next_run_at"].is_string());
 
-    // 7. Test triggering background task run
+    // 7. Test configuring background task schedule
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/admin/tasks/image_cache/schedule")
+        .header(header::AUTHORIZATION, format!("Bearer {}", admin_jwt))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(serde_json::to_string(&serde_json::json!({
+            "interval_hours": 6
+        })).unwrap()))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let update_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(update_json["interval_hours"], 6);
+    assert_eq!(update_json["schedule"], "Every 6 hours");
+    assert!(update_json["next_run_at"].is_string());
+
+    // Verify GET /api/v1/admin/tasks reflects updated schedule
+    let req = Request::builder()
+        .uri("/api/v1/admin/tasks")
+        .header(header::AUTHORIZATION, format!("Bearer {}", admin_jwt))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let tasks_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let updated_image_task = tasks_json["tasks"].as_array().unwrap().iter().find(|t| t["id"] == "image_cache").unwrap();
+    assert_eq!(updated_image_task["interval_hours"], 6);
+    assert_eq!(updated_image_task["schedule"], "Every 6 hours");
+
+    // 8. Test triggering background task run
     let req = Request::builder()
         .method("POST")
         .uri("/api/v1/admin/tasks/image_cache/run")

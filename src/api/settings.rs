@@ -25,6 +25,8 @@ pub struct SystemSettingsView {
     pub oidc_client_secret: Option<String>,
     pub oidc_redirect_url: Option<String>,
     pub scrobble_threshold_percent: i64,
+    pub task_image_interval_hours: u64,
+    pub task_tvdb_interval_hours: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -39,6 +41,8 @@ pub struct UpdateSettingsRequest {
     pub oidc_client_secret: Option<String>,
     pub oidc_redirect_url: Option<String>,
     pub scrobble_threshold_percent: Option<i64>,
+    pub task_image_interval_hours: Option<u64>,
+    pub task_tvdb_interval_hours: Option<u64>,
 }
 
 pub async fn get_db_setting(pool: &SqlitePool, key: &str) -> Option<String> {
@@ -136,6 +140,8 @@ pub async fn get_admin_settings_handler(
         oidc_client_secret: oidc_client_secret.clone(),
         oidc_redirect_url,
         scrobble_threshold_percent: state.get_effective_scrobble_threshold().await,
+        task_image_interval_hours: state.get_task_interval_hours("image_cache").await,
+        task_tvdb_interval_hours: state.get_task_interval_hours("tvdb_metadata").await,
     };
 
     Ok(Json(view))
@@ -190,6 +196,17 @@ pub async fn update_admin_settings_handler(
     if let Some(pct) = payload.scrobble_threshold_percent {
         let clamped = pct.clamp(1, 100);
         let _ = set_db_setting(&state.pool, "scrobble_threshold_percent", &clamped.to_string()).await;
+    }
+
+    if let Some(hours) = payload.task_image_interval_hours {
+        let _ = state.set_task_interval_hours("image_cache", hours).await;
+        let next_run = (chrono::Utc::now() + chrono::Duration::hours(hours as i64)).to_rfc3339();
+        state.task_tracker.set_image_next_run(Some(next_run)).await;
+    }
+    if let Some(hours) = payload.task_tvdb_interval_hours {
+        let _ = state.set_task_interval_hours("tvdb_metadata", hours).await;
+        let next_run = (chrono::Utc::now() + chrono::Duration::hours(hours as i64)).to_rfc3339();
+        state.task_tracker.set_tvdb_next_run(Some(next_run)).await;
     }
 
     state.log_buffer.push("INFO", "bingesync::settings", "System settings updated by admin");
