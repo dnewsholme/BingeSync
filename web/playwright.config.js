@@ -7,7 +7,7 @@ export default defineConfig({
     timeout: 5000,
   },
   fullyParallel: false,
-  reporter: 'list',
+  reporter: process.env.CI ? [['list'], ['html', { open: 'never', outputFolder: 'playwright-report' }]] : 'list',
   use: {
     baseURL: process.env.BASE_URL || 'http://localhost:8080',
     trace: 'on-first-retry',

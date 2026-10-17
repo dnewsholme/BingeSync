@@ -27,6 +27,10 @@ BingeSync/
 ├── Cargo.lock
 ├── Dockerfile               # Multi-stage production container build
 ├── docker-compose.yml       # Production self-hosting orchestration
+├── .github/
+│   └── workflows/
+│       ├── docker.yml       # Build, test, and publish Docker image to Docker Hub
+│       └── ui-tests.yml     # Playwright E2E UI testing pipeline
 ├── .env.example             # Configuration reference template
 ├── README.md                # User-facing documentation
 ├── AGENTS.md                # This developer/agent reference file
