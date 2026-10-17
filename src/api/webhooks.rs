@@ -1,0 +1,312 @@
+use axum::{
+    extract::{Path, Query, State},
+    http::{HeaderMap, StatusCode},
+    response::IntoResponse,
+    Json,
+};
+use chrono::Utc;
+use serde::Deserialize;
+use uuid::Uuid;
+
+use crate::{
+    api::AppState,
+    models::{PlexWebhookPayload, User},
+};
+
+#[derive(Debug, Deserialize)]
+pub struct WebhookQuery {
+    pub token: Option<String>,
+}
+
+pub async fn handle_plex_webhook_path(
+    State(state): State<AppState>,
+    Path(token): Path<String>,
+    headers: HeaderMap,
+    multipart_or_body: axum::body::Bytes,
+) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
+    process_webhook(state, token, multipart_or_body, headers).await
+}
+
+pub async fn handle_plex_webhook_query(
+    State(state): State<AppState>,
+    Query(query): Query<WebhookQuery>,
+    headers: HeaderMap,
+    multipart_or_body: axum::body::Bytes,
+) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
+    let token = query.token.ok_or_else(|| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": "Missing webhook token in query parameter 'token'" })),
+        )
+    })?;
+
+    process_webhook(state, token, multipart_or_body, headers).await
+}
+
+async fn process_webhook(
+    state: AppState,
+    token: String,
+    body_bytes: axum::body::Bytes,
+    headers: axum::http::HeaderMap,
+) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
+    // 1. Authenticate user by webhook_token
+    let user: User = sqlx::query_as::<_, User>(
+        "SELECT * FROM users WHERE webhook_token = ?"
+    )
+    .bind(&token)
+    .fetch_optional(&state.pool)
+    .await
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": format!("Database error: {}", e) })),
+        )
+    })?
+    .ok_or_else(|| {
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(serde_json::json!({ "error": "Invalid webhook token" })),
+        )
+    })?;
+
+    // 2. Parse payload from multipart or application/json
+    let content_type = headers
+        .get(axum::http::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+
+    let payload: PlexWebhookPayload = if content_type.starts_with("multipart/form-data") {
+        parse_multipart_payload(content_type, body_bytes).await.map_err(|e| {
+            (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({ "error": format!("Failed to parse multipart Plex payload: {}", e) })),
+            )
+        })?
+    } else {
+        serde_json::from_slice(&body_bytes).map_err(|e| {
+            (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({ "error": format!("Failed to parse JSON Plex payload: {}", e) })),
+            )
+        })?
+    };
+
+    tracing::info!(
+        user_id = %user.id,
+        event = %payload.event,
+        title = ?payload.metadata.as_ref().and_then(|m| m.title.as_deref()),
+        "Received Plex webhook"
+    );
+
+    let metadata = match payload.metadata {
+        Some(m) => m,
+        None => {
+            return Ok((
+                StatusCode::OK,
+                Json(serde_json::json!({ "status": "ignored", "reason": "no metadata" })),
+            ));
+        }
+    };
+
+    let title = metadata.title.unwrap_or_else(|| "Unknown Title".to_string());
+    let media_type = metadata.media_type.unwrap_or_else(|| "movie".to_string());
+    let grandparent_title = metadata.grandparent_title;
+    let parent_title = metadata.parent_title;
+    let season_number = metadata.parent_index;
+    let episode_number = metadata.index;
+    let year = metadata.year;
+    let overview = metadata.summary;
+    let thumb_url = metadata.thumb
+        .or(metadata.grandparent_thumb)
+        .or(metadata.parent_thumb);
+    let rating_key = metadata.rating_key;
+    let guid = metadata.guid;
+    let duration_ms = metadata.duration;
+    let genres = metadata.genre.as_ref().and_then(|list| {
+        let tags: Vec<String> = list.iter().filter_map(|t| t.tag.clone()).collect();
+        if tags.is_empty() { None } else { Some(tags.join(", ")) }
+    });
+    let directors = metadata.director.as_ref().and_then(|list| {
+        let tags: Vec<String> = list.iter().filter_map(|t| t.tag.clone()).collect();
+        if tags.is_empty() { None } else { Some(tags.join(", ")) }
+    });
+    let actors = metadata.role.as_ref().and_then(|list| {
+        let tags: Vec<String> = list.iter().filter_map(|t| t.tag.clone()).collect();
+        if tags.is_empty() { None } else { Some(tags.join(", ")) }
+    });
+    let now_str = Utc::now().to_rfc3339();
+
+    // 3. Handle events
+    match payload.event.as_str() {
+        "media.scrobble" => {
+            let scrobble_id = Uuid::new_v4().to_string();
+
+            sqlx::query(
+                r#"
+                INSERT INTO scrobbles (
+                    id, user_id, title, media_type, grandparent_title, parent_title,
+                    season_number, episode_number, year, overview, thumb_url,
+                    rating_key, guid, duration_ms, user_rating,
+                    genres, directors, actors, watch_status,
+                    watched_at, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                "#,
+            )
+            .bind(&scrobble_id)
+            .bind(&user.id)
+            .bind(&title)
+            .bind(&media_type)
+            .bind(&grandparent_title)
+            .bind(&parent_title)
+            .bind(season_number)
+            .bind(episode_number)
+            .bind(year)
+            .bind(&overview)
+            .bind(&thumb_url)
+            .bind(&rating_key)
+            .bind(&guid)
+            .bind(duration_ms)
+            .bind(None::<i32>)
+            .bind(&genres)
+            .bind(&directors)
+            .bind(&actors)
+            .bind("completed")
+            .bind(&now_str)
+            .bind(&now_str)
+            .execute(&state.pool)
+            .await
+            .map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({ "error": format!("Failed to record scrobble: {}", e) })),
+                )
+            })?;
+
+            // Clear any active session for this user
+            let _ = sqlx::query("DELETE FROM active_sessions WHERE user_id = ?")
+                .bind(&user.id)
+                .execute(&state.pool)
+                .await;
+
+            Ok((
+                StatusCode::CREATED,
+                Json(serde_json::json!({
+                    "status": "scrobbled",
+                    "id": scrobble_id,
+                    "title": title,
+                    "media_type": media_type,
+                    "watched_at": now_str,
+                })),
+            ))
+        }
+
+        "media.play" | "media.resume" | "media.pause" => {
+            let state_str = if payload.event == "media.pause" {
+                "paused"
+            } else {
+                "playing"
+            };
+
+            let session_id = Uuid::new_v4().to_string();
+            let player_title = payload.player.as_ref().and_then(|p| p.title.clone());
+            let view_offset_ms = metadata.view_offset.unwrap_or(0);
+            let total_dur_ms = duration_ms.unwrap_or(0);
+
+            // Upsert active session
+            let _ = sqlx::query("DELETE FROM active_sessions WHERE user_id = ?")
+                .bind(&user.id)
+                .execute(&state.pool)
+                .await;
+
+            sqlx::query(
+                r#"
+                INSERT INTO active_sessions (
+                    id, user_id, player_title, title, media_type, grandparent_title,
+                    season_number, episode_number, year, thumb_url, state,
+                    view_offset_ms, duration_ms, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                "#,
+            )
+            .bind(&session_id)
+            .bind(&user.id)
+            .bind(&player_title)
+            .bind(&title)
+            .bind(&media_type)
+            .bind(&grandparent_title)
+            .bind(season_number)
+            .bind(episode_number)
+            .bind(year)
+            .bind(&thumb_url)
+            .bind(state_str)
+            .bind(view_offset_ms)
+            .bind(total_dur_ms)
+            .bind(&now_str)
+            .execute(&state.pool)
+            .await
+            .map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({ "error": format!("Failed to update session: {}", e) })),
+                )
+            })?;
+
+            Ok((
+                StatusCode::OK,
+                Json(serde_json::json!({
+                    "status": "session_updated",
+                    "state": state_str,
+                    "title": title,
+                })),
+            ))
+        }
+
+        "media.stop" => {
+            let _ = sqlx::query("DELETE FROM active_sessions WHERE user_id = ?")
+                .bind(&user.id)
+                .execute(&state.pool)
+                .await;
+
+            Ok((
+                StatusCode::OK,
+                Json(serde_json::json!({
+                    "status": "session_stopped",
+                    "title": title,
+                })),
+            ))
+        }
+
+        _ => Ok((
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "status": "ignored",
+                "event": payload.event,
+            })),
+        )),
+    }
+}
+
+async fn parse_multipart_payload(
+    content_type: &str,
+    bytes: axum::body::Bytes,
+) -> Result<PlexWebhookPayload, String> {
+    let boundary = multer::parse_boundary(content_type)
+        .map_err(|e| format!("Failed to parse boundary: {}", e))?;
+
+    let cursor = std::io::Cursor::new(bytes);
+    let stream = tokio_util::io::ReaderStream::new(cursor);
+    let mut multipart = multer::Multipart::new(stream, boundary);
+
+    let mut payload_opt: Option<String> = None;
+    while let Ok(Some(field)) = multipart.next_field().await {
+        if field.name() == Some("payload") {
+            if let Ok(text) = field.text().await {
+                payload_opt = Some(text);
+                break;
+            }
+        }
+    }
+
+    let payload_str = payload_opt.ok_or_else(|| "No 'payload' field found in multipart form data".to_string())?;
+    serde_json::from_str(&payload_str)
+        .map_err(|e| format!("Failed to deserialize payload JSON: {}", e))
+}

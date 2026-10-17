@@ -1,0 +1,33 @@
+services:
+  bingesync:
+    image: bingesync:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: bingesync
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8080
+      - APP_URL=http://localhost:8080
+      - DATABASE_URL=sqlite:///data/bingesync.db?mode=rwc
+      - JWT_SECRET=change-this-to-a-very-secure-random-secret-string
+
+      # OpenID Connect (OIDC) Authentication
+      # Set OIDC_ENABLED=true to enforce SSO (e.g. Authentik, Keycloak, Authelia)
+      - OIDC_ENABLED=false
+      - OIDC_ISSUER_URL=https://auth.example.com/application/o/bingesync/
+      - OIDC_CLIENT_ID=bingesync-client-id
+      - OIDC_CLIENT_SECRET=bingesync-client-secret
+      - OIDC_REDIRECT_URL=http://localhost:8080/api/v1/auth/callback
+
+      # Set to false once OIDC is configured to disable local test login
+      - DEV_LOGIN_ENABLED=true
+    volumes:
+      - bingesync_data:/data
+
+volumes:
+  bingesync_data:
+    driver: local

@@ -1,0 +1,11 @@
+/target
+web/node_modules/
+web/test-results/
+web/playwright-report/
+*.db
+*.db-shm
+*.db-wal
+.env
+tasks
+kubernetes.yaml
+bingesync.yaml
