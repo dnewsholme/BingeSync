@@ -254,7 +254,7 @@ pub async fn get_timeline_periods(
             substr(watched_at, 1, 7) as ym,
             thumb_url
         FROM scrobbles
-        WHERE user_id = ? AND thumb_url IS NOT NULL AND thumb_url != ''
+        WHERE user_id = ? AND thumb_url IS NOT NULL AND thumb_url != '' AND thumb_url NOT LIKE '/library/%' AND thumb_url NOT LIKE '/photo/%'
         ORDER BY watched_at DESC
         "#,
     )

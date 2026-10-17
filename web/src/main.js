@@ -717,7 +717,8 @@ function renderTimelineMonthsView() {
     const remMins = minutes % 60;
     const timeStr = count > 0 ? (hours > 0 ? `${hours}h ${remMins}m watched` : `${remMins}m watched`) : 'No activity';
     const posters = mData?.poster_urls || [];
-    const posterImgs = posters.map(url => `<img src="${url}" class="month-card-poster" alt="Poster" loading="lazy" />`).join('');
+    const validPosters = posters.map(url => resolveImageUrl(url)).filter(Boolean);
+    const posterImgs = validPosters.map(url => `<img src="${escapeHtml(url)}" class="month-card-poster" alt="Poster" loading="lazy" onerror="this.style.display='none'" />`).join('');
 
     html += `
       <div class="timeline-month-card ${count > 0 ? 'has-data' : 'empty'}" data-month-num="${monthNum}">
@@ -782,7 +783,8 @@ function renderTimelineYearsView() {
     const hours = Math.round(y.minutes / 60);
     const activeMonths = y.months ? y.months.length : 0;
     const posters = y.poster_urls || [];
-    const posterImgs = posters.map(url => `<img src="${url}" class="year-card-poster" alt="Poster" loading="lazy" />`).join('');
+    const validPosters = posters.map(url => resolveImageUrl(url)).filter(Boolean);
+    const posterImgs = validPosters.map(url => `<img src="${escapeHtml(url)}" class="year-card-poster" alt="Poster" loading="lazy" onerror="this.style.display='none'" />`).join('');
 
     html += `
       <div class="timeline-year-card" data-year="${y.year}">

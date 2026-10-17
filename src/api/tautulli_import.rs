@@ -108,10 +108,30 @@ pub async fn get_tautulli_users_handler(
     {
         for u in data_array {
             if let Some(username) = u.get("username").and_then(|un| un.as_str()) {
+                let friendly_name = u.get("friendly_name").and_then(|f| f.as_str());
+                let user_id_val = u.get("user_id").cloned().unwrap_or(serde_json::json!(0));
+                let id_str = match &user_id_val {
+                    serde_json::Value::Number(n) => n.to_string(),
+                    serde_json::Value::String(s) => s.clone(),
+                    _ => user_id_val.to_string(),
+                };
+                let _ = sqlx::query(
+                    r#"
+                    INSERT INTO plex_user_cache (plex_id, username, friendly_name, source, updated_at)
+                    VALUES (?, ?, ?, 'tautulli', datetime('now'))
+                    ON CONFLICT(plex_id) DO UPDATE SET username = excluded.username, friendly_name = excluded.friendly_name, updated_at = excluded.updated_at
+                    "#
+                )
+                .bind(&id_str)
+                .bind(username)
+                .bind(friendly_name)
+                .execute(&state.pool)
+                .await;
+
                 users.push(TautulliUserItem {
-                    user_id: u.get("user_id").cloned().unwrap_or(serde_json::json!(0)),
+                    user_id: user_id_val,
                     username: username.to_string(),
-                    friendly_name: u.get("friendly_name").and_then(|f| f.as_str()).map(|s| s.to_string()),
+                    friendly_name: friendly_name.map(|s| s.to_string()),
                     thumb: u.get("thumb").and_then(|t| t.as_str()).map(|s| s.to_string()),
                 });
             }
@@ -119,6 +139,50 @@ pub async fn get_tautulli_users_handler(
     }
 
     Ok(Json(serde_json::json!({ "users": users })))
+}
+
+/// Helper to sync Tautulli users into plex_user_cache table
+pub async fn sync_tautulli_users_cache(pool: &sqlx::SqlitePool, url: &str, api_key: &str) -> Vec<(String, String)> {
+    let client = match Client::builder().timeout(std::time::Duration::from_secs(5)).build() {
+        Ok(c) => c,
+        Err(_) => return Vec::new(),
+    };
+    let (_endpoint, json_val) = match fetch_tautulli_users_data(&client, url, api_key).await {
+        Ok(res) => res,
+        Err(_) => return Vec::new(),
+    };
+    let mut mapped = Vec::new();
+    if let Some(data_array) = json_val
+        .get("response")
+        .and_then(|r| r.get("data"))
+        .and_then(|d| d.as_array())
+    {
+        for u in data_array {
+            if let Some(username) = u.get("username").and_then(|un| un.as_str()) {
+                let friendly_name = u.get("friendly_name").and_then(|f| f.as_str());
+                let id_str = match u.get("user_id") {
+                    Some(serde_json::Value::Number(n)) => n.to_string(),
+                    Some(serde_json::Value::String(s)) => s.clone(),
+                    _ => continue,
+                };
+                let _ = sqlx::query(
+                    r#"
+                    INSERT INTO plex_user_cache (plex_id, username, friendly_name, source, updated_at)
+                    VALUES (?, ?, ?, 'tautulli', datetime('now'))
+                    ON CONFLICT(plex_id) DO UPDATE SET username = excluded.username, friendly_name = excluded.friendly_name, updated_at = excluded.updated_at
+                    "#
+                )
+                .bind(&id_str)
+                .bind(username)
+                .bind(friendly_name)
+                .execute(pool)
+                .await;
+
+                mapped.push((id_str, username.to_string()));
+            }
+        }
+    }
+    mapped
 }
 
 /// Main Tautulli import handler (API fetch or raw content, with deduplication)

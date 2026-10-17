@@ -5,6 +5,7 @@ pub struct PlexWebhookPayload {
     pub event: String,
     pub user: Option<bool>,
     pub owner: Option<bool>,
+    pub user_id: Option<serde_json::Value>,
     #[serde(rename = "Account")]
     pub account: Option<PlexAccount>,
     #[serde(rename = "Server")]

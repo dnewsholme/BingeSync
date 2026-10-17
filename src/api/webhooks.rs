@@ -98,15 +98,27 @@ async fn process_webhook(
         "Received Plex webhook"
     );
 
-    // Filter by Plex account username if present
+    // Filter by Plex account username or ID if present
     let account_title = payload
         .account
         .as_ref()
         .and_then(|a| a.title.as_deref())
-        .map(|s| s.trim())
+        .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty());
 
-    if let Some(account_title) = account_title {
+    let account_id = payload
+        .account
+        .as_ref()
+        .and_then(|a| a.id.as_ref())
+        .or(payload.user_id.as_ref())
+        .and_then(|v| match v {
+            serde_json::Value::String(s) => Some(s.trim().to_string()),
+            serde_json::Value::Number(n) => Some(n.to_string()),
+            _ => None,
+        })
+        .filter(|s| !s.is_empty());
+
+    if account_title.is_some() || account_id.is_some() {
         let configured_plex_user =
             crate::api::user_settings::get_user_setting(&state.pool, &user.id, "plex_username").await;
 
@@ -125,23 +137,86 @@ async fn process_webhook(
             get_default_user_candidates(&user)
         };
 
-        let matches = allowed_usernames
-            .iter()
-            .any(|allowed| allowed == &account_title.to_lowercase());
+        // Expand allowed list with any mapped Plex IDs from plex_user_cache
+        let mut expanded_allowed = allowed_usernames.clone();
+        for allowed in &allowed_usernames {
+            let cached_ids: Vec<String> = sqlx::query_scalar(
+                "SELECT plex_id FROM plex_user_cache WHERE LOWER(username) = LOWER(?) OR LOWER(friendly_name) = LOWER(?)"
+            )
+            .bind(allowed)
+            .bind(allowed)
+            .fetch_all(&state.pool)
+            .await
+            .unwrap_or_default();
+
+            for cid in cached_ids {
+                let low = cid.to_lowercase();
+                if !expanded_allowed.contains(&low) {
+                    expanded_allowed.push(low);
+                }
+            }
+        }
+
+        // Candidate identifiers from incoming webhook (title, id, and any resolved usernames)
+        let mut candidate_identifiers: Vec<String> = Vec::new();
+        if let Some(ref title) = account_title {
+            candidate_identifiers.push(title.to_lowercase());
+            if let Ok(Some(un)) = sqlx::query_scalar::<_, String>(
+                "SELECT username FROM plex_user_cache WHERE LOWER(plex_id) = LOWER(?) LIMIT 1"
+            )
+            .bind(title)
+            .fetch_optional(&state.pool)
+            .await {
+                candidate_identifiers.push(un.to_lowercase());
+            }
+        }
+        if let Some(ref aid) = account_id {
+            candidate_identifiers.push(aid.to_lowercase());
+            if let Ok(Some(un)) = sqlx::query_scalar::<_, String>(
+                "SELECT username FROM plex_user_cache WHERE LOWER(plex_id) = LOWER(?) LIMIT 1"
+            )
+            .bind(aid)
+            .fetch_optional(&state.pool)
+            .await {
+                candidate_identifiers.push(un.to_lowercase());
+            }
+        }
+
+        // If not matched yet, attempt to sync from Tautulli on-demand if configured
+        let mut matches = candidate_identifiers.iter().any(|c| expanded_allowed.contains(c));
+        if !matches && (account_id.is_some() || account_title.is_some()) {
+            let tautulli_url = crate::api::user_settings::get_user_setting(&state.pool, &user.id, "tautulli_url").await;
+            let tautulli_api_key = crate::api::user_settings::get_user_setting(&state.pool, &user.id, "tautulli_api_key").await;
+            if let (Some(url), Some(key)) = (tautulli_url, tautulli_api_key) {
+                if !url.trim().is_empty() && !key.trim().is_empty() {
+                    let mapped = crate::api::tautulli_import::sync_tautulli_users_cache(&state.pool, &url, &key).await;
+                    for (pid, puname) in mapped {
+                        let pid_low = pid.to_lowercase();
+                        let puname_low = puname.to_lowercase();
+                        if allowed_usernames.contains(&puname_low) && !expanded_allowed.contains(&pid_low) {
+                            expanded_allowed.push(pid_low);
+                        }
+                    }
+                    matches = candidate_identifiers.iter().any(|c| expanded_allowed.contains(c));
+                }
+            }
+        }
 
         if !matches {
             tracing::info!(
                 user_id = %user.id,
-                account_title = %account_title,
-                allowed = ?allowed_usernames,
-                "Ignored Plex webhook: username does not match allowed Plex username(s)"
+                account_title = ?account_title,
+                account_id = ?account_id,
+                allowed = ?expanded_allowed,
+                "Ignored Plex webhook: username/ID does not match allowed Plex user(s)"
             );
             return Ok((
                 StatusCode::OK,
                 Json(serde_json::json!({
                     "status": "ignored",
                     "reason": "username_mismatch",
-                    "account": account_title
+                    "account": account_title,
+                    "account_id": account_id
                 })),
             ));
         }

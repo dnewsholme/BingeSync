@@ -173,5 +173,26 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
     .execute(pool)
     .await;
 
+    // Cache of Plex user IDs to usernames (populated from Tautulli / Plex)
+    let _ = sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS plex_user_cache (
+            plex_id TEXT NOT NULL PRIMARY KEY,
+            username TEXT NOT NULL,
+            friendly_name TEXT,
+            source TEXT NOT NULL DEFAULT 'tautulli',
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        "#,
+    )
+    .execute(pool)
+    .await;
+
+    let _ = sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_plex_user_cache_username ON plex_user_cache(username)"
+    )
+    .execute(pool)
+    .await;
+
     Ok(())
 }

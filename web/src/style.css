@@ -640,21 +640,29 @@ h1, h2, h3, h4 {
 .scrobble-header-badges {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 6px;
   margin-bottom: 8px;
+}
+
+.scrobble-header-badges .scrobble-badge {
+  margin-bottom: 0;
+  line-height: 1.2;
 }
 
 .scrobble-rating {
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  font-size: 0.75rem;
+  font-size: 0.72rem;
   font-weight: 700;
+  line-height: 1.2;
   color: #fbbf24;
   background: rgba(251, 191, 36, 0.12);
   border: 1px solid rgba(251, 191, 36, 0.25);
   padding: 2px 7px;
   border-radius: var(--radius-sm);
+  margin-bottom: 0;
+  vertical-align: middle;
 }
 
 .import-status-box {

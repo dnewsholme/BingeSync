@@ -3445,4 +3445,67 @@ async fn test_plex_webhook_username_filtering() {
         .await
         .unwrap();
     assert_eq!(final_scrobble_count, 3);
+
+    // 5. Test Plex user ID enumeration and database caching
+    // Insert mapping into plex_user_cache for an ID that corresponds to "custom_plex"
+    sqlx::query("INSERT INTO plex_user_cache (plex_id, username, friendly_name, source) VALUES (?, ?, ?, 'tautulli')")
+        .bind("3078822f-d297-4fa3-b587-befd3a5c0965")
+        .bind("custom_plex")
+        .bind("Custom User")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    // Webhook with only user ID in Account.id should resolve to "custom_plex" and be accepted
+    let id_payload = json!({
+        "event": "media.scrobble",
+        "user": true,
+        "Account": { "id": "3078822f-d297-4fa3-b587-befd3a5c0965" },
+        "Metadata": {
+            "type": "movie",
+            "title": "Moana",
+            "year": 2016,
+            "duration": 6400000
+        }
+    });
+    let req = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/webhooks/plex/{}", user.webhook_token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(id_payload.to_string()))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+
+    // Webhook with unknown ID not matching allowed should be ignored
+    let unknown_id_payload = json!({
+        "event": "media.scrobble",
+        "user": true,
+        "Account": { "id": "random-other-user-999" },
+        "Metadata": {
+            "type": "movie",
+            "title": "Unwanted Movie",
+            "year": 2020,
+            "duration": 5000000
+        }
+    });
+    let req = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/webhooks/plex/{}", user.webhook_token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(unknown_id_payload.to_string()))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let resp_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(resp_json["status"], "ignored");
+    assert_eq!(resp_json["reason"], "username_mismatch");
+
+    let post_cache_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE user_id = ?")
+        .bind(&user.id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(post_cache_count, 4);
 }
