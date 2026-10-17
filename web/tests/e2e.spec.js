@@ -369,6 +369,10 @@ test.describe('BingeSync Web UI & Webhooks', () => {
     await page.click('#tab-admin');
     await expect(page.locator('#view-admin')).toBeVisible();
 
+    // Verify OIDC Backchannel Logout URL field is visible and populated
+    await expect(page.locator('#admin-backchannel-url-input')).toBeVisible();
+    await expect(page.locator('#admin-backchannel-url-input')).toHaveValue(/api\/v1\/auth\/backchannel-logout/);
+
     // Verify both users are displayed
     await expect(page.locator('#admin-users-tbody')).toContainText('System Admin');
     await expect(page.locator('#admin-users-tbody')).toContainText(standardName);

@@ -15,14 +15,7 @@ pub async fn list_users(
     auth: AuthUser,
 ) -> Result<Json<Vec<AdminUserItem>>, (StatusCode, Json<serde_json::Value>)> {
     // 1. Verify caller has admin role
-    let current_user = sqlx::query_as::<_, User>("SELECT * FROM users WHERE id = ?")
-        .bind(&auth.user_id)
-        .fetch_optional(&state.pool)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "error": e.to_string() }))))?
-        .ok_or_else(|| (StatusCode::UNAUTHORIZED, Json(serde_json::json!({ "error": "User not found" }))))?;
-
-    if current_user.role != "admin" {
+    if auth.role != "admin" {
         return Err((
             StatusCode::FORBIDDEN,
             Json(serde_json::json!({ "error": "Forbidden: Admin privileges required" })),
@@ -61,14 +54,7 @@ pub async fn delete_user(
     Path(target_id): Path<String>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     // 1. Verify caller has admin role
-    let current_user = sqlx::query_as::<_, User>("SELECT * FROM users WHERE id = ?")
-        .bind(&auth.user_id)
-        .fetch_optional(&state.pool)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "error": e.to_string() }))))?
-        .ok_or_else(|| (StatusCode::UNAUTHORIZED, Json(serde_json::json!({ "error": "User not found" }))))?;
-
-    if current_user.role != "admin" {
+    if auth.role != "admin" {
         return Err((
             StatusCode::FORBIDDEN,
             Json(serde_json::json!({ "error": "Forbidden: Admin privileges required" })),

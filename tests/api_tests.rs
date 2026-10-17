@@ -4,7 +4,7 @@ use axum::{
 };
 use bingesync::{
     api::{create_api_router, AppState},
-    auth::create_jwt,
+    auth::{create_jwt, OidcClient},
     config::Config,
     db::init_db,
     models::{HistoryResponse, Scrobble, StatsSummary, TimelineDay, UserResponse},
@@ -1212,6 +1212,190 @@ async fn test_admin_user_management_and_cascading_deletion() {
         .await
         .unwrap();
     assert!(user_exists.is_none());
+}
+
+#[tokio::test]
+async fn test_oidc_backchannel_logout() {
+    let pool = init_db("sqlite::memory:").await.unwrap();
+    let mut config = Config::from_env();
+    config.jwt_secret = "test-secret-key-12345".to_string();
+    config.app_url = "http://localhost:8080".to_string();
+    config.oidc_enabled = true;
+    config.oidc_issuer_url = Some("https://auth.example.com".to_string());
+    config.oidc_client_id = Some("bingesync-client".to_string());
+    config.oidc_client_secret = Some("idp-client-secret-999".to_string());
+    let config = Arc::new(config);
+
+    let oidc_client = Arc::new(OidcClient::new(
+        "https://auth.example.com".to_string(),
+        "bingesync-client".to_string(),
+        Some("idp-client-secret-999".to_string()),
+        "http://localhost:8080/api/v1/auth/callback".to_string(),
+    ));
+
+    let state = AppState {
+        pool: pool.clone(),
+        config: config.clone(),
+        oidc_client: Some(oidc_client),
+    };
+
+    let app = create_api_router(state);
+
+    // 1. Create a user with oidc_sub and oidc_sid
+    let user = bingesync::api::auth::get_or_create_user_with_sid(
+        &pool,
+        "revoked_user@example.com",
+        "Revoked User",
+        Some("pocketid_sub_12345"),
+        Some("pocketid_sid_abcde"),
+        None,
+        false,
+    )
+    .await
+    .unwrap();
+
+    // 2. Issue a JWT for this user
+    let user_token = bingesync::auth::create_jwt(&user.id, &user.email, &config.jwt_secret).unwrap();
+
+    // Verify token works on /api/v1/auth/me
+    let me_req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/auth/me")
+        .header(header::AUTHORIZATION, format!("Bearer {}", user_token))
+        .body(Body::empty())
+        .unwrap();
+    let res_me = app.clone().oneshot(me_req).await.unwrap();
+    assert_eq!(res_me.status(), StatusCode::OK);
+
+    // 3. Create a valid OpenID Connect Back-Channel Logout token
+    let now = chrono::Utc::now().timestamp();
+    let valid_claims = json!({
+        "iss": "https://auth.example.com",
+        "sub": "pocketid_sub_12345",
+        "aud": "bingesync-client",
+        "iat": now,
+        "jti": uuid::Uuid::new_v4().to_string(),
+        "events": {
+            "http://schemas.openid.net/event/backchannel-logout": {}
+        }
+    });
+
+    let logout_token = jsonwebtoken::encode(
+        &jsonwebtoken::Header::default(),
+        &valid_claims,
+        &jsonwebtoken::EncodingKey::from_secret("idp-client-secret-999".as_bytes()),
+    )
+    .unwrap();
+
+    // 4. Send POST /api/v1/auth/backchannel-logout with form-urlencoded body
+    let logout_req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/auth/backchannel-logout")
+        .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+        .body(Body::from(format!("logout_token={}", logout_token)))
+        .unwrap();
+
+    let res_logout = app.clone().oneshot(logout_req).await.unwrap();
+    assert_eq!(res_logout.status(), StatusCode::OK);
+    assert_eq!(
+        res_logout.headers().get(header::CACHE_CONTROL).unwrap(),
+        "no-cache, no-store"
+    );
+    assert_eq!(
+        res_logout.headers().get(header::PRAGMA).unwrap(),
+        "no-cache"
+    );
+
+    let body_bytes = axum::body::to_bytes(res_logout.into_body(), usize::MAX).await.unwrap();
+    let logout_res_json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    assert_eq!(logout_res_json["status"], "ok");
+    assert_eq!(logout_res_json["revoked"], true);
+
+    // 5. Verify the user's previous token is now rejected with 401 Unauthorized
+    let me_req_after = Request::builder()
+        .method("GET")
+        .uri("/api/v1/auth/me")
+        .header(header::AUTHORIZATION, format!("Bearer {}", user_token))
+        .body(Body::empty())
+        .unwrap();
+    let res_me_after = app.clone().oneshot(me_req_after).await.unwrap();
+    assert_eq!(res_me_after.status(), StatusCode::UNAUTHORIZED);
+
+    // 6. Test invalid logout token (spec rule: nonce must NOT be present)
+    let nonce_claims = json!({
+        "iss": "https://auth.example.com",
+        "sub": "pocketid_sub_12345",
+        "aud": "bingesync-client",
+        "iat": now,
+        "nonce": "forbidden_nonce",
+        "events": {
+            "http://schemas.openid.net/event/backchannel-logout": {}
+        }
+    });
+    let nonce_token = jsonwebtoken::encode(
+        &jsonwebtoken::Header::default(),
+        &nonce_claims,
+        &jsonwebtoken::EncodingKey::from_secret("idp-client-secret-999".as_bytes()),
+    )
+    .unwrap();
+
+    let invalid_req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/auth/backchannel-logout")
+        .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+        .body(Body::from(format!("logout_token={}", nonce_token)))
+        .unwrap();
+    let res_invalid = app.clone().oneshot(invalid_req).await.unwrap();
+    assert_eq!(res_invalid.status(), StatusCode::BAD_REQUEST);
+
+    // 7. Test invalid logout token (missing backchannel-logout event claim)
+    let no_event_claims = json!({
+        "iss": "https://auth.example.com",
+        "sub": "pocketid_sub_12345",
+        "aud": "bingesync-client",
+        "iat": now
+    });
+    let no_event_token = jsonwebtoken::encode(
+        &jsonwebtoken::Header::default(),
+        &no_event_claims,
+        &jsonwebtoken::EncodingKey::from_secret("idp-client-secret-999".as_bytes()),
+    )
+    .unwrap();
+
+    let no_event_req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/auth/backchannel-logout")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(json!({ "logout_token": no_event_token }).to_string()))
+        .unwrap();
+    let res_no_event = app.clone().oneshot(no_event_req).await.unwrap();
+    assert_eq!(res_no_event.status(), StatusCode::BAD_REQUEST);
+
+    // 8. Test alias route /api/v1/auth/backchannel_logout with sid session logout
+    let sid_claims = json!({
+        "iss": "https://auth.example.com",
+        "sid": "pocketid_sid_abcde",
+        "aud": "bingesync-client",
+        "iat": now,
+        "events": {
+            "http://schemas.openid.net/event/backchannel-logout": {}
+        }
+    });
+    let sid_token = jsonwebtoken::encode(
+        &jsonwebtoken::Header::default(),
+        &sid_claims,
+        &jsonwebtoken::EncodingKey::from_secret("idp-client-secret-999".as_bytes()),
+    )
+    .unwrap();
+
+    let sid_req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/auth/backchannel_logout")
+        .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+        .body(Body::from(format!("logout_token={}", sid_token)))
+        .unwrap();
+    let res_sid = app.clone().oneshot(sid_req).await.unwrap();
+    assert_eq!(res_sid.status(), StatusCode::OK);
 }
 
 

@@ -40,6 +40,8 @@ pub fn create_api_router(state: AppState) -> Router {
         .route("/api/v1/auth/dev-login", post(auth::dev_login_handler))
         .route("/api/v1/auth/me", get(auth::get_me_handler))
         .route("/api/v1/auth/logout", post(auth::logout_handler))
+        .route("/api/v1/auth/backchannel-logout", post(auth::backchannel_logout_handler))
+        .route("/api/v1/auth/backchannel_logout", post(auth::backchannel_logout_handler))
         // Webhooks (Per-user Plex endpoints)
         .route("/api/v1/webhooks/plex", post(webhooks::handle_plex_webhook_query))
         .route("/api/v1/webhooks/plex/{token}", post(webhooks::handle_plex_webhook_path))

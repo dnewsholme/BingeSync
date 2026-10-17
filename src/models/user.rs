@@ -8,8 +8,10 @@ pub struct User {
     pub display_name: String,
     pub role: String,
     pub oidc_sub: Option<String>,
+    pub oidc_sid: Option<String>,
     pub webhook_token: String,
     pub avatar_url: Option<String>,
+    pub sessions_revoked_at: Option<i64>,
     pub created_at: String,
     pub updated_at: String,
 }

@@ -131,12 +131,17 @@ All configuration options can be passed via environment variables:
 BingeSync provides a comprehensive REST API:
 
 ### Authentication
-- `GET  /api/v1/auth/status` — Returns OIDC and dev login availability.
+- `GET  /api/v1/auth/status` — Returns OIDC and dev login availability and the Back-Channel Logout URL.
 - `GET  /api/v1/auth/login` — Initiates OIDC authorization flow.
-- `GET  /api/v1/auth/callback` — Handles authorization code exchange and sets session cookie.
-- `POST /api/v1/auth/dev-login` — Logs in with `{ "email": "...", "display_name": "..." }`.
+- `GET  /api/v1/auth/callback` — Handles authorization code exchange, evaluates `groups` claim for admin role, and sets session cookie.
+- `POST /api/v1/auth/dev-login` — Logs in with `{ "email": "...", "display_name": "...", "role": "..." }`.
 - `GET  /api/v1/auth/me` — Returns the authenticated user profile and webhook URL.
 - `POST /api/v1/auth/logout` — Clears authentication cookie.
+- `POST /api/v1/auth/backchannel-logout` — OpenID Connect Back-Channel Logout 1.0 endpoint. Receives `logout_token` when user access is revoked, terminated, or group membership is removed by the IdP.
+
+### Administration
+- `GET    /api/v1/admin/users` — Lists all registered users with scrobble counts and roles (requires admin role).
+- `DELETE /api/v1/admin/users/:id` — Cascading delete for a user account, including all their scrobbles and active sessions (requires admin role).
 
 ### Webhooks
 - `POST /api/v1/webhooks/plex/:token` — Handles Plex webhook events (multipart or JSON).

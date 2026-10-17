@@ -47,6 +47,7 @@ pub fn verify_jwt(token: &str, secret: &str) -> Result<Claims, jsonwebtoken::err
 pub struct AuthUser {
     pub user_id: String,
     pub email: String,
+    pub role: String,
 }
 
 impl<S> FromRequestParts<S> for AuthUser
@@ -99,16 +100,57 @@ where
             }
         };
 
-        match verify_jwt(&token, &app_state.config.jwt_secret) {
-            Ok(claims) => Ok(AuthUser {
-                user_id: claims.sub,
-                email: claims.email,
-            }),
-            Err(_) => Err((
-                StatusCode::UNAUTHORIZED,
-                Json(serde_json::json!({ "error": "Invalid or expired authentication token" })),
+        let claims = match verify_jwt(&token, &app_state.config.jwt_secret) {
+            Ok(c) => c,
+            Err(_) => {
+                return Err((
+                    StatusCode::UNAUTHORIZED,
+                    Json(serde_json::json!({ "error": "Invalid or expired authentication token" })),
+                )
+                    .into_response());
+            }
+        };
+
+        // Query user from DB to verify user still exists and session has not been revoked
+        let user_row: Option<(String, String, String, Option<i64>)> = sqlx::query_as(
+            "SELECT id, email, role, sessions_revoked_at FROM users WHERE id = ?"
+        )
+        .bind(&claims.sub)
+        .fetch_optional(&app_state.pool)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": format!("Database error validating user: {}", e) })),
             )
-                .into_response()),
+                .into_response()
+        })?;
+
+        let (user_id, email, role, sessions_revoked_at) = match user_row {
+            Some(row) => row,
+            None => {
+                return Err((
+                    StatusCode::UNAUTHORIZED,
+                    Json(serde_json::json!({ "error": "User account no longer exists or was deleted" })),
+                )
+                    .into_response());
+            }
+        };
+
+        if let Some(revoked_at) = sessions_revoked_at {
+            if (claims.iat as i64) <= revoked_at {
+                return Err((
+                    StatusCode::UNAUTHORIZED,
+                    Json(serde_json::json!({ "error": "User session has been revoked or logged out" })),
+                )
+                    .into_response());
+            }
         }
+
+        Ok(AuthUser {
+            user_id,
+            email,
+            role,
+        })
     }
 }

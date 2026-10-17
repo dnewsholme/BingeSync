@@ -9,8 +9,10 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
             display_name TEXT NOT NULL,
             role TEXT NOT NULL DEFAULT 'user',
             oidc_sub TEXT UNIQUE,
+            oidc_sid TEXT,
             webhook_token TEXT UNIQUE NOT NULL,
             avatar_url TEXT,
+            sessions_revoked_at INTEGER,
             created_at TEXT NOT NULL DEFAULT (datetime('now')),
             updated_at TEXT NOT NULL DEFAULT (datetime('now'))
         );
@@ -83,6 +85,17 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
         .execute(pool)
         .await;
     let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_users_role ON users(role)")
+        .execute(pool)
+        .await;
+
+    let _ = sqlx::query("ALTER TABLE users ADD COLUMN oidc_sid TEXT")
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_users_oidc_sid ON users(oidc_sid)")
+        .execute(pool)
+        .await;
+
+    let _ = sqlx::query("ALTER TABLE users ADD COLUMN sessions_revoked_at INTEGER")
         .execute(pool)
         .await;
 

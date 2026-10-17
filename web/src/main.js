@@ -159,6 +159,8 @@ const el = {
   tabAdmin: document.getElementById('tab-admin'),
   adminUsersTbody: document.getElementById('admin-users-tbody'),
   btnRefreshAdminUsers: document.getElementById('btn-refresh-admin-users'),
+  adminBackchannelUrlInput: document.getElementById('admin-backchannel-url-input'),
+  btnCopyBackchannelUrl: document.getElementById('btn-copy-backchannel-url'),
 };
 
 // Initialization
@@ -1253,6 +1255,14 @@ function escapeHtml(str) {
 // Admin: User Management
 async function loadAdminUsers() {
   if (!el.adminUsersTbody) return;
+  if (el.adminBackchannelUrlInput) {
+    if (state.authStatus && state.authStatus.backchannel_logout_url) {
+      el.adminBackchannelUrlInput.value = state.authStatus.backchannel_logout_url;
+    } else {
+      const base = window.location.origin + (window.location.pathname.replace(/\/+$/, '') || '');
+      el.adminBackchannelUrlInput.value = `${base}/api/v1/auth/backchannel-logout`;
+    }
+  }
   try {
     el.adminUsersTbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:30px;color:var(--text-muted);">Loading registered users...</td></tr>';
     const users = await api.getAdminUsers();
@@ -1322,6 +1332,17 @@ function renderAdminUsers(users) {
 
 if (el.btnRefreshAdminUsers) {
   el.btnRefreshAdminUsers.addEventListener('click', () => loadAdminUsers());
+}
+
+if (el.btnCopyBackchannelUrl && el.adminBackchannelUrlInput) {
+  el.btnCopyBackchannelUrl.addEventListener('click', () => {
+    el.adminBackchannelUrlInput.select();
+    navigator.clipboard.writeText(el.adminBackchannelUrlInput.value);
+    el.btnCopyBackchannelUrl.textContent = 'Copied!';
+    setTimeout(() => {
+      el.btnCopyBackchannelUrl.textContent = 'Copy URL';
+    }, 2000);
+  });
 }
 
 // Kickoff

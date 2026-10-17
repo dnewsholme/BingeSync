@@ -1,12 +1,13 @@
 use axum::{
     extract::{Query, State},
-    http::StatusCode,
+    http::{header, HeaderMap, StatusCode},
     response::{IntoResponse, Redirect},
     Json,
 };
 use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
 use chrono::Utc;
 use serde::Deserialize;
+use url::form_urlencoded;
 use uuid::Uuid;
 
 use crate::{
@@ -31,10 +32,13 @@ pub struct DevLoginRequest {
 }
 
 pub async fn get_auth_status(State(state): State<AppState>) -> impl IntoResponse {
+    let base_app = state.config.app_url.trim_end_matches('/');
+    let backchannel_logout_url = format!("{}/api/v1/auth/backchannel-logout", base_app);
     Json(serde_json::json!({
         "oidc_enabled": state.config.oidc_enabled,
         "dev_login_enabled": state.config.dev_login_enabled,
         "app_url": state.config.app_url,
+        "backchannel_logout_url": backchannel_logout_url,
     }))
 }
 
@@ -123,11 +127,12 @@ pub async fn callback_handler(
         .or_else(|| user_info.preferred_username.clone())
         .unwrap_or_else(|| email.clone());
 
-    let user = get_or_create_user(
+    let user = get_or_create_user_with_sid(
         &state.pool,
         &email,
         &display_name,
         Some(&user_info.sub),
+        user_info.sid.as_deref(),
         user_info.picture.as_deref(),
         is_admin,
     )
@@ -277,6 +282,18 @@ pub async fn get_or_create_user(
     avatar_url: Option<&str>,
     is_admin: bool,
 ) -> Result<User, sqlx::Error> {
+    get_or_create_user_with_sid(pool, email, display_name, oidc_sub, None, avatar_url, is_admin).await
+}
+
+pub async fn get_or_create_user_with_sid(
+    pool: &sqlx::SqlitePool,
+    email: &str,
+    display_name: &str,
+    oidc_sub: Option<&str>,
+    oidc_sid: Option<&str>,
+    avatar_url: Option<&str>,
+    is_admin: bool,
+) -> Result<User, sqlx::Error> {
     let desired_role = if is_admin { "admin" } else { "user" };
 
     // 1. Try finding by oidc_sub if provided
@@ -286,20 +303,20 @@ pub async fn get_or_create_user(
             .fetch_optional(pool)
             .await?
         {
-            // Sync role if it changed in IdP groups
-            if user.role != desired_role {
-                sqlx::query("UPDATE users SET role = ?, updated_at = datetime('now') WHERE id = ?")
-                    .bind(desired_role)
-                    .bind(&user.id)
-                    .execute(pool)
-                    .await?;
+            // Sync role, oidc_sid, and reset sessions_revoked_at on fresh login
+            sqlx::query(
+                "UPDATE users SET role = ?, oidc_sid = COALESCE(?, oidc_sid), sessions_revoked_at = NULL, updated_at = datetime('now') WHERE id = ?"
+            )
+            .bind(desired_role)
+            .bind(oidc_sid)
+            .bind(&user.id)
+            .execute(pool)
+            .await?;
 
-                return sqlx::query_as::<_, User>("SELECT * FROM users WHERE id = ?")
-                    .bind(&user.id)
-                    .fetch_one(pool)
-                    .await;
-            }
-            return Ok(user);
+            return sqlx::query_as::<_, User>("SELECT * FROM users WHERE id = ?")
+                .bind(&user.id)
+                .fetch_one(pool)
+                .await;
         }
     }
 
@@ -310,12 +327,15 @@ pub async fn get_or_create_user(
         .await?
     {
         let role_to_set = if is_admin { "admin" } else { &user.role };
-        sqlx::query("UPDATE users SET oidc_sub = COALESCE(oidc_sub, ?), role = ?, updated_at = datetime('now') WHERE id = ?")
-            .bind(oidc_sub)
-            .bind(role_to_set)
-            .bind(&user.id)
-            .execute(pool)
-            .await?;
+        sqlx::query(
+            "UPDATE users SET oidc_sub = COALESCE(oidc_sub, ?), oidc_sid = COALESCE(?, oidc_sid), role = ?, sessions_revoked_at = NULL, updated_at = datetime('now') WHERE id = ?"
+        )
+        .bind(oidc_sub)
+        .bind(oidc_sid)
+        .bind(role_to_set)
+        .bind(&user.id)
+        .execute(pool)
+        .await?;
 
         return sqlx::query_as::<_, User>("SELECT * FROM users WHERE id = ?")
             .bind(&user.id)
@@ -330,8 +350,8 @@ pub async fn get_or_create_user(
 
     sqlx::query(
         r#"
-        INSERT INTO users (id, email, display_name, role, oidc_sub, webhook_token, avatar_url, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO users (id, email, display_name, role, oidc_sub, oidc_sid, webhook_token, avatar_url, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
     )
     .bind(&user_id)
@@ -339,6 +359,7 @@ pub async fn get_or_create_user(
     .bind(display_name)
     .bind(desired_role)
     .bind(oidc_sub)
+    .bind(oidc_sid)
     .bind(&webhook_token)
     .bind(avatar_url)
     .bind(&now)
@@ -352,4 +373,168 @@ pub async fn get_or_create_user(
         .await?;
 
     Ok(user)
+}
+
+pub async fn backchannel_logout_handler(
+    State(state): State<AppState>,
+    _headers: HeaderMap,
+    body: axum::body::Bytes,
+) -> (StatusCode, [(header::HeaderName, &'static str); 2], Json<serde_json::Value>) {
+    let response_headers = [
+        (header::CACHE_CONTROL, "no-cache, no-store"),
+        (header::PRAGMA, "no-cache"),
+    ];
+
+    if !state.config.oidc_enabled {
+        return (
+            StatusCode::BAD_REQUEST,
+            response_headers,
+            Json(serde_json::json!({
+                "error": "invalid_request",
+                "error_description": "OIDC is disabled on this instance"
+            })),
+        );
+    }
+
+    let oidc = match state.oidc_client.as_ref() {
+        Some(client) => client,
+        None => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                response_headers,
+                Json(serde_json::json!({
+                    "error": "server_error",
+                    "error_description": "OIDC client is not initialized"
+                })),
+            );
+        }
+    };
+
+    // Extract logout_token parameter
+    let mut logout_token: Option<String> = None;
+
+    // Check application/x-www-form-urlencoded
+    for (k, v) in form_urlencoded::parse(&body) {
+        if k == "logout_token" {
+            logout_token = Some(v.into_owned());
+            break;
+        }
+    }
+
+    // Check application/json
+    if logout_token.is_none() {
+        if let Ok(json_body) = serde_json::from_slice::<serde_json::Value>(&body) {
+            if let Some(tok) = json_body.get("logout_token").and_then(|v| v.as_str()) {
+                logout_token = Some(tok.to_string());
+            }
+        }
+    }
+
+    // Fallback: raw token in body
+    if logout_token.is_none() {
+        let text = String::from_utf8_lossy(&body).trim().to_string();
+        if text.starts_with("eyJ") {
+            logout_token = Some(text);
+        }
+    }
+
+    let token = match logout_token {
+        Some(t) if !t.trim().is_empty() => t.trim().to_string(),
+        _ => {
+            return (
+                StatusCode::BAD_REQUEST,
+                response_headers,
+                Json(serde_json::json!({
+                    "error": "invalid_request",
+                    "error_description": "Missing 'logout_token' parameter in request"
+                })),
+            );
+        }
+    };
+
+    let claims = match oidc.validate_logout_token(&token).await {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::warn!(error = %e, "Invalid OIDC backchannel logout token received");
+            return (
+                StatusCode::BAD_REQUEST,
+                response_headers,
+                Json(serde_json::json!({
+                    "error": "invalid_request",
+                    "error_description": e
+                })),
+            );
+        }
+    };
+
+    let now = Utc::now().timestamp();
+    let mut revoked_count = 0;
+
+    // Invalidate sessions matching sub
+    if let Some(ref sub) = claims.sub {
+        let users: Vec<(String, String)> = sqlx::query_as(
+            "SELECT id, email FROM users WHERE oidc_sub = ? OR email = ? OR id = ?"
+        )
+        .bind(sub)
+        .bind(sub)
+        .bind(sub)
+        .fetch_all(&state.pool)
+        .await
+        .unwrap_or_default();
+
+        for (user_id, email) in users {
+            revoked_count += 1;
+            let _ = sqlx::query("DELETE FROM active_sessions WHERE user_id = ?")
+                .bind(&user_id)
+                .execute(&state.pool)
+                .await;
+
+            let _ = sqlx::query("UPDATE users SET sessions_revoked_at = ?, updated_at = datetime('now') WHERE id = ?")
+                .bind(now)
+                .bind(&user_id)
+                .execute(&state.pool)
+                .await;
+
+            tracing::info!(user_id = %user_id, email = %email, oidc_sub = %sub, "OIDC backchannel logout: user access revoked and sessions terminated");
+        }
+    }
+
+    // Invalidate sessions matching sid
+    if let Some(ref sid) = claims.sid {
+        let users: Vec<(String, String)> = sqlx::query_as(
+            "SELECT id, email FROM users WHERE oidc_sid = ?"
+        )
+        .bind(sid)
+        .fetch_all(&state.pool)
+        .await
+        .unwrap_or_default();
+
+        for (user_id, email) in users {
+            revoked_count += 1;
+            let _ = sqlx::query("DELETE FROM active_sessions WHERE user_id = ?")
+                .bind(&user_id)
+                .execute(&state.pool)
+                .await;
+
+            let _ = sqlx::query("UPDATE users SET sessions_revoked_at = ?, updated_at = datetime('now') WHERE id = ?")
+                .bind(now)
+                .bind(&user_id)
+                .execute(&state.pool)
+                .await;
+
+            tracing::info!(user_id = %user_id, email = %email, oidc_sid = %sid, "OIDC backchannel logout: session terminated by sid");
+        }
+    }
+
+    // Per OIDC Back-Channel Logout 1.0 section 2.7:
+    // "If the Logout Token is valid, the RP MUST respond with HTTP 200 OK and Cache-Control: no-cache, no-store, Pragma: no-cache."
+    (
+        StatusCode::OK,
+        response_headers,
+        Json(serde_json::json!({
+            "status": "ok",
+            "revoked": revoked_count > 0,
+            "revoked_count": revoked_count
+        })),
+    )
 }

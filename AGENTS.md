@@ -60,10 +60,11 @@ BingeSync/
 │       ├── stats.rs         # /api/v1/stats watch metrics & top shows
 │       ├── trakt_import.rs  # /api/v1/import/trakt JSON/CSV history & rating import
 │       ├── integrations.rs  # /api/v1/integrations/* Radarr & Sonarr library check & cleanup
+│       ├── admin.rs         # /api/v1/admin/users user management and cascade deletion
 │       └── user.rs          # /api/v1/user/webhook & token regeneration
 ├── kubernetes.yaml          # Production Kubernetes manifest (PVC, Deployment, Service, Ingress)
 ├── tests/
-│   └── api_tests.rs         # Integration test suite (10 tests covering full API)
+│   └── api_tests.rs         # Integration test suite (13 tests covering full API)
 └── web/
     ├── package.json         # Frontend dependencies (Vite, Playwright)
     ├── vite.config.js       # Vite configuration with base: './' for subpath support
