@@ -27,7 +27,6 @@ Designed for self-hosters and families, BingeSync features **multi-user support*
 - 🔐 **OpenID Connect (OIDC) SSO**: Enterprise-grade authentication compatible with Authentik, Keycloak, Authelia, Okta, and Google (with PKCE RFC 7636).
 - ⚡ **Lightweight Single-Binary**: Written in Rust (`axum`, `tokio`, `sqlx`) with the web frontend embedded directly into the binary via `rust-embed`.
 - 🗄️ **Zero-Maintenance SQLite**: Fast, crash-safe embedded database running with Write-Ahead Logging (`WAL`) mode and automatic schema migrations.
-- ☸️ **Kubernetes Ready**: Complete manifest (`bingesync.yaml`) with Longhorn PersistentVolumeClaim integration, Deployment, Service, and Ingress.
 - 🧪 **Thoroughly Tested**: 13 Rust backend integration tests and 7 Playwright browser E2E tests.
 
 ---
@@ -69,18 +68,6 @@ docker compose up -d
 ```
 
 3. Open your browser at `http://localhost:8080`.
-
----
-
-## ☸️ Kubernetes Deployment
-
-Deploy BingeSync to Kubernetes using the included [`bingesync.yaml`](bingesync.yaml):
-
-```bash
-kubectl apply -f bingesync.yaml
-```
-
-The manifest includes a permission-initializing initContainer for Longhorn storage, a single-replica deployment with SQLite WAL mode, ClusterIP service, secret, and an ingress with Traefik TLS and subpath support.
 
 ---
 

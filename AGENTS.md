@@ -64,7 +64,6 @@ BingeSync/
 │       ├── integrations.rs  # /api/v1/integrations/* Radarr & Sonarr library check & cleanup
 │       ├── admin.rs         # /api/v1/admin/users user management and cascade deletion
 │       └── user.rs          # /api/v1/user/webhook & token regeneration
-├── bingesync.yaml           # Production Kubernetes manifest (Longhorn PVC, Deployment, Service, Ingress)
 ├── tests/
 │   └── api_tests.rs         # Integration test suite (13 tests covering full API)
 └── web/
