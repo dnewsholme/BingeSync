@@ -2127,6 +2127,183 @@ async fn test_tvdb_metadata_enrichment_worker() {
 }
 
 #[tokio::test]
+async fn test_movie_tvdb_metadata_fallback_and_refresh() {
+    let pool = init_db("sqlite::memory:").await.unwrap();
+
+    // 1. Mock TVDB v4 API server with strict year mismatch on first attempt
+    let mock_tvdb_router = axum::Router::new()
+        .route(
+            "/login",
+            axum::routing::post(|axum::Json(body): axum::Json<serde_json::Value>| async move {
+                if body.get("apikey").and_then(|v| v.as_str()) == Some("test_tvdb_key") {
+                    (
+                        StatusCode::OK,
+                        axum::Json(serde_json::json!({
+                            "status": "success",
+                            "data": { "token": "mock_tvdb_bearer_token" }
+                        })),
+                    )
+                } else {
+                    (
+                        StatusCode::UNAUTHORIZED,
+                        axum::Json(serde_json::json!({ "error": "Invalid API key" })),
+                    )
+                }
+            }),
+        )
+        .route(
+            "/search",
+            axum::routing::get(|axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>| async move {
+                let query = params.get("query").map(|s| s.as_str()).unwrap_or("");
+                let year = params.get("year").map(|s| s.as_str());
+
+                // If year is 2025, return empty data (simulating exact year mismatch between release dates)
+                if query.eq_ignore_ascii_case("Obsession") && year == Some("2025") {
+                    axum::Json(serde_json::json!({ "status": "success", "data": [] }))
+                } else if query.eq_ignore_ascii_case("Obsession") {
+                    // Fallback search without year succeeds with TVDB ID prefix format
+                    axum::Json(serde_json::json!({
+                        "status": "success",
+                        "data": [
+                            {
+                                "objectID": "movie-369536",
+                                "id": "movie-369536",
+                                "name": "Obsession",
+                                "year": "2026",
+                                "primary_type": "movie",
+                                "overviews": { "eng": "A suspense thriller about dangerous obsession." },
+                                "image_url": "https://artworks.thetvdb.com/banners/movies/369536/posters/1.jpg"
+                            }
+                        ]
+                    }))
+                } else {
+                    axum::Json(serde_json::json!({ "status": "success", "data": [] }))
+                }
+            }),
+        )
+        .route(
+            "/movies/{id}/extended",
+            axum::routing::get(|axum::extract::Path(id): axum::extract::Path<String>| async move {
+                assert_eq!(id, "369536", "Extended endpoint must receive numeric ID without movie- prefix");
+                axum::Json(serde_json::json!({
+                    "status": "success",
+                    "data": {
+                        "id": 369536,
+                        "name": "Obsession",
+                        "overview": "A suspense thriller about dangerous obsession.",
+                        "genres": [
+                            { "id": 1, "name": "Thriller" },
+                            { "id": 2, "name": "Drama" }
+                        ],
+                        "characters": [
+                            { "personName": "Richard Armitage", "peopleType": "Actor" },
+                            { "personName": "Charlie Murphy", "peopleType": "Actor" },
+                            { "personName": "Glenn Leyburn", "peopleType": "Director" }
+                        ],
+                        "image": "https://artworks.thetvdb.com/banners/movies/369536/posters/1.jpg"
+                    }
+                }))
+            }),
+        );
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, mock_tvdb_router).await.unwrap();
+    });
+
+    let mut config = Config::from_env();
+    config.tvdb_api_key = Some("test_tvdb_key".to_string());
+    config.tvdb_base_url = format!("http://{}", addr);
+    let config = Arc::new(config);
+    let state = AppState {
+        pool: pool.clone(),
+        config: config.clone(),
+        oidc_client: None,
+        image_notify: Arc::new(tokio::sync::Notify::new()),
+        metadata_notify: Arc::new(tokio::sync::Notify::new()),
+        log_buffer: Arc::new(bingesync::api::logs::LogBuffer::new(500)),
+        task_tracker: Arc::new(bingesync::api::jobs::BackgroundTaskTracker::new()),
+    };
+
+    // 2. Create test user and insert movie with title "Obsession" and year 2025
+    let user_id = "test_user_movie_tvdb";
+    sqlx::query("INSERT INTO users (id, email, display_name, webhook_token, role) VALUES (?, ?, ?, ?, 'user')")
+        .bind(user_id)
+        .bind("movie_tvdb@bingesync.local")
+        .bind("Movie TVDB Tester")
+        .bind("token_movie_123")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let scrobble_id = uuid::Uuid::new_v4().to_string();
+    sqlx::query(
+        r#"
+        INSERT INTO scrobbles (
+            id, user_id, title, media_type, year, overview, genres, actors, directors,
+            duration_ms, user_rating, watch_status, watched_at, created_at
+        ) VALUES (
+            ?, ?, ?, 'movie', 2025, NULL, NULL, NULL, NULL,
+            7200000, 8, 'completed', '2025-10-01T20:00:00Z', '2025-10-01T20:00:00Z'
+        )
+        "#
+    )
+    .bind(&scrobble_id)
+    .bind(user_id)
+    .bind("Obsession")
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    // 3. Run background metadata processor once
+    let processed = bingesync::api::tvdb::process_missing_metadata_once(&state).await;
+    assert_eq!(processed, 1, "Obsession should be processed via year-fallback");
+
+    // 4. Verify movie metadata enriched
+    let scrobble = sqlx::query_as::<_, Scrobble>("SELECT * FROM scrobbles WHERE id = ?")
+        .bind(&scrobble_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+    assert!(scrobble.overview.is_some());
+    assert!(scrobble.overview.unwrap().contains("suspense thriller"));
+    assert_eq!(scrobble.genres, Some("Thriller, Drama".to_string()));
+    assert!(scrobble.actors.unwrap().contains("Richard Armitage"));
+    assert_eq!(scrobble.directors, Some("Glenn Leyburn".to_string()));
+    assert_eq!(scrobble.thumb_url, Some("https://artworks.thetvdb.com/banners/movies/369536/posters/1.jpg".to_string()));
+
+    // 5. Test manual refresh metadata endpoint
+    let app = bingesync::api::create_api_router(state.clone());
+    let jwt = create_jwt(user_id, "movie_tvdb@bingesync.local", &config.jwt_secret).unwrap();
+    let refresh_req = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/history/{}/refresh-metadata", scrobble_id))
+        .header(header::AUTHORIZATION, format!("Bearer {}", jwt))
+        .body(Body::empty())
+        .unwrap();
+
+    let refresh_res = app.oneshot(refresh_req).await.unwrap();
+    assert_eq!(refresh_res.status(), StatusCode::OK);
+
+    let refresh_body: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(refresh_res.into_body(), usize::MAX).await.unwrap()
+    ).unwrap();
+    assert_eq!(refresh_body["status"], "refreshed");
+    assert!(refresh_body["scrobble"]["overview"].as_str().unwrap().contains("suspense thriller"));
+
+    // 6. Test query normalization
+    let (clean, yr) = bingesync::api::tvdb::normalize_search_query("Obsession (1976)");
+    assert_eq!(clean, "Obsession");
+    assert_eq!(yr, Some(1976));
+
+    let (clean2, yr2) = bingesync::api::tvdb::normalize_search_query("Obsession - Director's Cut");
+    assert_eq!(clean2, "Obsession");
+    assert_eq!(yr2, None);
+}
+
+#[tokio::test]
 async fn test_item_other_watches_movies_and_exact_episodes() {
     let (app, pool, config) = setup_test_app().await;
 

@@ -23,6 +23,7 @@ pub struct TvdbSearchResult {
     pub name: Option<String>,
     pub overview: Option<String>,
     pub image_url: Option<String>,
+    pub entity_type: Option<String>,
 }
 
 #[derive(Clone)]
@@ -107,28 +108,25 @@ impl TvdbClient {
         Ok(token)
     }
 
-    /// Search TVDB by query and entity type ("series" or "movie")
-    pub async fn search(
+    async fn execute_search_query(
         &self,
         query: &str,
-        media_type: &str,
+        entity_type: Option<&str>,
         year: Option<i32>,
-    ) -> Result<Option<TvdbSearchResult>, String> {
+    ) -> Result<Vec<TvdbSearchCandidate>, String> {
         let token = self.get_token().await?;
         let search_url = format!("{}/search", self.base_url);
-
-        let entity_type = if media_type == "movie" {
-            "movie"
-        } else {
-            "series"
-        };
 
         let mut req = self
             .client
             .get(&search_url)
             .header("Authorization", format!("Bearer {}", token))
             .header("Accept", "application/json")
-            .query(&[("query", query), ("type", entity_type)]);
+            .query(&[("query", query)]);
+
+        if let Some(t) = entity_type {
+            req = req.query(&[("type", t)]);
+        }
 
         let year_str;
         if let Some(y) = year {
@@ -142,7 +140,6 @@ impl TvdbClient {
             .map_err(|e| format!("Failed to search TVDB: {}", e))?;
 
         if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
-            // Token expired, clear and retry once
             let mut guard = self.token.write().await;
             *guard = None;
             drop(guard);
@@ -160,65 +157,203 @@ impl TvdbClient {
 
         let data = match json_val.get("data").and_then(|d| d.as_array()) {
             Some(arr) if !arr.is_empty() => arr,
-            _ => return Ok(None),
+            _ => return Ok(Vec::new()),
         };
 
-        // Pick best matching result
+        let mut candidates = Vec::new();
         for item in data {
-            let id = if let Some(tvdb_id) = item.get("tvdb_id").and_then(|v| {
-                v.as_str()
-                    .map(|s| s.to_string())
-                    .or_else(|| v.as_i64().map(|n| n.to_string()))
-            }) {
-                tvdb_id
-            } else if let Some(id_val) = item.get("id").and_then(|v| {
-                v.as_str()
-                    .map(|s| s.to_string())
-                    .or_else(|| v.as_i64().map(|n| n.to_string()))
-            }) {
-                id_val
-            } else if let Some(obj_id) = item.get("objectID").and_then(|v| v.as_str()) {
-                obj_id
-                    .strip_prefix("series-")
-                    .or_else(|| obj_id.strip_prefix("movie-"))
-                    .unwrap_or(obj_id)
-                    .to_string()
+            let raw_id = if let Some(v) = item.get("tvdb_id") {
+                v.as_str().map(|s| s.to_string()).or_else(|| v.as_i64().map(|n| n.to_string()))
+            } else if let Some(v) = item.get("id") {
+                v.as_str().map(|s| s.to_string()).or_else(|| v.as_i64().map(|n| n.to_string()))
+            } else if let Some(v) = item.get("objectID") {
+                v.as_str().map(|s| s.to_string())
             } else {
-                continue;
+                None
             };
+
+            let raw_id = match raw_id {
+                Some(s) if !s.trim().is_empty() => s,
+                _ => continue,
+            };
+
+            let clean_id = raw_id
+                .strip_prefix("movie-")
+                .or_else(|| raw_id.strip_prefix("series-"))
+                .or_else(|| raw_id.strip_prefix("movie_"))
+                .or_else(|| raw_id.strip_prefix("series_"))
+                .unwrap_or(&raw_id)
+                .trim()
+                .to_string();
+
+            let detected_type = item
+                .get("type")
+                .or_else(|| item.get("primary_type"))
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_lowercase())
+                .or_else(|| {
+                    if raw_id.starts_with("movie-") || raw_id.starts_with("movie_") {
+                        Some("movie".to_string())
+                    } else if raw_id.starts_with("series-") || raw_id.starts_with("series_") {
+                        Some("series".to_string())
+                    } else if let Some(obj) = item.get("objectID").and_then(|v| v.as_str()) {
+                        if obj.starts_with("movie-") {
+                            Some("movie".to_string())
+                        } else if obj.starts_with("series-") {
+                            Some("series".to_string())
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                });
 
             let name = item
                 .get("name")
                 .or_else(|| item.get("title"))
                 .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
+                .map(|s| s.trim().to_string());
 
             let overview = item
                 .get("overview")
                 .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .or_else(|| {
+                    item.get("overviews").and_then(|ov| {
+                        ov.get("eng")
+                            .or_else(|| ov.get("en"))
+                            .or_else(|| ov.as_object().and_then(|m| m.values().next()))
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.trim().to_string())
+                            .filter(|s| !s.is_empty())
+                    })
+                })
+                .or_else(|| {
+                    item.get("translations").and_then(|tr| {
+                        tr.get("eng")
+                            .or_else(|| tr.get("en"))
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.trim().to_string())
+                            .filter(|s| !s.is_empty())
+                    })
+                });
 
             let image_url = item
                 .get("image_url")
                 .or_else(|| item.get("image"))
+                .or_else(|| item.get("poster"))
                 .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty());
 
-            return Ok(Some(TvdbSearchResult {
-                id,
+            let item_year = item.get("year").and_then(|v| {
+                v.as_i64().map(|n| n as i32).or_else(|| {
+                    v.as_str().and_then(|s| s.trim().parse::<i32>().ok())
+                })
+            });
+
+            let aliases: Vec<String> = item
+                .get("aliases")
+                .and_then(|v| v.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|x| x.as_str().map(|s| s.trim().to_string()))
+                        .collect()
+                })
+                .unwrap_or_default();
+
+            candidates.push(TvdbSearchCandidate {
+                id: clean_id,
                 name,
                 overview,
                 image_url,
-            }));
+                year: item_year,
+                entity_type: detected_type,
+                aliases,
+            });
         }
 
-        Ok(None)
+        Ok(candidates)
     }
 
-    /// Fetch extended series information from /series/{id}/extended
+    /// Search TVDB by query and entity type ("series" or "movie") with multi-tier fallback
+    pub async fn search(
+        &self,
+        query: &str,
+        media_type: &str,
+        year: Option<i32>,
+    ) -> Result<Option<TvdbSearchResult>, String> {
+        let (clean_query, detected_year) = normalize_search_query(query);
+        let target_year = year.or(detected_year);
+        let primary_entity_type = if media_type == "movie" { "movie" } else { "series" };
+        let secondary_entity_type = if primary_entity_type == "movie" { "series" } else { "movie" };
+
+        let mut candidates = Vec::new();
+
+        // Tier 1: Search with cleaned query, primary entity type, and year (if present)
+        if let Some(y) = target_year {
+            if let Ok(results) = self.execute_search_query(&clean_query, Some(primary_entity_type), Some(y)).await {
+                if !results.is_empty() {
+                    candidates = results;
+                }
+            }
+        }
+
+        // Tier 2: Search with cleaned query and primary entity type, but WITHOUT year
+        if candidates.is_empty() {
+            if let Ok(results) = self.execute_search_query(&clean_query, Some(primary_entity_type), None).await {
+                if !results.is_empty() {
+                    candidates = results;
+                }
+            }
+        }
+
+        // Tier 3: Search with secondary entity type (cross-type fallback e.g. miniseries/movie)
+        if candidates.is_empty() {
+            if let Ok(results) = self.execute_search_query(&clean_query, Some(secondary_entity_type), None).await {
+                if !results.is_empty() {
+                    candidates = results;
+                }
+            }
+        }
+
+        // Tier 4: Search without entity type restriction
+        if candidates.is_empty() {
+            if let Ok(results) = self.execute_search_query(&clean_query, None, None).await {
+                if !results.is_empty() {
+                    candidates = results;
+                }
+            }
+        }
+
+        if candidates.is_empty() {
+            return Ok(None);
+        }
+
+        // Score candidates and pick highest scoring result
+        candidates.sort_by_key(|c| std::cmp::Reverse(score_candidate(c, &clean_query, target_year)));
+        let best = candidates.into_iter().next().unwrap();
+
+        Ok(Some(TvdbSearchResult {
+            id: best.id,
+            name: best.name,
+            overview: best.overview,
+            image_url: best.image_url,
+            entity_type: best.entity_type,
+        }))
+    }
+
+    /// Fetch extended series information from /series/{id}/extended with fallback to base /series/{id}
     pub async fn get_series_extended(&self, series_id: &str) -> Result<TvdbMetadata, String> {
+        let clean_id = series_id
+            .strip_prefix("series-")
+            .or_else(|| series_id.strip_prefix("movie-"))
+            .unwrap_or(series_id);
+
         let token = self.get_token().await?;
-        let url = format!("{}/series/{}/extended", self.base_url, series_id);
+        let url = format!("{}/series/{}/extended", self.base_url, clean_id);
 
         let resp = self
             .client
@@ -226,29 +361,49 @@ impl TvdbClient {
             .header("Authorization", format!("Bearer {}", token))
             .header("Accept", "application/json")
             .send()
-            .await
-            .map_err(|e| format!("Failed to fetch TVDB series extended: {}", e))?;
+            .await;
 
-        if !resp.status().is_success() {
-            return Err(format!("TVDB series extended status: {}", resp.status()));
+        if let Ok(r) = resp {
+            if r.status().is_success() {
+                if let Ok(json_val) = r.json::<serde_json::Value>().await {
+                    if let Some(data) = json_val.get("data") {
+                        return Ok(parse_extended_metadata(data));
+                    }
+                }
+            }
         }
 
-        let json_val: serde_json::Value = resp
-            .json()
+        // Fallback: try base series endpoint /series/{id}
+        let base_url = format!("{}/series/{}", self.base_url, clean_id);
+        let resp2 = self
+            .client
+            .get(&base_url)
+            .header("Authorization", format!("Bearer {}", token))
+            .header("Accept", "application/json")
+            .send()
             .await
-            .map_err(|e| format!("Failed to parse TVDB series JSON: {}", e))?;
+            .map_err(|e| format!("Failed to fetch TVDB series base: {}", e))?;
 
-        let data = json_val
-            .get("data")
-            .ok_or_else(|| "Missing data in TVDB series response".to_string())?;
+        if resp2.status().is_success() {
+            if let Ok(json_val) = resp2.json::<serde_json::Value>().await {
+                if let Some(data) = json_val.get("data") {
+                    return Ok(parse_extended_metadata(data));
+                }
+            }
+        }
 
-        Ok(parse_extended_metadata(data))
+        Err(format!("TVDB series extended failed for ID {}", clean_id))
     }
 
-    /// Fetch extended movie information from /movies/{id}/extended
+    /// Fetch extended movie information from /movies/{id}/extended with fallback to base /movies/{id}
     pub async fn get_movie_extended(&self, movie_id: &str) -> Result<TvdbMetadata, String> {
+        let clean_id = movie_id
+            .strip_prefix("movie-")
+            .or_else(|| movie_id.strip_prefix("series-"))
+            .unwrap_or(movie_id);
+
         let token = self.get_token().await?;
-        let url = format!("{}/movies/{}/extended", self.base_url, movie_id);
+        let url = format!("{}/movies/{}/extended", self.base_url, clean_id);
 
         let resp = self
             .client
@@ -256,24 +411,133 @@ impl TvdbClient {
             .header("Authorization", format!("Bearer {}", token))
             .header("Accept", "application/json")
             .send()
-            .await
-            .map_err(|e| format!("Failed to fetch TVDB movie extended: {}", e))?;
+            .await;
 
-        if !resp.status().is_success() {
-            return Err(format!("TVDB movie extended status: {}", resp.status()));
+        if let Ok(r) = resp {
+            if r.status().is_success() {
+                if let Ok(json_val) = r.json::<serde_json::Value>().await {
+                    if let Some(data) = json_val.get("data") {
+                        return Ok(parse_extended_metadata(data));
+                    }
+                }
+            }
         }
 
-        let json_val: serde_json::Value = resp
-            .json()
+        // Fallback: try base movie endpoint /movies/{id}
+        let base_url = format!("{}/movies/{}", self.base_url, clean_id);
+        let resp2 = self
+            .client
+            .get(&base_url)
+            .header("Authorization", format!("Bearer {}", token))
+            .header("Accept", "application/json")
+            .send()
             .await
-            .map_err(|e| format!("Failed to parse TVDB movie JSON: {}", e))?;
+            .map_err(|e| format!("Failed to fetch TVDB movie base: {}", e))?;
 
-        let data = json_val
-            .get("data")
-            .ok_or_else(|| "Missing data in TVDB movie response".to_string())?;
+        if resp2.status().is_success() {
+            if let Ok(json_val) = resp2.json::<serde_json::Value>().await {
+                if let Some(data) = json_val.get("data") {
+                    return Ok(parse_extended_metadata(data));
+                }
+            }
+        }
 
-        Ok(parse_extended_metadata(data))
+        Err(format!("TVDB movie extended failed for ID {}", clean_id))
     }
+}
+
+/// Normalizes search query by extracting embedded years like (1976) and stripping common suffixes
+pub fn normalize_search_query(query: &str) -> (String, Option<i32>) {
+    let mut cleaned = query.trim().to_string();
+    let mut detected_year = None;
+
+    let trimmed = cleaned.trim();
+    if (trimmed.ends_with(')') && trimmed.contains('(')) || (trimmed.ends_with(']') && trimmed.contains('[')) {
+        let open_char = if trimmed.ends_with(')') { '(' } else { '[' };
+        if let Some(idx) = trimmed.rfind(open_char) {
+            let inner = trimmed[idx + 1..trimmed.len() - 1].trim();
+            if inner.len() == 4 && inner.chars().all(|c| c.is_ascii_digit()) {
+                if let Ok(y) = inner.parse::<i32>() {
+                    if (1880..=2100).contains(&y) {
+                        detected_year = Some(y);
+                        cleaned = trimmed[..idx].trim().to_string();
+                    }
+                }
+            }
+        }
+    }
+
+    let suffixes = [
+        " - Extended Cut", " (Extended Cut)", " [Extended Cut]",
+        " - Director's Cut", " (Director's Cut)", " [Director's Cut]",
+        " - Remastered", " (Remastered)", " [Remastered]",
+        " - Unrated", " (Unrated)", " [Unrated]",
+    ];
+    for s in &suffixes {
+        if cleaned.to_lowercase().ends_with(&s.to_lowercase()) {
+            let new_len = cleaned.len() - s.len();
+            cleaned = cleaned[..new_len].trim().to_string();
+        }
+    }
+
+    (cleaned, detected_year)
+}
+
+#[derive(Debug, Clone)]
+struct TvdbSearchCandidate {
+    id: String,
+    name: Option<String>,
+    overview: Option<String>,
+    image_url: Option<String>,
+    year: Option<i32>,
+    entity_type: Option<String>,
+    aliases: Vec<String>,
+}
+
+fn score_candidate(candidate: &TvdbSearchCandidate, target_title: &str, target_year: Option<i32>) -> i32 {
+    let mut score = 0;
+    let target_norm = target_title.trim().to_lowercase();
+
+    if let Some(ref name) = candidate.name {
+        let name_norm = name.trim().to_lowercase();
+        if name_norm == target_norm {
+            score += 100;
+        } else if name_norm.starts_with(&target_norm) || target_norm.starts_with(&name_norm) {
+            score += 50;
+        } else if name_norm.contains(&target_norm) {
+            score += 30;
+        }
+    }
+
+    for alias in &candidate.aliases {
+        let alias_norm = alias.trim().to_lowercase();
+        if alias_norm == target_norm {
+            score += 90;
+            break;
+        }
+    }
+
+    if let (Some(cand_year), Some(tgt_year)) = (candidate.year, target_year) {
+        let diff = (cand_year - tgt_year).abs();
+        if diff == 0 {
+            score += 100;
+        } else if diff == 1 {
+            score += 60;
+        } else if diff == 2 {
+            score += 30;
+        } else {
+            score -= (diff * 5).min(50);
+        }
+    }
+
+    if candidate.overview.is_some() {
+        score += 5;
+    }
+    if candidate.image_url.is_some() {
+        score += 5;
+    }
+
+    score
 }
 
 fn parse_extended_metadata(data: &serde_json::Value) -> TvdbMetadata {
@@ -281,7 +545,38 @@ fn parse_extended_metadata(data: &serde_json::Value) -> TvdbMetadata {
         .get("overview")
         .and_then(|v| v.as_str())
         .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty());
+        .filter(|s| !s.is_empty())
+        .or_else(|| {
+            data.get("overviews").and_then(|ov| {
+                ov.get("eng")
+                    .or_else(|| ov.get("en"))
+                    .or_else(|| ov.as_object().and_then(|m| m.values().next()))
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+            })
+        })
+        .or_else(|| {
+            data.get("translations").and_then(|tr| {
+                if let Some(arr) = tr.get("overviewTranslations").and_then(|v| v.as_array()) {
+                    for item in arr {
+                        let lang = item.get("language").and_then(|v| v.as_str()).unwrap_or("");
+                        if lang == "eng" || lang == "en" {
+                            if let Some(ov) = item.get("overview").and_then(|v| v.as_str()) {
+                                if !ov.trim().is_empty() {
+                                    return Some(ov.trim().to_string());
+                                }
+                            }
+                        }
+                    }
+                }
+                tr.get("eng")
+                    .or_else(|| tr.get("en"))
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+            })
+        });
 
     let genres = data
         .get("genres")
@@ -306,39 +601,60 @@ fn parse_extended_metadata(data: &serde_json::Value) -> TvdbMetadata {
     let mut actors_list: Vec<String> = Vec::new();
     let mut directors_list: Vec<String> = Vec::new();
 
-    if let Some(chars) = data.get("characters").and_then(|v| v.as_array()) {
-        for c in chars {
-            let person_name = c
-                .get("personName")
-                .or_else(|| c.get("peopleName"))
-                .or_else(|| c.get("name"))
-                .and_then(|v| v.as_str())
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty());
+    let mut extract_person = |c: &serde_json::Value| {
+        let person_name = c
+            .get("personName")
+            .or_else(|| c.get("peopleName"))
+            .or_else(|| c.get("name"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
 
-            let role_type = c
-                .get("peopleType")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_lowercase())
-                .unwrap_or_else(|| "actor".to_string());
+        let role_type = c
+            .get("peopleType")
+            .or_else(|| c.get("type"))
+            .or_else(|| c.get("role"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_lowercase())
+            .unwrap_or_else(|| "actor".to_string());
 
-            if let Some(name) = person_name {
-                if role_type.contains("director") || role_type.contains("creator") {
-                    if !directors_list.contains(&name) {
-                        directors_list.push(name);
-                    }
-                } else if role_type.contains("actor")
-                    || role_type.contains("cast")
-                    || role_type.contains("voice")
-                    || role_type.contains("guest")
-                {
-                    if !actors_list.contains(&name) && actors_list.len() < 12 {
-                        actors_list.push(name);
-                    }
-                } else if actors_list.len() < 12 && !actors_list.contains(&name) {
+        if let Some(name) = person_name {
+            if role_type.contains("director") || role_type.contains("creator") {
+                if !directors_list.contains(&name) {
+                    directors_list.push(name);
+                }
+            } else if role_type.contains("actor")
+                || role_type.contains("cast")
+                || role_type.contains("voice")
+                || role_type.contains("guest")
+            {
+                if !actors_list.contains(&name) && actors_list.len() < 12 {
                     actors_list.push(name);
                 }
+            } else if actors_list.len() < 12 && !actors_list.contains(&name) {
+                actors_list.push(name);
             }
+        }
+    };
+
+    if let Some(chars) = data.get("characters").and_then(|v| v.as_array()) {
+        for c in chars {
+            extract_person(c);
+        }
+    }
+    if let Some(people) = data.get("people").and_then(|v| v.as_array()) {
+        for c in people {
+            extract_person(c);
+        }
+    }
+    if let Some(crew) = data.get("crew").and_then(|v| v.as_array()) {
+        for c in crew {
+            extract_person(c);
+        }
+    }
+    if let Some(actors) = data.get("actors").and_then(|v| v.as_array()) {
+        for c in actors {
+            extract_person(c);
         }
     }
 
@@ -357,6 +673,7 @@ fn parse_extended_metadata(data: &serde_json::Value) -> TvdbMetadata {
     let image_url = data
         .get("image")
         .or_else(|| data.get("image_url"))
+        .or_else(|| data.get("poster"))
         .and_then(|v| v.as_str())
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty());
@@ -467,13 +784,16 @@ pub async fn process_missing_metadata_batch(
 
     for item in rows {
         let is_episode = item.media_type == "episode";
-        let search_title = if is_episode {
+        let raw_title = if is_episode {
             item.grandparent_title.as_deref().unwrap_or(&item.title)
         } else {
             &item.title
         };
 
-        let cache_key = format!("{}:{}:{:?}", item.media_type, search_title.to_lowercase(), item.year);
+        let (search_title, detected_year) = normalize_search_query(raw_title);
+        let effective_year = item.year.or(detected_year);
+
+        let cache_key = format!("{}:{}:{:?}", item.media_type, search_title.to_lowercase(), effective_year);
         if failed_lookups.contains(&cache_key) {
             let _ = sqlx::query("UPDATE scrobbles SET metadata_updated_at = datetime('now') WHERE id = ?")
                 .bind(&item.id)
@@ -484,7 +804,7 @@ pub async fn process_missing_metadata_batch(
         }
 
         let search_res = client
-            .search(search_title, if is_episode { "series" } else { "movie" }, item.year)
+            .search(&search_title, if is_episode { "series" } else { "movie" }, effective_year)
             .await;
 
         let match_result = match search_res {
@@ -512,25 +832,25 @@ pub async fn process_missing_metadata_batch(
             }
         };
 
-        let metadata_res = if is_episode {
-            client.get_series_extended(&match_result.id).await
+        let match_is_series = match_result.entity_type.as_deref() == Some("series") || is_episode;
+        let mut meta = if match_is_series {
+            match client.get_series_extended(&match_result.id).await {
+                Ok(m) => m,
+                Err(_) => client.get_movie_extended(&match_result.id).await.unwrap_or_default(),
+            }
         } else {
-            client.get_movie_extended(&match_result.id).await
-        };
-
-        let meta = match metadata_res {
-            Ok(m) => m,
-            Err(_) => {
-                // Fallback to overview or image from search result if available
-                TvdbMetadata {
-                    overview: match_result.overview,
-                    genres: None,
-                    actors: None,
-                    directors: None,
-                    image_url: match_result.image_url,
-                }
+            match client.get_movie_extended(&match_result.id).await {
+                Ok(m) => m,
+                Err(_) => client.get_series_extended(&match_result.id).await.unwrap_or_default(),
             }
         };
+
+        if meta.overview.is_none() || meta.overview.as_deref() == Some("") {
+            meta.overview = match_result.overview.clone();
+        }
+        if meta.image_url.is_none() || meta.image_url.as_deref() == Some("") {
+            meta.image_url = match_result.image_url.clone();
+        }
 
         if is_episode {
             // Update all episodes for this series that have missing fields
@@ -538,10 +858,15 @@ pub async fn process_missing_metadata_batch(
             let _ = sqlx::query(
                 r#"
                 UPDATE scrobbles
-                SET genres = COALESCE(NULLIF(genres, ''), ?),
-                    actors = COALESCE(NULLIF(actors, ''), ?),
-                    directors = COALESCE(NULLIF(directors, ''), ?),
+                SET genres = COALESCE(NULLIF(?, ''), NULLIF(genres, '')),
+                    actors = COALESCE(NULLIF(?, ''), NULLIF(actors, '')),
+                    directors = COALESCE(NULLIF(?, ''), NULLIF(directors, '')),
                     overview = CASE WHEN overview IS NULL OR overview = '' THEN ? ELSE overview END,
+                    thumb_url = CASE 
+                        WHEN (thumb_url IS NULL OR thumb_url = '' OR thumb_url LIKE '/library/%' OR thumb_url LIKE '/photo/%') AND ? IS NOT NULL 
+                        THEN ? 
+                        ELSE thumb_url 
+                    END,
                     metadata_updated_at = datetime('now')
                 WHERE id = ? OR (grandparent_title IS NOT NULL AND LOWER(TRIM(grandparent_title)) = LOWER(TRIM(?))) OR (media_type = 'episode' AND LOWER(TRIM(title)) = LOWER(TRIM(?)))
                 "#
@@ -550,6 +875,8 @@ pub async fn process_missing_metadata_batch(
             .bind(&meta.actors)
             .bind(&meta.directors)
             .bind(&meta.overview)
+            .bind(&meta.image_url)
+            .bind(&meta.image_url)
             .bind(&item.id)
             .bind(show_name)
             .bind(show_name)
@@ -560,10 +887,15 @@ pub async fn process_missing_metadata_batch(
             let _ = sqlx::query(
                 r#"
                 UPDATE scrobbles
-                SET genres = COALESCE(NULLIF(genres, ''), ?),
-                    actors = COALESCE(NULLIF(actors, ''), ?),
-                    directors = COALESCE(NULLIF(directors, ''), ?),
+                SET genres = COALESCE(NULLIF(?, ''), NULLIF(genres, '')),
+                    actors = COALESCE(NULLIF(?, ''), NULLIF(actors, '')),
+                    directors = COALESCE(NULLIF(?, ''), NULLIF(directors, '')),
                     overview = CASE WHEN overview IS NULL OR overview = '' THEN ? ELSE overview END,
+                    thumb_url = CASE 
+                        WHEN (thumb_url IS NULL OR thumb_url = '' OR thumb_url LIKE '/library/%' OR thumb_url LIKE '/photo/%') AND ? IS NOT NULL 
+                        THEN ? 
+                        ELSE thumb_url 
+                    END,
                     metadata_updated_at = datetime('now')
                 WHERE id = ?
                 "#
@@ -572,6 +904,8 @@ pub async fn process_missing_metadata_batch(
             .bind(&meta.actors)
             .bind(&meta.directors)
             .bind(&meta.overview)
+            .bind(&meta.image_url)
+            .bind(&meta.image_url)
             .bind(&item.id)
             .execute(&state.pool)
             .await;

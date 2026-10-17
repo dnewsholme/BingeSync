@@ -224,6 +224,13 @@ pub async fn trigger_admin_task_handler(
             })))
         }
         "tvdb_metadata" | "tvdb" => {
+            // Reset metadata_updated_at for scrobbles still missing core metadata so they get re-evaluated
+            let _ = sqlx::query(
+                "UPDATE scrobbles SET metadata_updated_at = NULL WHERE (overview IS NULL OR overview = '') OR (genres IS NULL OR genres = '') OR (actors IS NULL OR actors = '')"
+            )
+            .execute(&state.pool)
+            .await;
+
             state.task_tracker.set_tvdb_running("Manual run triggered...").await;
             state.metadata_notify.notify_waiters();
             state.metadata_notify.notify_one();

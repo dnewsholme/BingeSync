@@ -648,11 +648,14 @@ pub async fn refresh_scrobble_metadata(
     };
 
     let is_episode = scrobble.media_type == "episode";
-    let search_title = if is_episode {
+    let raw_search_title = if is_episode {
         scrobble.grandparent_title.as_deref().unwrap_or(&scrobble.title)
     } else {
         &scrobble.title
     };
+
+    let (search_title, detected_year) = crate::api::tvdb::normalize_search_query(raw_search_title);
+    let effective_year = scrobble.year.or(detected_year);
 
     // 1. Fetch metadata from TheTVDB if configured
     let tvdb_key = state.get_effective_tvdb_api_key().await;
@@ -662,20 +665,26 @@ pub async fn refresh_scrobble_metadata(
             let pin = state.get_effective_tvdb_pin().await;
             let client = crate::api::tvdb::TvdbClient::new(base_url, key.clone(), pin);
 
-            if let Ok(Some(search_match)) = client.search(search_title, if is_episode { "series" } else { "movie" }, scrobble.year).await {
-                let meta = if is_episode {
-                    client.get_series_extended(&search_match.id).await.unwrap_or_else(|_| crate::api::tvdb::TvdbMetadata {
-                        overview: search_match.overview,
-                        image_url: search_match.image_url,
-                        ..Default::default()
-                    })
+            if let Ok(Some(search_match)) = client.search(&search_title, if is_episode { "series" } else { "movie" }, effective_year).await {
+                let match_is_series = search_match.entity_type.as_deref() == Some("series") || is_episode;
+                let mut meta = if match_is_series {
+                    match client.get_series_extended(&search_match.id).await {
+                        Ok(m) => m,
+                        Err(_) => client.get_movie_extended(&search_match.id).await.unwrap_or_default(),
+                    }
                 } else {
-                    client.get_movie_extended(&search_match.id).await.unwrap_or_else(|_| crate::api::tvdb::TvdbMetadata {
-                        overview: search_match.overview,
-                        image_url: search_match.image_url,
-                        ..Default::default()
-                    })
+                    match client.get_movie_extended(&search_match.id).await {
+                        Ok(m) => m,
+                        Err(_) => client.get_series_extended(&search_match.id).await.unwrap_or_default(),
+                    }
                 };
+
+                if meta.overview.is_none() || meta.overview.as_deref() == Some("") {
+                    meta.overview = search_match.overview.clone();
+                }
+                if meta.image_url.is_none() || meta.image_url.as_deref() == Some("") {
+                    meta.image_url = search_match.image_url.clone();
+                }
 
                 let now_str = Utc::now().to_rfc3339();
                 if is_episode {
@@ -683,10 +692,15 @@ pub async fn refresh_scrobble_metadata(
                     let _ = sqlx::query(
                         r#"
                         UPDATE scrobbles
-                        SET genres = COALESCE(?, genres),
-                            actors = COALESCE(?, actors),
-                            directors = COALESCE(?, directors),
-                            overview = COALESCE(?, overview),
+                        SET genres = COALESCE(NULLIF(?, ''), NULLIF(genres, '')),
+                            actors = COALESCE(NULLIF(?, ''), NULLIF(actors, '')),
+                            directors = COALESCE(NULLIF(?, ''), NULLIF(directors, '')),
+                            overview = COALESCE(NULLIF(?, ''), NULLIF(overview, '')),
+                            thumb_url = CASE 
+                                WHEN (thumb_url IS NULL OR thumb_url = '' OR thumb_url LIKE '/library/%' OR thumb_url LIKE '/photo/%') AND ? IS NOT NULL 
+                                THEN ? 
+                                ELSE thumb_url 
+                            END,
                             metadata_updated_at = ?
                         WHERE id = ? OR (grandparent_title IS NOT NULL AND LOWER(TRIM(grandparent_title)) = LOWER(TRIM(?))) OR (media_type = 'episode' AND LOWER(TRIM(title)) = LOWER(TRIM(?)))
                         "#,
@@ -695,6 +709,8 @@ pub async fn refresh_scrobble_metadata(
                     .bind(&meta.actors)
                     .bind(&meta.directors)
                     .bind(&meta.overview)
+                    .bind(&meta.image_url)
+                    .bind(&meta.image_url)
                     .bind(&now_str)
                     .bind(&scrobble.id)
                     .bind(show_name)
@@ -705,10 +721,15 @@ pub async fn refresh_scrobble_metadata(
                     let _ = sqlx::query(
                         r#"
                         UPDATE scrobbles
-                        SET genres = COALESCE(?, genres),
-                            actors = COALESCE(?, actors),
-                            directors = COALESCE(?, directors),
-                            overview = COALESCE(?, overview),
+                        SET genres = COALESCE(NULLIF(?, ''), NULLIF(genres, '')),
+                            actors = COALESCE(NULLIF(?, ''), NULLIF(actors, '')),
+                            directors = COALESCE(NULLIF(?, ''), NULLIF(directors, '')),
+                            overview = COALESCE(NULLIF(?, ''), NULLIF(overview, '')),
+                            thumb_url = CASE 
+                                WHEN (thumb_url IS NULL OR thumb_url = '' OR thumb_url LIKE '/library/%' OR thumb_url LIKE '/photo/%') AND ? IS NOT NULL 
+                                THEN ? 
+                                ELSE thumb_url 
+                            END,
                             metadata_updated_at = ?
                         WHERE id = ?
                         "#,
@@ -717,10 +738,16 @@ pub async fn refresh_scrobble_metadata(
                     .bind(&meta.actors)
                     .bind(&meta.directors)
                     .bind(&meta.overview)
+                    .bind(&meta.image_url)
+                    .bind(&meta.image_url)
                     .bind(&now_str)
                     .bind(&scrobble.id)
                     .execute(&state.pool)
                     .await;
+                }
+
+                if meta.image_url.is_some() {
+                    state.image_notify.notify_waiters();
                 }
             }
         }
