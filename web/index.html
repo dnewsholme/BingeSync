@@ -397,23 +397,24 @@
         <section id="view-admin" class="app-view" style="display: none;">
           <div class="view-header">
             <div>
-              <h2>User Management</h2>
-              <p class="text-muted">Manage registered users, inspect watch activity, and delete accounts.</p>
+              <h1 class="view-title">User Management</h1>
+              <p class="view-subtitle">Manage registered users, inspect watch activity, and delete accounts</p>
             </div>
             <div class="view-actions">
               <button class="btn btn-outline btn-sm" id="btn-refresh-admin-users">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
                 Refresh
               </button>
+            </div>
           </div>
 
           <!-- OIDC Back-Channel Logout URL Info Card -->
-          <div class="webhook-card" style="margin-bottom: 1.5rem;" id="admin-oidc-backchannel-card">
-            <h3 style="margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem; font-size: 1.05rem;">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          <div class="settings-card" id="admin-oidc-backchannel-card">
+            <h2 class="card-title">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
               OpenID Connect Back-Channel Logout URL
-            </h3>
-            <p class="text-muted" style="font-size: 0.88rem; margin-bottom: 0.85rem; line-height: 1.5;">
+            </h2>
+            <p class="card-desc">
               Provide this endpoint to your OpenID Connect Provider (e.g. Authentik, PocketID, Keycloak). When a user loses group access or is revoked/disabled, the IdP sends a revocation token to terminate their active sessions immediately.
             </p>
             <div class="webhook-input-group">
