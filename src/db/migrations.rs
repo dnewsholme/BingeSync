@@ -10,6 +10,7 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
             role TEXT NOT NULL DEFAULT 'user',
             oidc_sub TEXT UNIQUE,
             oidc_sid TEXT,
+            preferred_username TEXT,
             webhook_token TEXT UNIQUE NOT NULL,
             avatar_url TEXT,
             sessions_revoked_at INTEGER,
@@ -40,6 +41,8 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
             directors TEXT,
             actors TEXT,
             watch_status TEXT NOT NULL DEFAULT 'completed',
+            progress_percent INTEGER DEFAULT NULL,
+            view_offset_ms INTEGER DEFAULT NULL,
             watched_at TEXT NOT NULL DEFAULT (datetime('now')),
             created_at TEXT NOT NULL DEFAULT (datetime('now'))
         );
@@ -99,6 +102,10 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
         .execute(pool)
         .await;
 
+    let _ = sqlx::query("ALTER TABLE users ADD COLUMN preferred_username TEXT")
+        .execute(pool)
+        .await;
+
     let _ = sqlx::query("ALTER TABLE scrobbles ADD COLUMN user_rating INTEGER")
         .execute(pool)
         .await;
@@ -114,11 +121,25 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
     let _ = sqlx::query("ALTER TABLE scrobbles ADD COLUMN watch_status TEXT NOT NULL DEFAULT 'completed'")
         .execute(pool)
         .await;
-
-    // Indexes on added columns
-    let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_scrobbles_user_status ON scrobbles(user_id, watch_status)")
+    let _ = sqlx::query("ALTER TABLE scrobbles ADD COLUMN progress_percent INTEGER DEFAULT NULL")
         .execute(pool)
         .await;
+    let _ = sqlx::query("ALTER TABLE scrobbles ADD COLUMN view_offset_ms INTEGER DEFAULT NULL")
+        .execute(pool)
+        .await;
+
+    // System Settings table for runtime admin configuration
+    let _ = sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS system_settings (
+            key TEXT PRIMARY KEY NOT NULL,
+            value TEXT NOT NULL,
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        "#,
+    )
+    .execute(pool)
+    .await;
 
     Ok(())
 }

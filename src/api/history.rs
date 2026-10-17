@@ -5,7 +5,7 @@ use axum::{
     Json,
 };
 use chrono::Utc;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
@@ -194,9 +194,9 @@ pub async fn create_scrobble(
             id, user_id, title, media_type, grandparent_title, parent_title,
             season_number, episode_number, year, overview, thumb_url,
             rating_key, guid, duration_ms, user_rating,
-            genres, directors, actors, watch_status,
+            genres, directors, actors, watch_status, progress_percent, view_offset_ms,
             watched_at, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
     )
     .bind(&scrobble_id)
@@ -218,6 +218,8 @@ pub async fn create_scrobble(
     .bind(&payload.directors)
     .bind(&payload.actors)
     .bind(&watch_status)
+    .bind(payload.progress_percent)
+    .bind(payload.view_offset_ms)
     .bind(&watched_at)
     .bind(&now)
     .execute(&state.pool)
@@ -245,6 +247,7 @@ pub async fn create_scrobble(
     if scrobble.thumb_url.is_none() {
         state.image_notify.notify_one();
     }
+    state.metadata_notify.notify_one();
 
     Ok((StatusCode::CREATED, Json(scrobble)))
 }
@@ -274,6 +277,250 @@ pub async fn delete_scrobble(
     }
 
     Ok(Json(serde_json::json!({ "status": "deleted", "id": id })))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RateScrobbleRequest {
+    pub rating: Option<i32>,
+}
+
+pub async fn rate_scrobble(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path(id): Path<String>,
+    Json(payload): Json<RateScrobbleRequest>,
+) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
+    if let Some(r) = payload.rating {
+        if !(1..=10).contains(&r) {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({ "error": "Rating must be between 1 and 10" })),
+            ));
+        }
+    }
+
+    let res = sqlx::query("UPDATE scrobbles SET user_rating = ? WHERE id = ? AND user_id = ?")
+        .bind(payload.rating)
+        .bind(&id)
+        .bind(&auth.user_id)
+        .execute(&state.pool)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": format!("Database error updating rating: {}", e) })),
+            )
+        })?;
+
+    if res.rows_affected() == 0 {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": "Scrobble not found" })),
+        ));
+    }
+
+    Ok(Json(serde_json::json!({
+        "status": "success",
+        "id": id,
+        "rating": payload.rating
+    })))
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ItemWatchesResponse {
+    pub current_id: String,
+    pub total_watches: usize,
+    pub other_watches: Vec<Scrobble>,
+}
+
+pub async fn get_item_watches(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path(id): Path<String>,
+) -> Result<Json<ItemWatchesResponse>, (StatusCode, Json<serde_json::Value>)> {
+    // 1. Fetch current target scrobble for the authenticated user
+    let current = sqlx::query_as::<_, Scrobble>(
+        "SELECT * FROM scrobbles WHERE id = ? AND user_id = ?"
+    )
+    .bind(&id)
+    .bind(&auth.user_id)
+    .fetch_optional(&state.pool)
+    .await
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": format!("Database error fetching scrobble: {}", e) })),
+        )
+    })?
+    .ok_or_else(|| {
+        (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": "Scrobble not found" })),
+        )
+    })?;
+
+    // 2. Query other watches strictly matching this same item
+    // For TV shows, this MUST be the exact same episode (same show, season, and episode)
+    let other_watches = if current.media_type == "episode" {
+        let gp = current.grandparent_title.as_deref().unwrap_or("").trim();
+        if let (Some(s), Some(e)) = (current.season_number, current.episode_number) {
+            if !gp.is_empty() {
+                sqlx::query_as::<_, Scrobble>(
+                    r#"
+                    SELECT * FROM scrobbles
+                    WHERE user_id = ?
+                      AND id != ?
+                      AND media_type = 'episode'
+                      AND (
+                        (TRIM(LOWER(COALESCE(grandparent_title, ''))) = TRIM(LOWER(?))
+                         AND season_number = ?
+                         AND episode_number = ?)
+                        OR (? IS NOT NULL AND guid IS NOT NULL AND guid = ?)
+                      )
+                    ORDER BY watched_at DESC
+                    "#
+                )
+                .bind(&auth.user_id)
+                .bind(&current.id)
+                .bind(gp)
+                .bind(s)
+                .bind(e)
+                .bind(&current.guid)
+                .bind(&current.guid)
+                .fetch_all(&state.pool)
+                .await
+            } else {
+                sqlx::query_as::<_, Scrobble>(
+                    r#"
+                    SELECT * FROM scrobbles
+                    WHERE user_id = ?
+                      AND id != ?
+                      AND media_type = 'episode'
+                      AND (
+                        (TRIM(LOWER(title)) = TRIM(LOWER(?))
+                         AND season_number = ?
+                         AND episode_number = ?)
+                        OR (? IS NOT NULL AND guid IS NOT NULL AND guid = ?)
+                      )
+                    ORDER BY watched_at DESC
+                    "#
+                )
+                .bind(&auth.user_id)
+                .bind(&current.id)
+                .bind(&current.title)
+                .bind(s)
+                .bind(e)
+                .bind(&current.guid)
+                .bind(&current.guid)
+                .fetch_all(&state.pool)
+                .await
+            }
+        } else {
+            // Season / episode numbers are missing, match by show title & episode title
+            if !gp.is_empty() {
+                sqlx::query_as::<_, Scrobble>(
+                    r#"
+                    SELECT * FROM scrobbles
+                    WHERE user_id = ?
+                      AND id != ?
+                      AND media_type = 'episode'
+                      AND (
+                        (TRIM(LOWER(COALESCE(grandparent_title, ''))) = TRIM(LOWER(?))
+                         AND TRIM(LOWER(title)) = TRIM(LOWER(?)))
+                        OR (? IS NOT NULL AND guid IS NOT NULL AND guid = ?)
+                      )
+                    ORDER BY watched_at DESC
+                    "#
+                )
+                .bind(&auth.user_id)
+                .bind(&current.id)
+                .bind(gp)
+                .bind(&current.title)
+                .bind(&current.guid)
+                .bind(&current.guid)
+                .fetch_all(&state.pool)
+                .await
+            } else {
+                sqlx::query_as::<_, Scrobble>(
+                    r#"
+                    SELECT * FROM scrobbles
+                    WHERE user_id = ?
+                      AND id != ?
+                      AND media_type = 'episode'
+                      AND (
+                        TRIM(LOWER(title)) = TRIM(LOWER(?))
+                        OR (? IS NOT NULL AND guid IS NOT NULL AND guid = ?)
+                      )
+                    ORDER BY watched_at DESC
+                    "#
+                )
+                .bind(&auth.user_id)
+                .bind(&current.id)
+                .bind(&current.title)
+                .bind(&current.guid)
+                .bind(&current.guid)
+                .fetch_all(&state.pool)
+                .await
+            }
+        }
+    } else if current.media_type == "movie" {
+        let title = current.title.trim();
+        sqlx::query_as::<_, Scrobble>(
+            r#"
+            SELECT * FROM scrobbles
+            WHERE user_id = ?
+              AND id != ?
+              AND media_type = 'movie'
+              AND (
+                (TRIM(LOWER(title)) = TRIM(LOWER(?))
+                 AND (? IS NULL OR year IS NULL OR year = ?))
+                OR (? IS NOT NULL AND guid IS NOT NULL AND guid = ?)
+              )
+            ORDER BY watched_at DESC
+            "#
+        )
+        .bind(&auth.user_id)
+        .bind(&current.id)
+        .bind(title)
+        .bind(current.year)
+        .bind(current.year)
+        .bind(&current.guid)
+        .bind(&current.guid)
+        .fetch_all(&state.pool)
+        .await
+    } else {
+        let title = current.title.trim();
+        sqlx::query_as::<_, Scrobble>(
+            r#"
+            SELECT * FROM scrobbles
+            WHERE user_id = ?
+              AND id != ?
+              AND media_type = ?
+              AND TRIM(LOWER(title)) = TRIM(LOWER(?))
+            ORDER BY watched_at DESC
+            "#
+        )
+        .bind(&auth.user_id)
+        .bind(&current.id)
+        .bind(&current.media_type)
+        .bind(title)
+        .fetch_all(&state.pool)
+        .await
+    }
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": format!("Database error fetching other watches: {}", e) })),
+        )
+    })?;
+
+    let total_watches = other_watches.len() + 1;
+
+    Ok(Json(ItemWatchesResponse {
+        current_id: current.id,
+        total_watches,
+        other_watches,
+    }))
 }
 
 #[derive(Debug, Deserialize)]

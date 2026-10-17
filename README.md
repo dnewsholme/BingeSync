@@ -20,15 +20,21 @@ Designed for self-hosters and families, BingeSync features **multi-user support*
 - 📺 **Show-Wide Deletion**: One-click action on show detail pages to purge all logged scrobbles for that series.
 - 🌐 **IMDb Deep Links**: Direct links from scrobble cards and details modal to title pages on IMDb.
 - 🧹 **Radarr & Sonarr Library Integration**: Detects whether completed movies or series exist in your Radarr/Sonarr libraries, with an optional one-click cleanup to remove and delete media files from disk after binging.
-- 📊 **Binge Statistics & Visual Charts**: Interactive charts featuring a 14-day stacked activity bar chart, top genres distribution, TV vs Movie time split, and top TV series.
+- 📊 **Binge Statistics & Visual Charts**: Interactive charts featuring a 14-day stacked activity bar chart, top genres distribution, TV vs Movie time split, top TV series, and top watched movies.
+- ⭐ **Star Ratings & Reviews**: Rate movies and episodes from 1 to 10 directly in the detail modal or during manual logging, with star filters and instant unrating.
 - 📥 **Trakt.tv ZIP & Export Import**: Direct import of Trakt.tv multi-file `.zip` export archives, JSON, and CSV exports. Automatically aggregates paginated history and rating files, matches ratings to scrobbles, and sorts all entries chronologically.
+- 📜 **Tautulli Playback Import**: Connect directly to your Tautulli instance or paste/upload JSON/CSV exports. Choose from discovered users (defaulting to your OIDC `preferred_username`) with robust 3-way deduplication against existing records.
+- 📖 **Interactive Swagger UI & OpenAPI 3.0**: Built-in dark mode Swagger documentation accessible at `/docs` or `/swagger` with full specification at `/api/v1/openapi.json`.
+- ⚙️ **Admin Control Panel, Logs & Background Tasks**: Manage users, configure system API keys/thresholds in-app, inspect live system logs, and trigger background workers on demand.
 - 🖼️ **Automated Disk-Based Poster Caching**: Background worker automatically searches, downloads, and caches official movie and TV posters to disk (never in SQLite) for optimal database performance and instant visual loading.
+- 🎬 **TheTVDB Metadata Enrichment**: Background worker connects to TheTVDB v4 API to automatically populate genres, director credits, cast/actors, and plot overviews for scrobbles with missing metadata.
+- 🔁 **Item Detail & Other Watches History**: Inspecting any scrobble in History or Timeline details displays a comprehensive table of all other watches of that exact same item (for TV shows, strictly scoped to the exact same episode).
 - 🔀 **Configurable Subpath Support**: Seamlessly host behind reverse proxies on a subpath (e.g. `www.example.com/bingesync`).
 - 📺 **Now Playing Banner**: Live playback beacon tracking active media and playback offset in real-time.
 - 🔐 **OpenID Connect (OIDC) SSO**: Enterprise-grade authentication compatible with Authentik, Keycloak, Authelia, Okta, and Google (with PKCE RFC 7636).
 - ⚡ **Lightweight Single-Binary**: Written in Rust (`axum`, `tokio`, `sqlx`) with the web frontend embedded directly into the binary via `rust-embed`.
 - 🗄️ **Zero-Maintenance SQLite**: Fast, crash-safe embedded database running with Write-Ahead Logging (`WAL`) mode and automatic schema migrations.
-- 🧪 **Thoroughly Tested**: 15 Rust backend integration tests and 8 Playwright browser E2E tests.
+- 🧪 **Thoroughly Tested**: 24 Rust backend integration tests and 19 Playwright browser E2E tests.
 
 ---
 
@@ -126,6 +132,8 @@ All configuration options can be passed via environment variables:
 | `RADARR_API_KEY` | *(none)* | Radarr API key |
 | `SONARR_URL` | *(none)* | Base URL of Sonarr instance |
 | `SONARR_API_KEY` | *(none)* | Sonarr API key |
+| `TVDB_API_KEY` | *(none)* | TheTVDB v4 API key for background metadata enrichment |
+| `TVDB_PIN` | *(none)* | Optional subscriber PIN for user-subscription TheTVDB API keys |
 | `IMAGE_CACHE_DIR` | `./data/images` | Directory path on disk where media poster images are cached |
 
 ---
@@ -185,7 +193,10 @@ BingeSync provides a comprehensive REST API:
 - `GET  /api/v1/integrations/status` — Configuration status of Radarr and Sonarr.
 - `GET  /api/v1/integrations/check?title=...&media_type=...` — Check if a movie or series exists in Radarr or Sonarr.
 - `POST /api/v1/integrations/radarr/delete` — Delete movie and disk files from Radarr.
-- `POST /api/v1/integrations/sonarr/delete-series` — Delete TV series and disk files from Sonarr.
+- `POST /api/v1/integrations/sonarr/delete-series` — Flexible Sonarr cleanup with three action modes (`action`):
+  - `"delete_series"`: Delete show and all media files from Sonarr (`{ "series_id": 123, "action": "delete_series", "delete_files": true }`).
+  - `"delete_season"`: Delete episode files for a specific season and unmonitor the season (`{ "series_id": 123, "action": "delete_season", "season_number": 2 }`).
+  - `"delete_all_files_unmonitor"`: Delete all episode files across all seasons and unmonitor all seasons (`{ "series_id": 123, "action": "delete_all_files_unmonitor" }`).
 
 ### Trakt Import
 - `POST /api/v1/import/trakt` — Import watch history and ratings from Trakt.tv multi-file `.zip` export archives, JSON, or CSV export files (automatically sorted chronologically).
@@ -222,6 +233,14 @@ npm install
 npx playwright install chromium
 npm run test:e2e
 ```
+
+---
+
+## 📺 Metadata & Attribution
+
+Media metadata, plot outlines, genres, director credits, and actor/cast information are enriched in the background via [TheTVDB](https://thetvdb.com).
+
+*This product uses TheTVDB API but is not endorsed or certified by TheTVDB.*
 
 ---
 

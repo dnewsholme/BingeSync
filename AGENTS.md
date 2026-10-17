@@ -144,6 +144,14 @@ Tests in `tests/api_tests.rs` cover:
 - Admin user management, list users, and cascading data deletion
 - OpenID Connect Back-Channel Logout token validation, session termination, and token invalidation
 - Disk-based media poster caching and image serving with traversal protection
+- Sonarr delete options (delete series & files, delete season files & unmonitor season, and delete all files & unmonitor all seasons)
+- TheTVDB v4 metadata enrichment worker (genres, cast, plot overview, and directors)
+- Item other watches query: movies and exact same TV episode matching with multi-user isolation
+- Admin settings, log buffer, and background task management endpoints
+- Tautulli playback history import, user discovery, and 3-way deduplication
+- Scrobble progress tracking, configurable completion threshold, and same-day deduplication
+- Rating watched items (1-10) and clearing ratings with multi-user isolation
+- OpenAPI 3.0 specification and interactive Swagger UI documentation
 
 ### Run Playwright E2E UI Tests
 ```bash
@@ -160,6 +168,17 @@ Playwright tests in `web/tests/e2e.spec.js` cover:
 - Show detail modal IMDb link and delete all scrobbles for show
 - Multi-select batch delete in History view
 - Admin role and user management: list users, verify backchannel URL, and delete user
+- Sonarr cleanup options: delete show and files, delete & unmonitor season files, and delete all files & unmonitor all seasons
+- TheTVDB attribution: global footer, settings integration card, and scrobble detail modal footnote
+- Item other watches: other watches table in scrobble detail modal strictly matching exact same episode
+- Stats page top watched movies and type filter tabs
+- Minimised timeline search and date scrubber navigation
+- Admin settings page, live log viewer, and background task execution
+- Favicon delivery and metadata link verification
+- In-progress playback badge rendering and detail modal progress display
+- Tautulli history import modal, username defaulting, and deduplication
+- Rating watched items in detail modal, update, and unrating
+- Swagger UI interactive documentation at `/docs` and OpenAPI JSON endpoint
 
 ### Run the App Locally
 ```bash
@@ -199,3 +218,5 @@ docker run -p 8080:8080 -v bingesync_data:/data bingesync:latest
 | `RADARR_API_KEY` | *(none)* | API key for Radarr |
 | `SONARR_URL` | *(none)* | Base URL to Sonarr instance (e.g. `http://localhost:8989`) |
 | `SONARR_API_KEY` | *(none)* | API key for Sonarr |
+| `TVDB_API_KEY` | *(none)* | TheTVDB v4 API key for background metadata enrichment |
+| `TVDB_PIN` | *(none)* | Optional subscriber PIN for user-subscription TheTVDB keys |

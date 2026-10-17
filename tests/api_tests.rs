@@ -26,6 +26,9 @@ async fn setup_test_app() -> (axum::Router, sqlx::SqlitePool, Arc<Config>) {
         config: config.clone(),
         oidc_client: None,
         image_notify: Arc::new(tokio::sync::Notify::new()),
+        metadata_notify: Arc::new(tokio::sync::Notify::new()),
+        log_buffer: Arc::new(bingesync::api::logs::LogBuffer::new(500)),
+        task_tracker: Arc::new(bingesync::api::jobs::BackgroundTaskTracker::new()),
     };
 
     let router = create_api_router(state);
@@ -1283,6 +1286,9 @@ async fn test_subpath_routing_and_assets() {
         config: config.clone(),
         oidc_client: None,
         image_notify: Arc::new(tokio::sync::Notify::new()),
+        metadata_notify: Arc::new(tokio::sync::Notify::new()),
+        log_buffer: Arc::new(bingesync::api::logs::LogBuffer::new(500)),
+        task_tracker: Arc::new(bingesync::api::jobs::BackgroundTaskTracker::new()),
     };
     let app = create_api_router(state).fallback(bingesync::assets::static_handler);
     let base = config.base_path.trim_end_matches('/').to_string();
@@ -1409,7 +1415,8 @@ async fn test_admin_user_management_and_cascading_deletion() {
     let found_standard = users_list.iter().find(|u| u.id == standard_user.id).unwrap();
     assert_eq!(found_standard.email, "standard@test.local");
     assert_eq!(found_standard.role, "user");
-    assert_eq!(found_standard.scrobble_count, 1);
+    // Standard user has 1 completed scrobble ("Inception") + 1 in-progress started scrobble ("Interstellar")
+    assert_eq!(found_standard.scrobble_count, 2);
 
     // 5. Admin cannot delete self (400 Bad Request)
     let self_delete_req = Request::builder()
@@ -1478,6 +1485,9 @@ async fn test_oidc_backchannel_logout() {
         config: config.clone(),
         oidc_client: Some(oidc_client),
         image_notify: Arc::new(tokio::sync::Notify::new()),
+        metadata_notify: Arc::new(tokio::sync::Notify::new()),
+        log_buffer: Arc::new(bingesync::api::logs::LogBuffer::new(500)),
+        task_tracker: Arc::new(bingesync::api::jobs::BackgroundTaskTracker::new()),
     };
 
     let app = create_api_router(state);
@@ -1490,6 +1500,7 @@ async fn test_oidc_backchannel_logout() {
         Some("pocketid_sub_12345"),
         Some("pocketid_sid_abcde"),
         None,
+        Some("revoked_user"),
         false,
     )
     .await
@@ -1652,6 +1663,9 @@ async fn test_image_cache_serving_and_background_worker() {
         config: config.clone(),
         oidc_client: None,
         image_notify: Arc::new(tokio::sync::Notify::new()),
+        metadata_notify: Arc::new(tokio::sync::Notify::new()),
+        log_buffer: Arc::new(bingesync::api::logs::LogBuffer::new(500)),
+        task_tracker: Arc::new(bingesync::api::jobs::BackgroundTaskTracker::new()),
     };
 
     let app = create_api_router(state.clone());
@@ -1773,6 +1787,1229 @@ async fn test_image_cache_serving_and_background_worker() {
         assert_eq!(img_res.status(), StatusCode::OK);
     }
 }
+
+#[tokio::test]
+async fn test_sonarr_delete_options() {
+    let pool = init_db("sqlite::memory:").await.unwrap();
+
+    // Spin up a mock Sonarr server
+    let mock_sonarr_router = axum::Router::new()
+        .route(
+            "/api/v3/episodefile",
+            axum::routing::get(|| async {
+                axum::Json(serde_json::json!([
+                    { "id": 101, "seriesId": 42, "seasonNumber": 1 },
+                    { "id": 102, "seriesId": 42, "seasonNumber": 1 },
+                    { "id": 201, "seriesId": 42, "seasonNumber": 2 }
+                ]))
+            }),
+        )
+        .route(
+            "/api/v3/episodefile/{id}",
+            axum::routing::delete(|| async { StatusCode::OK }),
+        )
+        .route(
+            "/api/v3/series/{id}",
+            axum::routing::get(|| async {
+                axum::Json(serde_json::json!({
+                    "id": 42,
+                    "title": "Breaking Bad",
+                    "monitored": true,
+                    "seasons": [
+                        { "seasonNumber": 1, "monitored": true },
+                        { "seasonNumber": 2, "monitored": true }
+                    ]
+                }))
+            })
+            .put(|axum::Json(body): axum::Json<serde_json::Value>| async move {
+                axum::Json(body)
+            })
+            .delete(|| async { StatusCode::OK }),
+        )
+        .route(
+            "/api/v3/episode",
+            axum::routing::get(|| async {
+                axum::Json(serde_json::json!([
+                    { "id": 1001, "seasonNumber": 1 },
+                    { "id": 1002, "seasonNumber": 1 }
+                ]))
+            }),
+        )
+        .route(
+            "/api/v3/episode/monitor",
+            axum::routing::put(|| async { StatusCode::OK }),
+        );
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, mock_sonarr_router).await.unwrap();
+    });
+
+    let mut config = Config::from_env();
+    config.sonarr_url = Some(format!("http://{}", addr));
+    config.sonarr_api_key = Some("test_api_key".to_string());
+    let config = Arc::new(config);
+    let state = AppState {
+        pool: pool.clone(),
+        config: config.clone(),
+        oidc_client: None,
+        image_notify: Arc::new(tokio::sync::Notify::new()),
+        metadata_notify: Arc::new(tokio::sync::Notify::new()),
+        log_buffer: Arc::new(bingesync::api::logs::LogBuffer::new(500)),
+        task_tracker: Arc::new(bingesync::api::jobs::BackgroundTaskTracker::new()),
+    };
+    let app = create_api_router(state);
+
+    // Dev login to obtain valid token
+    let login_req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/auth/dev-login")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(
+            serde_json::json!({
+                "email": "sonarr_tester@bingesync.local",
+                "display_name": "Sonarr Tester"
+            })
+            .to_string(),
+        ))
+        .unwrap();
+    let res = app.clone().oneshot(login_req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let login_data: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    let token = login_data["token"].as_str().unwrap().to_string();
+
+    // 1. Test Option 1: delete_series (delete show and files)
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/integrations/sonarr/delete-series")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(
+            serde_json::json!({
+                "series_id": 42,
+                "action": "delete_series",
+                "delete_files": true
+            })
+            .to_string(),
+        ))
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let b = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&b).unwrap();
+    assert_eq!(json["action"], "delete_series");
+    assert_eq!(json["status"], "deleted");
+
+    // 2. Test Option 2: delete_season (just delete and unmonitor season files)
+    let req2 = Request::builder()
+        .method("POST")
+        .uri("/api/v1/integrations/sonarr/delete-series")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(
+            serde_json::json!({
+                "series_id": 42,
+                "action": "delete_season",
+                "season_number": 1
+            })
+            .to_string(),
+        ))
+        .unwrap();
+    let res2 = app.clone().oneshot(req2).await.unwrap();
+    assert_eq!(res2.status(), StatusCode::OK);
+    let b2 = axum::body::to_bytes(res2.into_body(), usize::MAX).await.unwrap();
+    let json2: serde_json::Value = serde_json::from_slice(&b2).unwrap();
+    assert_eq!(json2["action"], "delete_season");
+    assert_eq!(json2["season_number"], 1);
+    assert_eq!(json2["deleted_files_count"], 2);
+
+    // 3. Test Option 3: delete_all_files_unmonitor (delete all files and unmonitor all seasons)
+    let req3 = Request::builder()
+        .method("POST")
+        .uri("/api/v1/integrations/sonarr/delete-series")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(
+            serde_json::json!({
+                "series_id": 42,
+                "action": "delete_all_files_unmonitor"
+            })
+            .to_string(),
+        ))
+        .unwrap();
+    let res3 = app.clone().oneshot(req3).await.unwrap();
+    assert_eq!(res3.status(), StatusCode::OK);
+    let b3 = axum::body::to_bytes(res3.into_body(), usize::MAX).await.unwrap();
+    let json3: serde_json::Value = serde_json::from_slice(&b3).unwrap();
+    assert_eq!(json3["action"], "delete_all_files_unmonitor");
+    assert_eq!(json3["deleted_files_count"], 3);
+
+    // 4. Test missing season_number validation for delete_season
+    let req4 = Request::builder()
+        .method("POST")
+        .uri("/api/v1/integrations/sonarr/delete-series")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(
+            serde_json::json!({
+                "series_id": 42,
+                "action": "delete_season"
+            })
+            .to_string(),
+        ))
+        .unwrap();
+    let res4 = app.clone().oneshot(req4).await.unwrap();
+    assert_eq!(res4.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_tvdb_metadata_enrichment_worker() {
+    let pool = init_db("sqlite::memory:").await.unwrap();
+
+    // 1. Mock TVDB v4 API server
+    let mock_tvdb_router = axum::Router::new()
+        .route(
+            "/login",
+            axum::routing::post(|axum::Json(body): axum::Json<serde_json::Value>| async move {
+                if body.get("apikey").and_then(|v| v.as_str()) == Some("test_tvdb_key") {
+                    (
+                        StatusCode::OK,
+                        axum::Json(serde_json::json!({
+                            "status": "success",
+                            "data": { "token": "mock_tvdb_bearer_token" }
+                        })),
+                    )
+                } else {
+                    (
+                        StatusCode::UNAUTHORIZED,
+                        axum::Json(serde_json::json!({ "error": "Invalid API key" })),
+                    )
+                }
+            }),
+        )
+        .route(
+            "/search",
+            axum::routing::get(|axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>| async move {
+                let query = params.get("query").map(|s| s.as_str()).unwrap_or("");
+                if query.eq_ignore_ascii_case("Breaking Bad") {
+                    axum::Json(serde_json::json!({
+                        "status": "success",
+                        "data": [
+                            {
+                                "tvdb_id": "121361",
+                                "name": "Breaking Bad",
+                                "overview": "A chemistry teacher with cancer starts making meth.",
+                                "image_url": "https://artworks.thetvdb.com/banners/posters/121361-1.jpg"
+                            }
+                        ]
+                    }))
+                } else {
+                    axum::Json(serde_json::json!({ "status": "success", "data": [] }))
+                }
+            }),
+        )
+        .route(
+            "/series/{id}/extended",
+            axum::routing::get(|| async {
+                axum::Json(serde_json::json!({
+                    "status": "success",
+                    "data": {
+                        "id": 121361,
+                        "name": "Breaking Bad",
+                        "overview": "A chemistry teacher diagnosed with inoperable lung cancer turns to manufacturing methamphetamine.",
+                        "genres": [
+                            { "id": 1, "name": "Crime" },
+                            { "id": 2, "name": "Drama" },
+                            { "id": 3, "name": "Thriller" }
+                        ],
+                        "characters": [
+                            { "personName": "Bryan Cranston", "peopleType": "Actor" },
+                            { "personName": "Aaron Paul", "peopleType": "Actor" },
+                            { "personName": "Vince Gilligan", "peopleType": "Director" }
+                        ],
+                        "image": "https://artworks.thetvdb.com/banners/posters/121361-1.jpg"
+                    }
+                }))
+            }),
+        );
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, mock_tvdb_router).await.unwrap();
+    });
+
+    let mut config = Config::from_env();
+    config.tvdb_api_key = Some("test_tvdb_key".to_string());
+    config.tvdb_base_url = format!("http://{}", addr);
+    let config = Arc::new(config);
+    let state = AppState {
+        pool: pool.clone(),
+        config: config.clone(),
+        oidc_client: None,
+        image_notify: Arc::new(tokio::sync::Notify::new()),
+        metadata_notify: Arc::new(tokio::sync::Notify::new()),
+        log_buffer: Arc::new(bingesync::api::logs::LogBuffer::new(500)),
+        task_tracker: Arc::new(bingesync::api::jobs::BackgroundTaskTracker::new()),
+    };
+
+    // 2. Create test user and insert a scrobble with missing overview, genres, actors, directors
+    let user_id = "test_user_tvdb";
+    sqlx::query("INSERT INTO users (id, email, display_name, webhook_token) VALUES (?, ?, ?, ?)")
+        .bind(user_id)
+        .bind("tvdb_tester@bingesync.local")
+        .bind("TVDB Tester")
+        .bind("token_tvdb_123")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let scrobble_id = uuid::Uuid::new_v4().to_string();
+    sqlx::query(
+        r#"
+        INSERT INTO scrobbles (
+            id, user_id, title, media_type, grandparent_title, parent_title,
+            season_number, episode_number, year, overview, thumb_url,
+            duration_ms, user_rating, watch_status, watched_at, created_at
+        ) VALUES (
+            ?, ?, ?, ?, ?, ?,
+            ?, ?, ?, ?, ?,
+            ?, ?, ?, ?, ?
+        )
+        "#
+    )
+    .bind(&scrobble_id)
+    .bind(user_id)
+    .bind("Pilot")
+    .bind("episode")
+    .bind("Breaking Bad")
+    .bind("Season 1")
+    .bind(1)
+    .bind(1)
+    .bind(2008)
+    .bind(None::<String>) // overview is empty
+    .bind(None::<String>) // thumb is empty
+    .bind(3480000_i64)
+    .bind(10)
+    .bind("completed")
+    .bind("2024-01-01T20:00:00Z")
+    .bind("2024-01-01T20:00:00Z")
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    // 3. Run TVDB metadata worker once
+    let processed = bingesync::api::tvdb::process_missing_metadata_once(&state).await;
+    assert_eq!(processed, 1);
+
+    // 4. Verify scrobble now has genres, actors, directors, and overview populated from TVDB!
+    let scrobble: Scrobble = sqlx::query_as("SELECT * FROM scrobbles WHERE id = ?")
+        .bind(&scrobble_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+    assert_eq!(scrobble.genres.as_deref(), Some("Crime, Drama, Thriller"));
+    assert_eq!(scrobble.actors.as_deref(), Some("Bryan Cranston, Aaron Paul"));
+    assert_eq!(scrobble.directors.as_deref(), Some("Vince Gilligan"));
+    assert!(scrobble.overview.is_some());
+    assert!(scrobble.overview.unwrap().contains("chemistry teacher"));
+}
+
+#[tokio::test]
+async fn test_item_other_watches_movies_and_exact_episodes() {
+    let (app, pool, config) = setup_test_app().await;
+
+    // 1. Create User A and User B
+    let user_a_id = "user_watch_a";
+    let token_a = "token_watch_a";
+    let jwt_a = create_jwt(user_a_id, "user_a@example.com", &config.jwt_secret).unwrap();
+    sqlx::query("INSERT INTO users (id, email, display_name, webhook_token, role) VALUES (?, ?, ?, ?, 'user')")
+        .bind(user_a_id)
+        .bind("user_a@example.com")
+        .bind("User A")
+        .bind(token_a)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let user_b_id = "user_watch_b";
+    let token_b = "token_watch_b";
+    let jwt_b = create_jwt(user_b_id, "user_b@example.com", &config.jwt_secret).unwrap();
+    sqlx::query("INSERT INTO users (id, email, display_name, webhook_token, role) VALUES (?, ?, ?, ?, 'user')")
+        .bind(user_b_id)
+        .bind("user_b@example.com")
+        .bind("User B")
+        .bind(token_b)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    // Helper to insert scrobbles
+    async fn insert_scrobble(
+        pool: &sqlx::SqlitePool,
+        user_id: &str,
+        title: &str,
+        media_type: &str,
+        grandparent_title: Option<&str>,
+        season_number: Option<i32>,
+        episode_number: Option<i32>,
+        year: Option<i32>,
+        watched_at: &str,
+    ) -> String {
+        let id = uuid::Uuid::new_v4().to_string();
+        sqlx::query(
+            r#"
+            INSERT INTO scrobbles (
+                id, user_id, title, media_type, grandparent_title, season_number, episode_number,
+                year, watched_at, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            "#,
+        )
+        .bind(&id)
+        .bind(user_id)
+        .bind(title)
+        .bind(media_type)
+        .bind(grandparent_title)
+        .bind(season_number)
+        .bind(episode_number)
+        .bind(year)
+        .bind(watched_at)
+        .bind(watched_at)
+        .execute(pool)
+        .await
+        .unwrap();
+        id
+    }
+
+    // 2. Insert watches for User A
+    // Inception (3 watches)
+    let incep_1 = insert_scrobble(&pool, user_a_id, "Inception", "movie", None, None, None, Some(2010), "2023-01-01T20:00:00Z").await;
+    let incep_2 = insert_scrobble(&pool, user_a_id, "Inception", "movie", None, None, None, Some(2010), "2023-06-15T21:00:00Z").await;
+    let incep_3 = insert_scrobble(&pool, user_a_id, "Inception", "movie", None, None, None, Some(2010), "2024-02-10T19:30:00Z").await;
+
+    // Interstellar (1 watch)
+    let inter_1 = insert_scrobble(&pool, user_a_id, "Interstellar", "movie", None, None, None, Some(2014), "2023-03-01T20:00:00Z").await;
+
+    // Breaking Bad S01E01 (2 watches)
+    let bb_s1e1_1 = insert_scrobble(&pool, user_a_id, "Pilot", "episode", Some("Breaking Bad"), Some(1), Some(1), Some(2008), "2023-04-01T20:00:00Z").await;
+    let bb_s1e1_2 = insert_scrobble(&pool, user_a_id, "Pilot", "episode", Some("Breaking Bad"), Some(1), Some(1), Some(2008), "2023-08-01T20:00:00Z").await;
+
+    // Breaking Bad S01E02 (1 watch) - Different episode!
+    let bb_s1e2_1 = insert_scrobble(&pool, user_a_id, "Cat's in the Bag...", "episode", Some("Breaking Bad"), Some(1), Some(2), Some(2008), "2023-04-02T20:00:00Z").await;
+
+    // Better Call Saul S01E01 (1 watch) - Different show!
+    let _bcs_s1e1_1 = insert_scrobble(&pool, user_a_id, "Uno", "episode", Some("Better Call Saul"), Some(1), Some(1), Some(2015), "2023-05-01T20:00:00Z").await;
+
+    // 3. Insert watches for User B (must NOT be visible to User A)
+    let _user_b_bb = insert_scrobble(&pool, user_b_id, "Pilot", "episode", Some("Breaking Bad"), Some(1), Some(1), Some(2008), "2023-09-01T20:00:00Z").await;
+    let _user_b_incep = insert_scrobble(&pool, user_b_id, "Inception", "movie", None, None, None, Some(2010), "2023-09-02T20:00:00Z").await;
+
+    // 4. Test User A querying Inception watch 1:
+    let req = Request::builder()
+        .uri(format!("/api/v1/history/{}/watches", incep_1))
+        .header(header::AUTHORIZATION, format!("Bearer {}", jwt_a))
+        .body(Body::empty())
+        .unwrap();
+
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let res: bingesync::api::history::ItemWatchesResponse = serde_json::from_slice(&body).unwrap();
+
+    assert_eq!(res.current_id, incep_1);
+    assert_eq!(res.total_watches, 3);
+    assert_eq!(res.other_watches.len(), 2);
+    // Ordered by watched_at DESC -> incep_3 (2024) then incep_2 (2023-06)
+    assert_eq!(res.other_watches[0].id, incep_3);
+    assert_eq!(res.other_watches[1].id, incep_2);
+
+    // 5. Test User A querying Breaking Bad S01E01 watch 1:
+    // Must ONLY return S01E01 watch 2 (NOT S01E02, NOT other shows, NOT User B)
+    let req = Request::builder()
+        .uri(format!("/api/v1/history/{}/watches", bb_s1e1_1))
+        .header(header::AUTHORIZATION, format!("Bearer {}", jwt_a))
+        .body(Body::empty())
+        .unwrap();
+
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let res: bingesync::api::history::ItemWatchesResponse = serde_json::from_slice(&body).unwrap();
+
+    assert_eq!(res.current_id, bb_s1e1_1);
+    assert_eq!(res.total_watches, 2);
+    assert_eq!(res.other_watches.len(), 1);
+    assert_eq!(res.other_watches[0].id, bb_s1e1_2);
+    assert_eq!(res.other_watches[0].season_number, Some(1));
+    assert_eq!(res.other_watches[0].episode_number, Some(1));
+
+    // 6. Test User A querying Breaking Bad S01E02 (different episode):
+    // Has only 1 watch -> total_watches = 1, other_watches = []
+    let req = Request::builder()
+        .uri(format!("/api/v1/history/{}/watches", bb_s1e2_1))
+        .header(header::AUTHORIZATION, format!("Bearer {}", jwt_a))
+        .body(Body::empty())
+        .unwrap();
+
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let res: bingesync::api::history::ItemWatchesResponse = serde_json::from_slice(&body).unwrap();
+
+    assert_eq!(res.current_id, bb_s1e2_1);
+    assert_eq!(res.total_watches, 1);
+    assert_eq!(res.other_watches.len(), 0);
+
+    // 7. Test User A querying Interstellar:
+    let req = Request::builder()
+        .uri(format!("/api/v1/history/{}/watches", inter_1))
+        .header(header::AUTHORIZATION, format!("Bearer {}", jwt_a))
+        .body(Body::empty())
+        .unwrap();
+
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let res: bingesync::api::history::ItemWatchesResponse = serde_json::from_slice(&body).unwrap();
+    assert_eq!(res.total_watches, 1);
+    assert_eq!(res.other_watches.len(), 0);
+
+    // 8. Test isolation: User B attempting to query User A's scrobble returns 404 Not Found
+    let req = Request::builder()
+        .uri(format!("/api/v1/history/{}/watches", incep_1))
+        .header(header::AUTHORIZATION, format!("Bearer {}", jwt_b))
+        .body(Body::empty())
+        .unwrap();
+
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn test_admin_settings_logs_and_tasks_management() {
+    let (app, pool, config) = setup_test_app().await;
+
+    // 1. Create Admin User and Standard User
+    let admin_id = "test_admin_user";
+    let admin_jwt = create_jwt(admin_id, "admin@test.local", &config.jwt_secret).unwrap();
+    sqlx::query("INSERT INTO users (id, email, display_name, webhook_token, role) VALUES (?, ?, ?, ?, 'admin')")
+        .bind(admin_id)
+        .bind("admin@test.local")
+        .bind("Admin")
+        .bind("admin_token")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let standard_id = "test_standard_user";
+    let standard_jwt = create_jwt(standard_id, "user@test.local", &config.jwt_secret).unwrap();
+    sqlx::query("INSERT INTO users (id, email, display_name, webhook_token, role) VALUES (?, ?, ?, ?, 'user')")
+        .bind(standard_id)
+        .bind("user@test.local")
+        .bind("Standard")
+        .bind("user_token")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    // 2. Non-admin attempting to access settings returns 403 Forbidden
+    let req = Request::builder()
+        .uri("/api/v1/admin/settings")
+        .header(header::AUTHORIZATION, format!("Bearer {}", standard_jwt))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+
+    // 3. Admin querying settings returns 200 OK
+    let req = Request::builder()
+        .uri("/api/v1/admin/settings")
+        .header(header::AUTHORIZATION, format!("Bearer {}", admin_jwt))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // 4. Admin updating settings
+    let update_body = json!({
+        "radarr_url": "http://radarr.local:7878",
+        "radarr_api_key": "radarr_key_xyz123",
+        "sonarr_url": "http://sonarr.local:8989",
+        "sonarr_api_key": "sonarr_key_abc456",
+        "tvdb_api_key": "tvdb_dyn_key_789",
+        "tvdb_pin": "1234",
+        "oidc_enabled": true,
+        "oidc_issuer_url": "https://auth.local",
+        "oidc_client_id": "bs-client",
+        "oidc_client_secret": "secret999"
+    });
+
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/admin/settings")
+        .header(header::AUTHORIZATION, format!("Bearer {}", admin_jwt))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(update_body.to_string()))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // Verify settings were persisted and secrets are masked
+    let req = Request::builder()
+        .uri("/api/v1/admin/settings")
+        .header(header::AUTHORIZATION, format!("Bearer {}", admin_jwt))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let settings: bingesync::api::settings::SystemSettingsView = serde_json::from_slice(&body).unwrap();
+
+    assert_eq!(settings.radarr_url.as_deref(), Some("http://radarr.local:7878"));
+    assert!(settings.radarr_api_key_configured);
+    assert_eq!(settings.radarr_api_key_masked.as_deref(), Some("••••••••"));
+    assert_eq!(settings.sonarr_url.as_deref(), Some("http://sonarr.local:8989"));
+    assert!(settings.sonarr_api_key_configured);
+    assert!(settings.tvdb_api_key_configured);
+    assert_eq!(settings.tvdb_pin.as_deref(), Some("1234"));
+    assert!(settings.oidc_enabled);
+
+    // 5. Test logs endpoint
+    let req = Request::builder()
+        .uri("/api/v1/admin/logs")
+        .header(header::AUTHORIZATION, format!("Bearer {}", admin_jwt))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let logs_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert!(logs_json["entries"].is_array());
+
+    // 6. Test background tasks endpoint
+    let req = Request::builder()
+        .uri("/api/v1/admin/tasks")
+        .header(header::AUTHORIZATION, format!("Bearer {}", admin_jwt))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let tasks_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let tasks = tasks_json["tasks"].as_array().unwrap();
+    assert_eq!(tasks.len(), 2);
+    assert!(tasks.iter().any(|t| t["id"] == "image_cache"));
+    assert!(tasks.iter().any(|t| t["id"] == "tvdb_metadata"));
+
+    // 7. Test triggering background task run
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/admin/tasks/image_cache/run")
+        .header(header::AUTHORIZATION, format!("Bearer {}", admin_jwt))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn test_stats_top_movies() {
+    let (app, pool, config) = setup_test_app().await;
+
+    let user_id = "stats_movies_user";
+    let token = create_jwt(user_id, "stats@test.local", &config.jwt_secret).unwrap();
+    sqlx::query("INSERT INTO users (id, email, display_name, webhook_token, role) VALUES (?, ?, ?, ?, 'user')")
+        .bind(user_id)
+        .bind("stats@test.local")
+        .bind("Movie Buff")
+        .bind("buff_token")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    // Insert 3 watches of Inception and 1 watch of Interstellar
+    for (title, date) in [
+        ("Inception", "2023-01-01T20:00:00Z"),
+        ("Inception", "2023-02-01T20:00:00Z"),
+        ("Inception", "2023-03-01T20:00:00Z"),
+        ("Interstellar", "2023-04-01T20:00:00Z"),
+    ] {
+        let id = uuid::Uuid::new_v4().to_string();
+        sqlx::query(
+            "INSERT INTO scrobbles (id, user_id, title, media_type, year, duration_ms, watched_at, created_at) VALUES (?, ?, ?, 'movie', 2010, 7200000, ?, ?)"
+        )
+        .bind(id)
+        .bind(user_id)
+        .bind(title)
+        .bind(date)
+        .bind(date)
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+
+    let req = Request::builder()
+        .uri("/api/v1/stats")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let stats: StatsSummary = serde_json::from_slice(&body).unwrap();
+
+    assert_eq!(stats.movies_watched, 4);
+    assert_eq!(stats.top_movies.len(), 2);
+    assert_eq!(stats.top_movies[0].title, "Inception");
+    assert_eq!(stats.top_movies[0].count, 3);
+    assert_eq!(stats.top_movies[1].title, "Interstellar");
+    assert_eq!(stats.top_movies[1].count, 1);
+}
+
+#[tokio::test]
+async fn test_scrobble_progress_threshold_and_deduplication() {
+    let (app, pool, config) = setup_test_app().await;
+
+    let user_id = "test_user_progress";
+    let webhook_token = "progress_token_123";
+    sqlx::query("INSERT INTO users (id, email, display_name, webhook_token, role) VALUES (?, ?, ?, ?, 'admin')")
+        .bind(user_id)
+        .bind("progress@test.local")
+        .bind("Progress Tester")
+        .bind(webhook_token)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let admin_jwt = create_jwt(user_id, "progress@test.local", &config.jwt_secret).unwrap();
+
+    // 1. Play movie at 30% progress (below 80% default threshold)
+    let payload_play_30 = serde_json::json!({
+        "event": "media.play",
+        "Metadata": {
+            "title": "The Matrix",
+            "type": "movie",
+            "year": 1999,
+            "duration": 10000,
+            "viewOffset": 3000
+        }
+    });
+
+    let req = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/webhooks/plex?token={}", webhook_token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(serde_json::to_vec(&payload_play_30).unwrap()))
+        .unwrap();
+
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = serde_json::from_slice(&axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(body["status"], "session_updated");
+    assert_eq!(body["watch_status"], "in_progress");
+    assert_eq!(body["progress_percent"], 30);
+
+    // Verify 1 scrobble in DB
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE user_id = ? AND title = 'The Matrix'")
+        .bind(user_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(count, 1);
+
+    // 2. Play movie at 85% progress on same day (exceeds 80% threshold -> marked completed and deduplicated)
+    let payload_play_85 = serde_json::json!({
+        "event": "media.play",
+        "Metadata": {
+            "title": "The Matrix",
+            "type": "movie",
+            "year": 1999,
+            "duration": 10000,
+            "viewOffset": 8500
+        }
+    });
+
+    let req = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/webhooks/plex?token={}", webhook_token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(serde_json::to_vec(&payload_play_85).unwrap()))
+        .unwrap();
+
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = serde_json::from_slice(&axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(body["watch_status"], "completed");
+    assert_eq!(body["progress_percent"], 85);
+
+    // Verify SAME-DAY DEDUPLICATION: Still exactly 1 record in DB!
+    let count_after: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE user_id = ? AND title = 'The Matrix'")
+        .bind(user_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(count_after, 1);
+
+    // 3. Dynamically reconfigure completion threshold to 90% via admin settings
+    let update_settings_req = Request::builder()
+        .method("PUT")
+        .uri("/api/v1/admin/settings")
+        .header(header::AUTHORIZATION, format!("Bearer {}", admin_jwt))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(serde_json::to_vec(&serde_json::json!({
+            "scrobble_threshold_percent": 90
+        })).unwrap()))
+        .unwrap();
+
+    let resp = app.clone().oneshot(update_settings_req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // 4. Play a new movie "Inception" at 85% (now BELOW the new 90% threshold -> in_progress)
+    let payload_inception_85 = serde_json::json!({
+        "event": "media.play",
+        "Metadata": {
+            "title": "Inception",
+            "type": "movie",
+            "year": 2010,
+            "duration": 10000,
+            "viewOffset": 8500
+        }
+    });
+
+    let req = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/webhooks/plex?token={}", webhook_token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(serde_json::to_vec(&payload_inception_85).unwrap()))
+        .unwrap();
+
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = serde_json::from_slice(&axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(body["watch_status"], "in_progress");
+    assert_eq!(body["progress_percent"], 85);
+
+    // 5. Play "Inception" at 95% (exceeds 90% -> completed)
+    let payload_inception_95 = serde_json::json!({
+        "event": "media.play",
+        "Metadata": {
+            "title": "Inception",
+            "type": "movie",
+            "year": 2010,
+            "duration": 10000,
+            "viewOffset": 9500
+        }
+    });
+
+    let req = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/webhooks/plex?token={}", webhook_token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(serde_json::to_vec(&payload_inception_95).unwrap()))
+        .unwrap();
+
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = serde_json::from_slice(&axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(body["watch_status"], "completed");
+    assert_eq!(body["progress_percent"], 95);
+
+    // Verify deduplication: exactly 1 Inception scrobble
+    let count_inception: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE user_id = ? AND title = 'Inception'")
+        .bind(user_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(count_inception, 1);
+}
+
+#[tokio::test]
+async fn test_tautulli_import_and_deduplication() {
+    let (app, pool, config) = setup_test_app().await;
+
+    let user_id = "test_user_tautulli";
+    let token = create_jwt(user_id, "tautulli_user@test.local", &config.jwt_secret).unwrap();
+
+    sqlx::query(
+        "INSERT INTO users (id, email, display_name, preferred_username, webhook_token, role) VALUES (?, ?, ?, ?, ?, 'user')"
+    )
+    .bind(user_id)
+    .bind("tautulli_user@test.local")
+    .bind("Tautulli Fan")
+    .bind("daryl_tautulli")
+    .bind("tautulli_wh_token")
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    // 1. Verify GET /api/v1/auth/me returns preferred_username
+    let me_req = Request::builder()
+        .uri("/api/v1/auth/me")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .body(Body::empty())
+        .unwrap();
+    let me_resp = app.clone().oneshot(me_req).await.unwrap();
+    assert_eq!(me_resp.status(), StatusCode::OK);
+    let me_body: serde_json::Value = serde_json::from_slice(&axum::body::to_bytes(me_resp.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(me_body["preferred_username"], "daryl_tautulli");
+
+    // 2. Import Tautulli JSON content containing 2 items for "daryl_tautulli" and 1 item for "stranger"
+    let tautulli_json = serde_json::json!({
+        "response": {
+            "result": "success",
+            "data": {
+                "data": [
+                    {
+                        "user": "daryl_tautulli",
+                        "media_type": "movie",
+                        "title": "The Prestige",
+                        "year": 2006,
+                        "date": 1672531200,
+                        "duration": 7800,
+                        "rating_key": "5001",
+                        "percent_complete": 100
+                    },
+                    {
+                        "user": "daryl_tautulli",
+                        "media_type": "episode",
+                        "grandparent_title": "Succession",
+                        "title": "All the Bells Say",
+                        "parent_media_index": 3,
+                        "media_index": 9,
+                        "year": 2021,
+                        "date": 1672617600,
+                        "duration": 3600,
+                        "rating_key": "5002",
+                        "percent_complete": 100
+                    },
+                    {
+                        "user": "stranger",
+                        "media_type": "movie",
+                        "title": "Fight Club",
+                        "year": 1999,
+                        "date": 1672704000,
+                        "duration": 8000,
+                        "rating_key": "5003"
+                    }
+                ]
+            }
+        }
+    });
+
+    let import_req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/import/tautulli")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(serde_json::to_vec(&serde_json::json!({
+            "username": "daryl_tautulli",
+            "content": tautulli_json.to_string(),
+        })).unwrap()))
+        .unwrap();
+
+    let import_resp = app.clone().oneshot(import_req).await.unwrap();
+    assert_eq!(import_resp.status(), StatusCode::OK);
+    let import_body: serde_json::Value = serde_json::from_slice(&axum::body::to_bytes(import_resp.into_body(), usize::MAX).await.unwrap()).unwrap();
+
+    // 2 imported for daryl_tautulli, 0 skipped, stranger's movie was filtered out!
+    assert_eq!(import_body["status"], "success");
+    assert_eq!(import_body["imported"], 2);
+    assert_eq!(import_body["skipped"], 0);
+
+    // Verify database contents
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE user_id = ?")
+        .bind(user_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(count, 2);
+
+    // Verify "Fight Club" is NOT in DB
+    let fc_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE user_id = ? AND title = 'Fight Club'")
+        .bind(user_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(fc_count, 0);
+
+    // 3. Re-import the exact same data -> DEDUPLICATION MUST SKIP THEM ALL!
+    let reimport_req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/import/tautulli")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(serde_json::to_vec(&serde_json::json!({
+            "username": "daryl_tautulli",
+            "content": tautulli_json.to_string(),
+        })).unwrap()))
+        .unwrap();
+
+    let reimport_resp = app.clone().oneshot(reimport_req).await.unwrap();
+    assert_eq!(reimport_resp.status(), StatusCode::OK);
+    let reimport_body: serde_json::Value = serde_json::from_slice(&axum::body::to_bytes(reimport_resp.into_body(), usize::MAX).await.unwrap()).unwrap();
+
+    // 0 imported, 2 skipped
+    assert_eq!(reimport_body["imported"], 0);
+    assert_eq!(reimport_body["skipped"], 2);
+
+    // DB count remains exactly 2!
+    let count_after: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE user_id = ?")
+        .bind(user_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(count_after, 2);
+
+    // 4. Import from Tautulli CSV export
+    let tautulli_csv = "date,friendly_name,user,title,media_type,rating_key,full_title,year,media_index,parent_media_index,duration,percent_complete\n1672800000,Daryl,daryl_tautulli,Good News About Hell,episode,9001,Severance - s01e01 - Good News About Hell,2022,1,1,3200,100\n";
+
+    let csv_req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/import/tautulli")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(serde_json::to_vec(&serde_json::json!({
+            "username": "daryl_tautulli",
+            "content": tautulli_csv,
+        })).unwrap()))
+        .unwrap();
+
+    let csv_resp = app.clone().oneshot(csv_req).await.unwrap();
+    assert_eq!(csv_resp.status(), StatusCode::OK);
+    let csv_body: serde_json::Value = serde_json::from_slice(&axum::body::to_bytes(csv_resp.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(csv_body["imported"], 1);
+    assert_eq!(csv_body["skipped"], 0);
+
+    // Verify Severance episode in DB
+    let sev_scrobble: (String, String, i32, i32) = sqlx::query_as(
+        "SELECT grandparent_title, title, season_number, episode_number FROM scrobbles WHERE user_id = ? AND title = 'Good News About Hell'"
+    )
+    .bind(user_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+
+    assert_eq!(sev_scrobble.0, "Severance");
+    assert_eq!(sev_scrobble.1, "Good News About Hell");
+    assert_eq!(sev_scrobble.2, 1);
+    assert_eq!(sev_scrobble.3, 1);
+}
+
+#[tokio::test]
+async fn test_rate_watched_item() {
+    let (app, pool, _config) = setup_test_app().await;
+
+    // Create User A
+    let user_a = bingesync::api::auth::get_or_create_user(
+        &pool,
+        "rater_a@bingesync.local",
+        "Rater A",
+        None,
+        None,
+        false,
+    )
+    .await
+    .unwrap();
+    let token_a = create_jwt(&user_a.id, "rater_a@bingesync.local", "test-secret-key-12345").unwrap();
+
+    // Create User B
+    let user_b = bingesync::api::auth::get_or_create_user(
+        &pool,
+        "rater_b@bingesync.local",
+        "Rater B",
+        None,
+        None,
+        false,
+    )
+    .await
+    .unwrap();
+    let token_b = create_jwt(&user_b.id, "rater_b@bingesync.local", "test-secret-key-12345").unwrap();
+
+    // 1. Create a scrobble for User A
+    let create_req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/history")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token_a))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(
+            json!({
+                "title": "Interstellar",
+                "media_type": "movie",
+                "year": 2014,
+                "duration_ms": 10140000
+            })
+            .to_string(),
+        ))
+        .unwrap();
+
+    let res = app.clone().oneshot(create_req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::CREATED);
+    let created: serde_json::Value = serde_json::from_slice(&axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let scrobble_id = created["id"].as_str().unwrap().to_string();
+
+    // 2. User A rates the item 9/10
+    let rate_req = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/history/{}/rate", scrobble_id))
+        .header(header::AUTHORIZATION, format!("Bearer {}", token_a))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(json!({ "rating": 9 }).to_string()))
+        .unwrap();
+
+    let res = app.clone().oneshot(rate_req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body: serde_json::Value = serde_json::from_slice(&axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(body["status"], "success");
+    assert_eq!(body["rating"], 9);
+
+    // Verify rating in DB
+    let db_rating: Option<i32> = sqlx::query_scalar("SELECT user_rating FROM scrobbles WHERE id = ?")
+        .bind(&scrobble_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(db_rating, Some(9));
+
+    // 3. User A updates rating to 10/10 via PUT
+    let put_req = Request::builder()
+        .method("PUT")
+        .uri(format!("/api/v1/history/{}/rate", scrobble_id))
+        .header(header::AUTHORIZATION, format!("Bearer {}", token_a))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(json!({ "rating": 10 }).to_string()))
+        .unwrap();
+
+    let res = app.clone().oneshot(put_req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let db_rating: Option<i32> = sqlx::query_scalar("SELECT user_rating FROM scrobbles WHERE id = ?")
+        .bind(&scrobble_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(db_rating, Some(10));
+
+    // 4. Invalid rating (> 10) returns 400 Bad Request
+    let invalid_req = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/history/{}/rate", scrobble_id))
+        .header(header::AUTHORIZATION, format!("Bearer {}", token_a))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(json!({ "rating": 11 }).to_string()))
+        .unwrap();
+
+    let res = app.clone().oneshot(invalid_req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+
+    // Invalid rating (< 1) returns 400 Bad Request
+    let invalid_req_zero = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/history/{}/rate", scrobble_id))
+        .header(header::AUTHORIZATION, format!("Bearer {}", token_a))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(json!({ "rating": 0 }).to_string()))
+        .unwrap();
+
+    let res = app.clone().oneshot(invalid_req_zero).await.unwrap();
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+
+    // 5. User B attempts to rate User A's scrobble -> 404 (multi-user isolation)
+    let b_req = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/history/{}/rate", scrobble_id))
+        .header(header::AUTHORIZATION, format!("Bearer {}", token_b))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(json!({ "rating": 5 }).to_string()))
+        .unwrap();
+
+    let res = app.clone().oneshot(b_req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
+
+    // 6. User A clears rating (sets to null)
+    let clear_req = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/history/{}/rate", scrobble_id))
+        .header(header::AUTHORIZATION, format!("Bearer {}", token_a))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(json!({ "rating": null }).to_string()))
+        .unwrap();
+
+    let res = app.clone().oneshot(clear_req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let db_rating: Option<i32> = sqlx::query_scalar("SELECT user_rating FROM scrobbles WHERE id = ?")
+        .bind(&scrobble_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(db_rating, None);
+}
+
+#[tokio::test]
+async fn test_openapi_spec_and_swagger_ui() {
+    let (app, _pool, _config) = setup_test_app().await;
+
+    // 1. Fetch OpenAPI specification JSON
+    let spec_req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/openapi.json")
+        .body(Body::empty())
+        .unwrap();
+
+    let spec_res = app.clone().oneshot(spec_req).await.unwrap();
+    assert_eq!(spec_res.status(), StatusCode::OK);
+    assert_eq!(
+        spec_res.headers().get(header::CONTENT_TYPE).unwrap(),
+        "application/json; charset=utf-8"
+    );
+
+    let spec_bytes = axum::body::to_bytes(spec_res.into_body(), usize::MAX).await.unwrap();
+    let spec_json: serde_json::Value = serde_json::from_slice(&spec_bytes).expect("Valid OpenAPI JSON");
+    assert_eq!(spec_json["openapi"], "3.0.3");
+    assert_eq!(spec_json["info"]["title"], "BingeSync API");
+    assert!(spec_json["paths"]["/api/v1/history/{id}/rate"].is_object());
+    assert!(spec_json["paths"]["/api/v1/import/tautulli"].is_object());
+    assert!(spec_json["paths"]["/api/v1/admin/tasks"].is_object());
+
+    // 2. Fetch Swagger UI HTML at /docs
+    let docs_req = Request::builder()
+        .method("GET")
+        .uri("/docs")
+        .body(Body::empty())
+        .unwrap();
+
+    let docs_res = app.clone().oneshot(docs_req).await.unwrap();
+    assert_eq!(docs_res.status(), StatusCode::OK);
+    let docs_body = String::from_utf8(
+        axum::body::to_bytes(docs_res.into_body(), usize::MAX).await.unwrap().to_vec()
+    ).unwrap();
+    assert!(docs_body.contains("Swagger UI"));
+    assert!(docs_body.contains("BingeSync API"));
+    assert!(docs_body.contains("swagger-ui"));
+
+    // 3. Fetch Swagger UI HTML at /swagger
+    let swagger_req = Request::builder()
+        .method("GET")
+        .uri("/swagger")
+        .body(Body::empty())
+        .unwrap();
+
+    let swagger_res = app.oneshot(swagger_req).await.unwrap();
+    assert_eq!(swagger_res.status(), StatusCode::OK);
+    let swagger_body = String::from_utf8(
+        axum::body::to_bytes(swagger_res.into_body(), usize::MAX).await.unwrap().to_vec()
+    ).unwrap();
+    assert!(swagger_body.contains("Swagger UI"));
+}
+
+
+
+
+
+
+
 
 
 

@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#181324" />
+      <stop offset="100%" stop-color="#0a0d17" />
+    </linearGradient>
+    <linearGradient id="rose" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fb7185" />
+      <stop offset="100%" stop-color="#e11d48" />
+    </linearGradient>
+  </defs>
+  <rect width="32" height="32" rx="7.5" fill="url(#bg)" stroke="#e11d48" stroke-width="1.2" stroke-opacity="0.5"/>
+  <path d="M24 16a8 8 0 0 0-8-8 8.6 8.6 0 0 0-5.8 2.3L6 13" fill="none" stroke="url(#rose)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M6 8v5h5" fill="none" stroke="url(#rose)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M8 16a8 8 0 0 0 8 8 8.6 8.6 0 0 0 5.8-2.3L26 19" fill="none" stroke="url(#rose)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M21 24h5v-5" fill="none" stroke="url(#rose)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <polygon points="13 11.5 21 16 13 20.5 13 11.5" fill="url(#rose)"/>
+</svg>

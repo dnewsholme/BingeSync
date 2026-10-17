@@ -14,6 +14,11 @@ const state = {
     person: '',
     rating: 'all',
     watch_status: 'all',
+    days: [],
+    hasMore: false,
+  },
+  admin: {
+    activeSubview: 'admin-sub-users',
   },
   history: {
     page: 1,
@@ -95,6 +100,7 @@ const el = {
   // Timeline View
   timelineContainer: document.getElementById('timeline-container'),
   btnRefreshTimeline: document.getElementById('btn-refresh-timeline'),
+  timelineSearchWrap: document.getElementById('timeline-search-wrap'),
   timelineSearch: document.getElementById('timeline-search'),
   timelineDateFilter: document.getElementById('timeline-date-filter'),
   timelineGenreFilter: document.getElementById('timeline-genre-filter'),
@@ -102,6 +108,11 @@ const el = {
   timelineRatingFilter: document.getElementById('timeline-rating-filter'),
   timelineStatusFilter: document.getElementById('timeline-status-filter'),
   btnResetTimelineFilters: document.getElementById('btn-reset-timeline-filters'),
+  timelineScrubber: document.getElementById('timeline-scrubber'),
+  timelineScrubberList: document.getElementById('timeline-scrubber-list'),
+  timelineLoadMoreWrap: document.getElementById('timeline-load-more-wrap'),
+  btnTimelineLoadMore: document.getElementById('btn-timeline-load-more'),
+  timelinePaginationInfo: document.getElementById('timeline-pagination-info'),
 
   // History View
   historySearch: document.getElementById('history-search'),
@@ -129,6 +140,8 @@ const el = {
   statStreak: document.getElementById('stat-streak'),
   topShowsList: document.getElementById('top-shows-list'),
   topShowsSection: document.getElementById('top-shows-section'),
+  topMoviesList: document.getElementById('top-movies-list'),
+  topMoviesSection: document.getElementById('top-movies-section'),
   statsFilterPills: document.querySelectorAll('#stats-filter-pills .pill'),
   activityChart: document.getElementById('activity-chart'),
   genresChart: document.getElementById('genres-chart'),
@@ -151,6 +164,7 @@ const el = {
   scrobbleRating: document.getElementById('scrobble-rating'),
 
   btnOpenImportModal: document.getElementById('btn-open-import-modal'),
+  btnOpenTautulliModal: document.getElementById('btn-open-tautulli-modal'),
   modalImportTrakt: document.getElementById('modal-import-trakt'),
   btnCloseImportModal: document.getElementById('btn-close-import-modal'),
   btnCancelImportModal: document.getElementById('btn-cancel-import-modal'),
@@ -158,6 +172,21 @@ const el = {
   importFileInput: document.getElementById('import-file-input'),
   importPasteInput: document.getElementById('import-paste-input'),
   importStatusBox: document.getElementById('import-status-box'),
+
+  // Tautulli Modal
+  modalImportTautulli: document.getElementById('modal-import-tautulli'),
+  btnCloseTautulliModal: document.getElementById('btn-close-tautulli-modal'),
+  btnCancelTautulliModal: document.getElementById('btn-cancel-tautulli-modal'),
+  formImportTautulli: document.getElementById('form-import-tautulli'),
+  tautulliImportUsername: document.getElementById('tautulli-import-username'),
+  btnFetchTautulliUsers: document.getElementById('btn-fetch-tautulli-users'),
+  tautulliUsersSelect: document.getElementById('tautulli-users-select'),
+  tautulliImportUrl: document.getElementById('tautulli-import-url'),
+  tautulliImportApiKey: document.getElementById('tautulli-import-api-key'),
+  tautulliFileInput: document.getElementById('tautulli-file-input'),
+  tautulliPasteInput: document.getElementById('tautulli-paste-input'),
+  tautulliImportStatus: document.getElementById('tautulli-import-status'),
+  btnSubmitTautulliImport: document.getElementById('btn-submit-tautulli-import'),
 
   modalItemDetail: document.getElementById('modal-item-detail'),
   btnCloseDetailModal: document.getElementById('btn-close-detail-modal'),
@@ -168,12 +197,44 @@ const el = {
   detailImdbLink: document.getElementById('detail-imdb-link'),
   btnDeleteShowScrobbles: document.getElementById('btn-delete-show-scrobbles'),
 
-  // Admin User Management
+  // Admin Management & Subviews
   tabAdmin: document.getElementById('tab-admin'),
+  adminSubnavPills: document.getElementById('admin-subnav-pills'),
   adminUsersTbody: document.getElementById('admin-users-tbody'),
   btnRefreshAdminUsers: document.getElementById('btn-refresh-admin-users'),
   adminBackchannelUrlInput: document.getElementById('admin-backchannel-url-input'),
   btnCopyBackchannelUrl: document.getElementById('btn-copy-backchannel-url'),
+
+  // Admin Settings
+  formAdminSettings: document.getElementById('form-admin-settings'),
+  btnSaveAdminSettings: document.getElementById('btn-save-admin-settings'),
+  adminSettingsStatus: document.getElementById('admin-settings-status'),
+  settingRadarrUrl: document.getElementById('setting-radarr-url'),
+  settingRadarrApiKey: document.getElementById('setting-radarr-api-key'),
+  settingSonarrUrl: document.getElementById('setting-sonarr-url'),
+  settingSonarrApiKey: document.getElementById('setting-sonarr-api-key'),
+  settingTvdbApiKey: document.getElementById('setting-tvdb-api-key'),
+  settingTvdbPin: document.getElementById('setting-tvdb-pin'),
+  settingTvdbBaseUrl: document.getElementById('setting-tvdb-base-url'),
+  settingTautulliUrl: document.getElementById('setting-tautulli-url'),
+  settingTautulliApiKey: document.getElementById('setting-tautulli-api-key'),
+  settingOidcEnabled: document.getElementById('setting-oidc-enabled'),
+  settingOidcIssuerUrl: document.getElementById('setting-oidc-issuer-url'),
+  settingOidcClientId: document.getElementById('setting-oidc-client-id'),
+  settingOidcClientSecret: document.getElementById('setting-oidc-client-secret'),
+  settingOidcRedirectUrl: document.getElementById('setting-oidc-redirect-url'),
+  settingScrobbleThreshold: document.getElementById('setting-scrobble-threshold'),
+
+  // Admin Background Tasks
+  btnRefreshAdminTasks: document.getElementById('btn-refresh-admin-tasks'),
+  adminTasksContainer: document.getElementById('admin-tasks-container'),
+
+  // Admin Application Logs
+  btnRefreshAdminLogs: document.getElementById('btn-refresh-admin-logs'),
+  btnClearAdminLogs: document.getElementById('btn-clear-admin-logs'),
+  adminLogsViewer: document.getElementById('admin-logs-viewer'),
+  adminLogsFilterLevel: document.getElementById('admin-logs-filter-level'),
+  adminLogsAutorefresh: document.getElementById('admin-logs-autorefresh'),
 };
 
 // Initialization
@@ -281,7 +342,11 @@ function switchTab(targetViewId) {
   if (targetViewId === 'view-history') loadHistory();
   if (targetViewId === 'view-stats') loadStats();
   if (targetViewId === 'view-settings') loadWebhookInfo();
-  if (targetViewId === 'view-admin') loadAdminUsers();
+  if (targetViewId === 'view-admin') {
+    switchAdminSubview(state.admin.activeSubview || 'admin-sub-users');
+  } else {
+    stopLogsAutoRefresh();
+  }
 }
 
 el.navTabs.forEach(tab => {
@@ -289,8 +354,13 @@ el.navTabs.forEach(tab => {
 });
 
 // View 1: Timeline
-async function loadTimeline() {
+async function loadTimeline(append = false) {
   try {
+    if (!append) {
+      state.timeline.offset = 0;
+      state.timeline.days = [];
+    }
+
     const days = await api.getTimeline({
       limit: state.timeline.limit,
       offset: state.timeline.offset,
@@ -301,10 +371,36 @@ async function loadTimeline() {
       rating: state.timeline.rating,
       watch_status: state.timeline.watch_status,
     });
-    renderTimeline(days);
+
+    if (append) {
+      if (days && days.length > 0) {
+        days.forEach(newDay => {
+          const existingDay = state.timeline.days.find(d => d.date === newDay.date);
+          if (existingDay) {
+            existingDay.items.push(...newDay.items);
+            existingDay.total_count += newDay.total_count;
+            existingDay.total_minutes += newDay.total_minutes;
+          } else {
+            state.timeline.days.push(newDay);
+          }
+        });
+        state.timeline.hasMore = days.length >= state.timeline.limit;
+      } else {
+        state.timeline.hasMore = false;
+      }
+    } else {
+      state.timeline.days = days || [];
+      state.timeline.hasMore = Boolean(days && days.length >= state.timeline.limit);
+    }
+
+    renderTimeline(state.timeline.days);
+    renderTimelineScrubber(state.timeline.days);
+    renderTimelinePagination();
   } catch (err) {
     console.error('Error loading timeline:', err);
-    el.timelineContainer.innerHTML = `<div class="empty-state"><p>Failed to load timeline. Please try again.</p></div>`;
+    if (!append) {
+      el.timelineContainer.innerHTML = `<div class="empty-state"><p>Failed to load timeline. Please try again.</p></div>`;
+    }
   }
 }
 
@@ -373,10 +469,90 @@ function renderTimeline(days) {
   attachScrobbleCardListeners(el.timelineContainer, days.flatMap(d => d.items));
 }
 
+function renderTimelineScrubber(days) {
+  if (!el.timelineScrubber || !el.timelineScrubberList) return;
+  if (!days || days.length === 0) {
+    el.timelineScrubber.style.display = 'none';
+    el.timelineScrubberList.innerHTML = '';
+    return;
+  }
+
+  el.timelineScrubber.style.display = 'block';
+  const dateMap = new Map();
+  days.forEach(d => {
+    if (!dateMap.has(d.date)) {
+      dateMap.set(d.date, d.total_count);
+    }
+  });
+
+  el.timelineScrubberList.innerHTML = Array.from(dateMap.entries()).map(([dateStr, count]) => {
+    const formatted = formatDisplayDate(dateStr);
+    return `<button class="scrubber-item" data-date="${dateStr}" title="Jump to ${formatted} (${count} watches)">${formatted}</button>`;
+  }).join('');
+
+  el.timelineScrubberList.querySelectorAll('.scrubber-item').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const date = btn.dataset.date;
+      const targetDay = el.timelineContainer.querySelector(`.timeline-day[data-date="${date}"]`);
+      if (targetDay) {
+        targetDay.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    });
+  });
+}
+
+function renderTimelinePagination() {
+  if (!el.timelineLoadMoreWrap) return;
+  if (state.timeline.hasMore) {
+    el.timelineLoadMoreWrap.style.display = 'flex';
+    const totalItems = state.timeline.days.reduce((acc, d) => acc + d.items.length, 0);
+    if (el.timelinePaginationInfo) {
+      el.timelinePaginationInfo.textContent = `Showing ${totalItems} scrobbles across ${state.timeline.days.length} days`;
+    }
+  } else {
+    el.timelineLoadMoreWrap.style.display = 'none';
+  }
+}
+
+if (el.btnTimelineLoadMore) {
+  el.btnTimelineLoadMore.addEventListener('click', async () => {
+    el.btnTimelineLoadMore.disabled = true;
+    el.btnTimelineLoadMore.textContent = 'Loading...';
+    state.timeline.offset += state.timeline.limit;
+    await loadTimeline(true);
+    el.btnTimelineLoadMore.disabled = false;
+    el.btnTimelineLoadMore.textContent = 'Load More Watches';
+  });
+}
+
+// Expandable Search Interaction
+if (el.timelineSearchWrap && el.timelineSearch) {
+  el.timelineSearchWrap.addEventListener('click', () => {
+    el.timelineSearch.focus();
+    el.timelineSearchWrap.classList.add('expanded');
+  });
+
+  el.timelineSearch.addEventListener('focus', () => {
+    el.timelineSearchWrap.classList.add('expanded');
+  });
+
+  el.timelineSearch.addEventListener('blur', () => {
+    if (!el.timelineSearch.value.trim()) {
+      el.timelineSearchWrap.classList.remove('expanded');
+      el.timelineSearchWrap.classList.remove('has-value');
+    }
+  });
+}
+
 // Timeline Filter Event Listeners
 let timelineSearchTimer = null;
 if (el.timelineSearch) {
   el.timelineSearch.addEventListener('input', (e) => {
+    if (e.target.value.trim()) {
+      el.timelineSearchWrap?.classList.add('has-value');
+    } else {
+      el.timelineSearchWrap?.classList.remove('has-value');
+    }
     clearTimeout(timelineSearchTimer);
     timelineSearchTimer = setTimeout(() => {
       state.timeline.search = e.target.value.trim();
@@ -438,6 +614,10 @@ if (el.btnResetTimelineFilters) {
     state.timeline.watch_status = 'all';
 
     if (el.timelineSearch) el.timelineSearch.value = '';
+    if (el.timelineSearchWrap) {
+      el.timelineSearchWrap.classList.remove('expanded');
+      el.timelineSearchWrap.classList.remove('has-value');
+    }
     if (el.timelineDateFilter) el.timelineDateFilter.value = '';
     if (el.timelineGenreFilter) el.timelineGenreFilter.value = '';
     if (el.timelinePersonFilter) el.timelinePersonFilter.value = '';
@@ -481,12 +661,22 @@ function renderScrobbleCard(item, isHistory = false) {
 
   const imdbUrl = getImdbUrl(item);
 
+  const isInProgress = item.watch_status === 'in_progress';
+  const progressBadgeHtml = isInProgress
+    ? `<span class="scrobble-badge badge-in-progress" title="In progress: ${item.progress_percent || 0}%">⏳ ${item.progress_percent || 0}%</span>`
+    : '';
+
+  const progressBarHtml = isInProgress && (item.progress_percent != null)
+    ? `<div class="scrobble-progress-bar"><div class="scrobble-progress-fill" style="width: ${Math.min(100, Math.max(0, item.progress_percent))}%;"></div></div>`
+    : '';
+
   return `
     <div class="${cardClasses.join(' ')}" data-id="${item.id}">
       ${checkboxHtml}
       ${posterHtml}
       <div class="scrobble-header-badges">
         <span class="scrobble-badge ${badgeClass}">${badgeText}</span>
+        ${progressBadgeHtml}
         ${ratingHtml}
         <a href="${imdbUrl}" target="_blank" rel="noopener noreferrer" class="card-imdb-link" title="Open on IMDb" onclick="event.stopPropagation()">IMDb ↗</a>
       </div>
@@ -496,6 +686,7 @@ function renderScrobbleCard(item, isHistory = false) {
         <span>${formatTime(item.watched_at)}</span>
         <span>${durationMin}</span>
       </div>
+      ${progressBarHtml}
     </div>
   `;
 }
@@ -786,6 +977,32 @@ function renderStats() {
     }
   }
 
+  // Toggle Top Movies section
+  if (el.topMoviesSection) {
+    el.topMoviesSection.style.display = isTv ? 'none' : 'block';
+  }
+
+  // Render Top Movies
+  if (!isTv && el.topMoviesList) {
+    if (!s.top_movies || s.top_movies.length === 0) {
+      el.topMoviesList.innerHTML = `<div class="empty-state"><p>No movie history recorded yet.</p></div>`;
+    } else {
+      el.topMoviesList.innerHTML = s.top_movies.map(movie => `
+        <div class="top-show-item">
+          <div class="top-show-thumb">
+            ${resolveImageUrl(movie.thumb_url)
+              ? `<img src="${escapeHtml(resolveImageUrl(movie.thumb_url))}" alt="${escapeHtml(movie.title)}" onerror="this.outerHTML='🎬'"/>`
+              : '🎬'}
+          </div>
+          <div class="top-show-info">
+            <div class="top-show-name">${escapeHtml(movie.title)}${movie.year ? ` (${movie.year})` : ''}</div>
+            <div class="top-show-count">${movie.count} ${movie.count === 1 ? 'play' : 'plays'}</div>
+          </div>
+        </div>
+      `).join('');
+    }
+  }
+
   // Render Daily Activity Chart (Past 14 Days)
   if (el.activityChart) {
     if (!s.daily_activity || s.daily_activity.length === 0) {
@@ -884,6 +1101,27 @@ async function loadWebhookInfo() {
     el.webhookUrlInput.value = info.webhook_url;
   } catch (err) {
     console.error('Error loading webhook info:', err);
+  }
+
+  // Load TVDB integration status
+  const tvdbBadge = document.getElementById('tvdb-status-badge');
+  const tvdbText = document.getElementById('tvdb-status-text');
+  const tvdbDot = document.getElementById('tvdb-pulse-dot');
+  if (tvdbBadge && tvdbText) {
+    try {
+      const integrations = await api.getIntegrationsStatus();
+      if (integrations && integrations.tvdb_configured) {
+        tvdbText.textContent = 'TheTVDB Connected & Active (Background Enrichment Enabled)';
+        tvdbBadge.className = 'tvdb-status-badge tvdb-status-active';
+        if (tvdbDot) tvdbDot.className = 'pulse-dot-sm pulse-active';
+      } else {
+        tvdbText.textContent = 'TheTVDB API Key Not Configured (Set TVDB_API_KEY to enable)';
+        tvdbBadge.className = 'tvdb-status-badge tvdb-status-inactive';
+        if (tvdbDot) tvdbDot.className = 'pulse-dot-sm pulse-inactive';
+      }
+    } catch (e) {
+      tvdbText.textContent = 'TheTVDB Integration Active';
+    }
   }
 }
 
@@ -1072,6 +1310,134 @@ if (el.formImportTrakt) {
   });
 }
 
+// Modal: Tautulli Import
+if (el.btnOpenTautulliModal) {
+  el.btnOpenTautulliModal.addEventListener('click', () => {
+    if (el.formImportTautulli) el.formImportTautulli.reset();
+    if (el.tautulliImportStatus) {
+      el.tautulliImportStatus.style.display = 'none';
+      el.tautulliImportStatus.className = 'import-status-box';
+    }
+    // Default username to current user's preferred_username or username
+    if (el.tautulliImportUsername) {
+      el.tautulliImportUsername.value = state.user?.preferred_username || state.user?.display_name || (state.user?.email ? state.user.email.split('@')[0] : '');
+    }
+    if (el.tautulliUsersSelect) el.tautulliUsersSelect.style.display = 'none';
+    if (el.modalImportTautulli) el.modalImportTautulli.style.display = 'flex';
+  });
+}
+
+if (el.btnCloseTautulliModal) {
+  el.btnCloseTautulliModal.addEventListener('click', () => {
+    if (el.modalImportTautulli) el.modalImportTautulli.style.display = 'none';
+  });
+}
+
+if (el.btnCancelTautulliModal) {
+  el.btnCancelTautulliModal.addEventListener('click', () => {
+    if (el.modalImportTautulli) el.modalImportTautulli.style.display = 'none';
+  });
+}
+
+// Fetch users from Tautulli API
+if (el.btnFetchTautulliUsers) {
+  el.btnFetchTautulliUsers.addEventListener('click', async () => {
+    const url = el.tautulliImportUrl ? el.tautulliImportUrl.value.trim() : '';
+    const apiKey = el.tautulliImportApiKey ? el.tautulliImportApiKey.value.trim() : '';
+    el.btnFetchTautulliUsers.disabled = true;
+    el.btnFetchTautulliUsers.textContent = 'Fetching...';
+
+    try {
+      const res = await api.getTautulliUsers(url, apiKey);
+      if (res && res.users && res.users.length > 0) {
+        el.tautulliUsersSelect.innerHTML = '<option value="">-- Select a Tautulli user --</option>';
+        const currentTarget = (el.tautulliImportUsername.value || '').toLowerCase();
+        let matched = false;
+
+        res.users.forEach(u => {
+          const opt = document.createElement('option');
+          opt.value = u.username;
+          opt.textContent = `${u.friendly_name || u.username} (${u.username})`;
+          if (!matched && (u.username.toLowerCase() === currentTarget || (u.friendly_name && u.friendly_name.toLowerCase() === currentTarget))) {
+            opt.selected = true;
+            matched = true;
+            el.tautulliImportUsername.value = u.username;
+          }
+          el.tautulliUsersSelect.appendChild(opt);
+        });
+
+        el.tautulliUsersSelect.style.display = 'block';
+      } else {
+        alert('No users returned by Tautulli server.');
+      }
+    } catch (err) {
+      alert(`Failed to fetch Tautulli users: ${err.message}`);
+    } finally {
+      el.btnFetchTautulliUsers.disabled = false;
+      el.btnFetchTautulliUsers.textContent = 'Fetch Users';
+    }
+  });
+}
+
+if (el.tautulliUsersSelect) {
+  el.tautulliUsersSelect.addEventListener('change', (e) => {
+    if (e.target.value && el.tautulliImportUsername) {
+      el.tautulliImportUsername.value = e.target.value;
+    }
+  });
+}
+
+if (el.formImportTautulli) {
+  el.formImportTautulli.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (el.tautulliImportStatus) {
+      el.tautulliImportStatus.style.display = 'block';
+      el.tautulliImportStatus.className = 'import-status-box';
+      el.tautulliImportStatus.textContent = 'Importing Tautulli history...';
+    }
+    if (el.btnSubmitTautulliImport) el.btnSubmitTautulliImport.disabled = true;
+
+    const username = el.tautulliImportUsername ? el.tautulliImportUsername.value.trim() : '';
+    const url = el.tautulliImportUrl ? el.tautulliImportUrl.value.trim() : null;
+    const apiKey = el.tautulliImportApiKey ? el.tautulliImportApiKey.value.trim() : null;
+    const file = el.tautulliFileInput && el.tautulliFileInput.files && el.tautulliFileInput.files[0];
+    let content = el.tautulliPasteInput ? el.tautulliPasteInput.value.trim() : '';
+
+    try {
+      if (file) {
+        content = await file.text();
+      }
+
+      const payload = {
+        username: username || null,
+        url: url || null,
+        api_key: apiKey || null,
+        content: content || null,
+      };
+
+      const res = await api.importTautulli(payload);
+      if (el.tautulliImportStatus) {
+        el.tautulliImportStatus.className = 'import-status-box success';
+        el.tautulliImportStatus.innerHTML = `
+          <strong>Import Complete!</strong><br>
+          ${escapeHtml(res.message || 'Imported Tautulli history.')}<br>
+          <small style="color:var(--text-dim);">Imported: ${res.imported} | Skipped duplicates: ${res.skipped}</small>
+        `;
+      }
+      loadTimeline();
+      loadStats();
+      loadHistory();
+    } catch (err) {
+      if (el.tautulliImportStatus) {
+        el.tautulliImportStatus.className = 'import-status-box error';
+        el.tautulliImportStatus.textContent = `Import failed: ${err.message}`;
+      }
+    } finally {
+      if (el.btnSubmitTautulliImport) el.btnSubmitTautulliImport.disabled = false;
+    }
+  });
+}
+
 // Modal: Detail View
 async function openDetailModal(item) {
   state.selectedItem = item;
@@ -1086,9 +1452,11 @@ async function openDetailModal(item) {
   const durationStr = item.duration_ms ? `${Math.round(item.duration_ms / 60000)} minutes` : 'Unknown duration';
   const yearStr = item.year ? `${item.year}` : 'Unknown year';
   const watchedStr = new Date(item.watched_at).toLocaleString();
-  const ratingBadge = item.user_rating
-    ? `<div style="font-size:0.85rem;color:var(--text-dim);">Rating: <strong style="color:#fbbf24;">★ ${item.user_rating}/10</strong></div>`
-    : '';
+  const ratingBadge = `<div id="detail-rating-display" style="font-size:0.85rem;color:var(--text-dim);">${
+    item.user_rating
+      ? `Rating: <strong style="color:#fbbf24;">★ ${item.user_rating}/10</strong>`
+      : `Rating: <span style="color:var(--text-dim);">Unrated</span>`
+  }</div>`;
 
   const genresBadge = item.genres
     ? `<div style="font-size:0.85rem;color:var(--text-dim);">Genres: <strong style="color:#fff;">${escapeHtml(item.genres)}</strong></div>`
@@ -1105,6 +1473,10 @@ async function openDetailModal(item) {
     ? `<img src="${escapeHtml(resolvedThumb)}" alt="${escapeHtml(item.title)}" style="width:105px;height:155px;object-fit:cover;border-radius:8px;flex-shrink:0;box-shadow:0 4px 12px rgba(0,0,0,0.5);border:1px solid rgba(255,255,255,0.08);margin-bottom:12px;"/>`
     : '';
 
+  const statusBadge = item.watch_status === 'in_progress'
+    ? `<div style="font-size:0.85rem;color:var(--text-dim);">Status: <strong style="color:#fbbf24;">In Progress (${item.progress_percent || 0}%)</strong></div>`
+    : `<div style="font-size:0.85rem;color:var(--text-dim);">Status: <strong style="color:#34d399;">Completed</strong></div>`;
+
   el.detailBody.innerHTML = `
     <div style="display:flex;gap:18px;align-items:flex-start;margin-bottom:16px;">
       ${posterImg}
@@ -1114,6 +1486,7 @@ async function openDetailModal(item) {
           <div style="font-size:0.85rem;color:var(--text-dim);">Release: <strong style="color:#fff;">${yearStr}</strong></div>
           <div style="font-size:0.85rem;color:var(--text-dim);">Duration: <strong style="color:#fff;">${durationStr}</strong></div>
           <div style="font-size:0.85rem;color:var(--text-dim);">Watched: <strong style="color:#fff;">${watchedStr}</strong></div>
+          ${statusBadge}
           ${ratingBadge}
           ${genresBadge}
           ${directorBadge}
@@ -1122,11 +1495,74 @@ async function openDetailModal(item) {
         ${item.overview ? `<p style="font-size:0.92rem;line-height:1.6;color:var(--text-main);">${escapeHtml(item.overview)}</p>` : '<p style="color:var(--text-dim);font-style:italic;">No plot overview available.</p>'}
       </div>
     </div>
+    <div class="detail-rating-widget" style="margin:14px 0;padding:12px 14px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:8px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span style="font-size:0.88rem;font-weight:600;color:var(--text-main);">Your Rating:</span>
+        <select id="detail-rating-select" class="form-input" style="width:145px;padding:5px 8px;font-size:0.85rem;background:#0d1525;border:1px solid var(--border-color);border-radius:6px;color:#fff;">
+          <option value="">No rating</option>
+          <option value="10">★ 10 (Masterpiece)</option>
+          <option value="9">★ 9 (Great)</option>
+          <option value="8">★ 8 (Very Good)</option>
+          <option value="7">★ 7 (Good)</option>
+          <option value="6">★ 6 (Fair)</option>
+          <option value="5">★ 5 (Average)</option>
+          <option value="4">★ 4 (Below Avg)</option>
+          <option value="3">★ 3 (Bad)</option>
+          <option value="2">★ 2 (Terrible)</option>
+          <option value="1">★ 1 (Appalling)</option>
+        </select>
+        <button type="button" class="btn btn-primary btn-sm" id="btn-save-detail-rating" style="padding:5px 12px;font-size:0.82rem;">Save Rating</button>
+      </div>
+      <span id="detail-rating-feedback" style="font-size:0.82rem;font-weight:500;display:none;"></span>
+    </div>
     <div id="detail-arr-container"></div>
-    <div style="font-size:0.78rem;font-family:monospace;color:var(--text-dim);background:#080c14;padding:8px 12px;border-radius:6px;margin-top:14px;">
-      Scrobble ID: ${item.id}
+    <div id="detail-watches-container" class="detail-watches-section"></div>
+    <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.78rem;font-family:monospace;color:var(--text-dim);background:#080c14;padding:8px 12px;border-radius:6px;margin-top:14px;flex-wrap:wrap;gap:8px;">
+      <span>Scrobble ID: ${item.id}</span>
+      <span class="detail-tvdb-attribution">Metadata & cast via <a href="https://thetvdb.com" target="_blank" rel="noopener noreferrer">TheTVDB</a></span>
     </div>
   `;
+
+  const ratingSelect = document.getElementById('detail-rating-select');
+  if (ratingSelect) {
+    ratingSelect.value = item.user_rating ? String(item.user_rating) : '';
+  }
+
+  const btnSaveRating = document.getElementById('btn-save-detail-rating');
+  if (btnSaveRating) {
+    btnSaveRating.onclick = async () => {
+      const val = ratingSelect ? ratingSelect.value : '';
+      const numRating = val ? parseInt(val, 10) : null;
+      const feedback = document.getElementById('detail-rating-feedback');
+      btnSaveRating.disabled = true;
+      try {
+        await api.rateScrobble(item.id, numRating);
+        item.user_rating = numRating;
+        const disp = document.getElementById('detail-rating-display');
+        if (disp) {
+          disp.innerHTML = numRating
+            ? `Rating: <strong style="color:#fbbf24;">★ ${numRating}/10</strong>`
+            : `Rating: <span style="color:var(--text-dim);">Unrated</span>`;
+        }
+        if (feedback) {
+          feedback.textContent = numRating ? `Rating saved (★ ${numRating}/10)` : 'Rating cleared';
+          feedback.style.color = '#34d399';
+          feedback.style.display = 'inline';
+        }
+        loadTimeline();
+        loadHistory();
+        loadStats();
+      } catch (err) {
+        if (feedback) {
+          feedback.textContent = `Error: ${err.message}`;
+          feedback.style.color = '#ef4444';
+          feedback.style.display = 'inline';
+        }
+      } finally {
+        btnSaveRating.disabled = false;
+      }
+    };
+  }
 
   // IMDb button setup
   if (el.detailImdbLink) {
@@ -1161,6 +1597,9 @@ async function openDetailModal(item) {
 
   // Check Radarr / Sonarr Library integration
   checkLibraryIntegrations(item);
+
+  // Load all other watches of this same item (exact episode for TV shows)
+  loadItemWatches(item);
 }
 
 async function checkLibraryIntegrations(item) {
@@ -1177,46 +1616,255 @@ async function checkLibraryIntegrations(item) {
 
     if (res && res.found) {
       const isRadarr = res.service === 'radarr';
-      const badgeClass = isRadarr ? 'arr-badge-radarr' : 'arr-badge-sonarr';
-      const serviceName = isRadarr ? 'Radarr' : 'Sonarr';
+      const showTitle = res.title || item.grandparent_title || item.title;
 
-      container.innerHTML = `
-        <div class="arr-cleanup-card">
-          <div class="arr-info">
-            <span class="arr-badge ${badgeClass}">Found in ${serviceName}</span>
-            <span class="arr-title">${escapeHtml(res.title || item.title)}</span>
-            <span class="arr-sub">${res.has_file ? 'Media files on disk & monitored' : 'Monitored in library'}</span>
+      if (isRadarr) {
+        container.innerHTML = `
+          <div class="arr-cleanup-card">
+            <div class="arr-info">
+              <span class="arr-badge arr-badge-radarr">Found in Radarr</span>
+              <span class="arr-title">${escapeHtml(res.title || item.title)}</span>
+              <span class="arr-sub">${res.has_file ? 'Media files on disk & monitored' : 'Monitored in library'}</span>
+            </div>
+            <button class="btn btn-danger btn-sm" id="btn-arr-cleanup">
+              Clean Up & Delete Files
+            </button>
           </div>
-          <button class="btn btn-danger btn-sm" id="btn-arr-cleanup">
-            Clean Up & Delete Files
-          </button>
-        </div>
-      `;
+        `;
 
-      const cleanupBtn = document.getElementById('btn-arr-cleanup');
-      if (cleanupBtn) {
-        cleanupBtn.addEventListener('click', async () => {
-          if (confirm(`Remove "${res.title || item.title}" from ${serviceName} and delete all media files from disk?`)) {
-            try {
-              if (isRadarr) {
+        const cleanupBtn = document.getElementById('btn-arr-cleanup');
+        if (cleanupBtn) {
+          cleanupBtn.addEventListener('click', async () => {
+            if (confirm(`Remove "${res.title || item.title}" from Radarr and delete all media files from disk?`)) {
+              try {
                 await api.deleteFromRadarr(res.movie_id, true);
-              } else {
-                await api.deleteFromSonarr(res.series_id, true);
+                container.innerHTML = `
+                  <div style="font-size:0.85rem;color:#10b981;padding:8px 0;">
+                    ✓ Successfully removed from Radarr and deleted disk files.
+                  </div>
+                `;
+              } catch (err) {
+                alert(`Failed to clean up from Radarr: ${err.message}`);
               }
+            }
+          });
+        }
+      } else {
+        const hasSeason = item.season_number != null;
+        const seasonNum = hasSeason ? item.season_number : 1;
+
+        container.innerHTML = `
+          <div class="arr-cleanup-card arr-cleanup-card-sonarr">
+            <div class="arr-info">
+              <div style="display:flex;align-items:center;gap:8px;">
+                <span class="arr-badge arr-badge-sonarr">Found in Sonarr</span>
+                <span class="arr-title">${escapeHtml(showTitle)}</span>
+              </div>
+              <span class="arr-sub">Sonarr cleanup options:</span>
+            </div>
+            <div class="arr-sonarr-actions">
+              <div class="arr-select-group">
+                <select id="sonarr-action-select" class="form-control form-control-sm arr-select">
+                  <option value="delete_series">Delete show and files</option>
+                  <option value="delete_season"${hasSeason ? ' selected' : ''}>Delete and unmonitor season ${hasSeason ? seasonNum + ' ' : ''}files</option>
+                  <option value="delete_all_files_unmonitor">Delete all files and unmonitor all seasons</option>
+                </select>
+                <button class="btn btn-danger btn-sm" id="btn-arr-cleanup">
+                  Clean Up
+                </button>
+              </div>
+            </div>
+          </div>
+        `;
+
+        const cleanupBtn = document.getElementById('btn-arr-cleanup');
+        const selectAction = document.getElementById('sonarr-action-select');
+
+        if (cleanupBtn && selectAction) {
+          cleanupBtn.addEventListener('click', async () => {
+            const action = selectAction.value;
+            let confirmMsg = '';
+            let targetSeason = seasonNum;
+
+            if (action === 'delete_series') {
+              confirmMsg = `Remove "${showTitle}" from Sonarr and delete all series media files from disk?`;
+            } else if (action === 'delete_season') {
+              if (!hasSeason) {
+                const inputSeason = prompt(`Enter season number to delete and unmonitor:`, '1');
+                if (!inputSeason) return;
+                targetSeason = parseInt(inputSeason, 10);
+                if (isNaN(targetSeason)) {
+                  alert('Invalid season number');
+                  return;
+                }
+              }
+              confirmMsg = `Delete all episode files for Season ${targetSeason} of "${showTitle}" from disk and unmonitor Season ${targetSeason} in Sonarr?`;
+            } else if (action === 'delete_all_files_unmonitor') {
+              confirmMsg = `Delete ALL episode files across ALL seasons of "${showTitle}" from disk and unmonitor all seasons in Sonarr?`;
+            }
+
+            if (!confirm(confirmMsg)) return;
+
+            try {
+              cleanupBtn.disabled = true;
+              cleanupBtn.textContent = 'Processing...';
+
+              const deleteRes = await api.deleteFromSonarr(res.series_id, {
+                action: action,
+                season_number: action === 'delete_season' ? targetSeason : undefined,
+                delete_files: true,
+              });
+
+              const msg = deleteRes && deleteRes.message ? deleteRes.message : 'Successfully executed Sonarr cleanup.';
               container.innerHTML = `
-                <div style="font-size:0.85rem;color:#10b981;padding:8px 0;">
-                  ✓ Successfully removed from ${serviceName} and deleted disk files.
+                <div style="font-size:0.85rem;color:#10b981;padding:8px 0;font-weight:500;">
+                  ✓ ${escapeHtml(msg)}
                 </div>
               `;
             } catch (err) {
-              alert(`Failed to clean up from ${serviceName}: ${err.message}`);
+              cleanupBtn.disabled = false;
+              cleanupBtn.textContent = 'Clean Up';
+              alert(`Failed to clean up from Sonarr: ${err.message}`);
             }
-          }
-        });
+          });
+        }
       }
     }
   } catch (err) {
     // Non-fatal if integrations are not configured
+  }
+}
+
+async function loadItemWatches(item) {
+  const container = document.getElementById('detail-watches-container');
+  if (!container) return;
+
+  container.innerHTML = `
+    <div class="watches-section-header">
+      <div class="watches-heading">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"></circle>
+          <polyline points="12 6 12 12 16 14"></polyline>
+        </svg>
+        <span>Watch History</span>
+      </div>
+      <span class="watches-badge-loading">Checking other watches...</span>
+    </div>
+  `;
+
+  try {
+    const res = await api.getItemWatches(item.id);
+    if (!res || !container) return;
+    if (state.selectedItem?.id !== item.id) return;
+
+    const count = res.other_watches ? res.other_watches.length : 0;
+    const total = res.total_watches || (count + 1);
+    const isEpisode = item.media_type === 'episode';
+    const mediaLabel = isEpisode ? 'this episode' : 'this film';
+
+    let contentHtml = '';
+    if (count === 0) {
+      contentHtml = `
+        <div class="watches-empty-state">
+          <span class="watches-check-icon">✓</span>
+          <span>Only recorded watch for ${mediaLabel}.</span>
+        </div>
+      `;
+    } else {
+      contentHtml = `
+        <div class="watches-table-wrap">
+          <table class="watches-table">
+            <thead>
+              <tr>
+                <th>Watched At</th>
+                <th>Duration</th>
+                <th>Rating</th>
+                <th>Status</th>
+                <th style="text-align:right;">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${res.other_watches.map(w => {
+                const dateObj = new Date(w.watched_at);
+                const dateStr = !isNaN(dateObj) ? dateObj.toLocaleString(undefined, {
+                  year: 'numeric',
+                  month: 'short',
+                  day: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit'
+                }) : w.watched_at;
+                const durStr = w.duration_ms ? `${Math.round(w.duration_ms / 60000)}m` : '&mdash;';
+                const ratingStr = w.user_rating ? `<span class="watch-star">★ ${w.user_rating}/10</span>` : '&mdash;';
+                const statusStr = w.watch_status ? escapeHtml(w.watch_status) : 'completed';
+
+                return `
+                  <tr class="other-watch-row" data-id="${escapeHtml(w.id)}">
+                    <td>
+                      <div class="other-watch-date">${escapeHtml(dateStr)}</div>
+                    </td>
+                    <td>${durStr}</td>
+                    <td>${ratingStr}</td>
+                    <td><span class="watch-status-tag ${escapeHtml(statusStr)}">${escapeHtml(statusStr)}</span></td>
+                    <td style="text-align:right;">
+                      <button class="btn btn-outline btn-xs text-danger btn-delete-other-watch" data-id="${escapeHtml(w.id)}" data-date="${escapeHtml(dateStr)}" title="Delete this watch record">
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    container.innerHTML = `
+      <div class="watches-section-header">
+        <div class="watches-heading">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <polyline points="12 6 12 12 16 14"></polyline>
+          </svg>
+          <span>Other Watches</span>
+          <span class="watches-count-pill">${count} other${count === 1 ? '' : 's'} (${total} total)</span>
+        </div>
+      </div>
+      ${contentHtml}
+    `;
+
+    container.querySelectorAll('.btn-delete-other-watch').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const scrobbleId = btn.dataset.id;
+        const watchDate = btn.dataset.date;
+        if (confirm(`Delete watch from ${watchDate}? This cannot be undone.`)) {
+          try {
+            btn.disabled = true;
+            btn.textContent = 'Deleting...';
+            await api.deleteScrobble(scrobbleId);
+            await loadItemWatches(item);
+            loadTimeline();
+            loadHistory();
+            loadStats();
+          } catch (err) {
+            alert(`Failed to delete watch: ${err.message}`);
+            btn.disabled = false;
+            btn.textContent = 'Delete';
+          }
+        }
+      });
+    });
+  } catch (err) {
+    console.error('Error loading other watches:', err);
+    container.innerHTML = `
+      <div class="watches-section-header">
+        <div class="watches-heading">
+          <span>Other Watches</span>
+        </div>
+      </div>
+      <div class="watches-error" style="font-size:0.8rem;color:var(--text-dim);font-style:italic;">Could not load other watches for this item.</div>
+    `;
   }
 }
 
@@ -1373,6 +2021,308 @@ if (el.btnCopyBackchannelUrl && el.adminBackchannelUrlInput) {
     setTimeout(() => {
       el.btnCopyBackchannelUrl.textContent = 'Copy URL';
     }, 2000);
+  });
+}
+
+// Admin: Sub-navigation
+function switchAdminSubview(subviewId) {
+  state.admin.activeSubview = subviewId;
+
+  if (el.adminSubnavPills) {
+    el.adminSubnavPills.querySelectorAll('.pill').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.subview === subviewId);
+    });
+  }
+
+  document.querySelectorAll('.admin-subview').forEach(view => {
+    view.style.display = view.id === subviewId ? 'block' : 'none';
+  });
+
+  if (subviewId === 'admin-sub-users') {
+    stopLogsAutoRefresh();
+    loadAdminUsers();
+  } else if (subviewId === 'admin-sub-settings') {
+    stopLogsAutoRefresh();
+    loadAdminSettings();
+  } else if (subviewId === 'admin-sub-tasks') {
+    stopLogsAutoRefresh();
+    loadAdminTasks();
+  } else if (subviewId === 'admin-sub-logs') {
+    loadAdminLogs();
+    startLogsAutoRefresh();
+  }
+}
+
+if (el.adminSubnavPills) {
+  el.adminSubnavPills.querySelectorAll('.pill').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const subview = btn.dataset.subview;
+      if (subview) switchAdminSubview(subview);
+    });
+  });
+}
+
+// Admin: Settings & API Keys
+async function loadAdminSettings() {
+  if (!el.formAdminSettings) return;
+  try {
+    const s = await api.getAdminSettings();
+    if (el.settingRadarrUrl) el.settingRadarrUrl.value = s.radarr_url || '';
+    if (el.settingRadarrApiKey) el.settingRadarrApiKey.value = s.radarr_api_key || '';
+    if (el.settingSonarrUrl) el.settingSonarrUrl.value = s.sonarr_url || '';
+    if (el.settingSonarrApiKey) el.settingSonarrApiKey.value = s.sonarr_api_key || '';
+    if (el.settingTvdbApiKey) el.settingTvdbApiKey.value = s.tvdb_api_key || '';
+    if (el.settingTvdbPin) el.settingTvdbPin.value = s.tvdb_pin || '';
+    if (el.settingTvdbBaseUrl) el.settingTvdbBaseUrl.value = s.tvdb_base_url || '';
+    if (el.settingTautulliUrl) el.settingTautulliUrl.value = s.tautulli_url || '';
+    if (el.settingTautulliApiKey) el.settingTautulliApiKey.value = s.tautulli_api_key || '';
+    if (el.settingOidcEnabled) el.settingOidcEnabled.checked = Boolean(s.oidc_enabled);
+    if (el.settingOidcIssuerUrl) el.settingOidcIssuerUrl.value = s.oidc_issuer_url || '';
+    if (el.settingOidcClientId) el.settingOidcClientId.value = s.oidc_client_id || '';
+    if (el.settingOidcClientSecret) el.settingOidcClientSecret.value = s.oidc_client_secret || '';
+    if (el.settingOidcRedirectUrl) el.settingOidcRedirectUrl.value = s.oidc_redirect_url || '';
+    if (el.settingScrobbleThreshold) el.settingScrobbleThreshold.value = s.scrobble_threshold_percent != null ? s.scrobble_threshold_percent : 80;
+  } catch (err) {
+    console.error('Failed to load admin settings:', err);
+    if (el.adminSettingsStatus) {
+      el.adminSettingsStatus.style.color = 'var(--accent-red)';
+      el.adminSettingsStatus.textContent = 'Failed to load settings: ' + err.message;
+    }
+  }
+}
+
+if (el.formAdminSettings) {
+  el.formAdminSettings.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (el.btnSaveAdminSettings) {
+      el.btnSaveAdminSettings.disabled = true;
+      el.btnSaveAdminSettings.textContent = 'Saving...';
+    }
+    if (el.adminSettingsStatus) el.adminSettingsStatus.textContent = '';
+
+    try {
+      const payload = {
+        radarr_url: el.settingRadarrUrl ? el.settingRadarrUrl.value.trim() : null,
+        radarr_api_key: el.settingRadarrApiKey ? el.settingRadarrApiKey.value.trim() : null,
+        sonarr_url: el.settingSonarrUrl ? el.settingSonarrUrl.value.trim() : null,
+        sonarr_api_key: el.settingSonarrApiKey ? el.settingSonarrApiKey.value.trim() : null,
+        tvdb_api_key: el.settingTvdbApiKey ? el.settingTvdbApiKey.value.trim() : null,
+        tvdb_pin: el.settingTvdbPin ? el.settingTvdbPin.value.trim() : null,
+        tvdb_base_url: el.settingTvdbBaseUrl ? el.settingTvdbBaseUrl.value.trim() : null,
+        tautulli_url: el.settingTautulliUrl ? el.settingTautulliUrl.value.trim() : null,
+        tautulli_api_key: el.settingTautulliApiKey ? el.settingTautulliApiKey.value.trim() : null,
+        oidc_enabled: el.settingOidcEnabled ? el.settingOidcEnabled.checked : null,
+        oidc_issuer_url: el.settingOidcIssuerUrl ? el.settingOidcIssuerUrl.value.trim() : null,
+        oidc_client_id: el.settingOidcClientId ? el.settingOidcClientId.value.trim() : null,
+        oidc_client_secret: el.settingOidcClientSecret ? el.settingOidcClientSecret.value.trim() : null,
+        oidc_redirect_url: el.settingOidcRedirectUrl ? el.settingOidcRedirectUrl.value.trim() : null,
+        scrobble_threshold_percent: el.settingScrobbleThreshold && el.settingScrobbleThreshold.value ? parseInt(el.settingScrobbleThreshold.value, 10) : null,
+      };
+
+      await api.updateAdminSettings(payload);
+      if (el.adminSettingsStatus) {
+        el.adminSettingsStatus.style.color = '#34d399';
+        el.adminSettingsStatus.textContent = 'Settings saved successfully!';
+        setTimeout(() => {
+          if (el.adminSettingsStatus) el.adminSettingsStatus.textContent = '';
+        }, 4000);
+      }
+      loadAdminSettings();
+    } catch (err) {
+      console.error('Failed to save settings:', err);
+      if (el.adminSettingsStatus) {
+        el.adminSettingsStatus.style.color = 'var(--accent-red)';
+        el.adminSettingsStatus.textContent = 'Error: ' + err.message;
+      }
+    } finally {
+      if (el.btnSaveAdminSettings) {
+        el.btnSaveAdminSettings.disabled = false;
+        el.btnSaveAdminSettings.textContent = 'Save Settings';
+      }
+    }
+  });
+}
+
+// Admin: Background Tasks
+async function loadAdminTasks() {
+  if (!el.adminTasksContainer) return;
+  try {
+    const res = await api.getAdminTasks();
+    const tasks = Array.isArray(res) ? res : (res && res.tasks ? res.tasks : []);
+    renderAdminTasks(tasks);
+  } catch (err) {
+    console.error('Failed to load admin tasks:', err);
+    el.adminTasksContainer.innerHTML = `<div class="empty-state"><p style="color:var(--accent-red);">Failed to load tasks: ${escapeHtml(err.message)}</p></div>`;
+  }
+}
+
+function renderAdminTasks(tasks) {
+  if (!el.adminTasksContainer) return;
+  if (!tasks || tasks.length === 0) {
+    el.adminTasksContainer.innerHTML = `<div class="empty-state"><p>No background tasks registered.</p></div>`;
+    return;
+  }
+
+  el.adminTasksContainer.innerHTML = tasks.map(t => {
+    const isRunning = t.status === 'running';
+    const statusClass = `task-status-${t.status || 'idle'}`;
+    const lastRunTime = t.last_run_at || t.last_run;
+    const lastSuccessTime = t.last_success_at || t.last_success;
+    const lastRunStr = lastRunTime ? new Date(lastRunTime).toLocaleString() : 'Never';
+    const lastSuccessStr = lastSuccessTime ? new Date(lastSuccessTime).toLocaleString() : 'Never';
+    const msg = t.last_message || t.message || 'Idle';
+    const pending = t.items_pending != null ? t.items_pending : 0;
+
+    return `
+      <div class="task-card" data-task-id="${t.id}">
+        <div class="task-card-header">
+          <div>
+            <div class="task-card-title">${escapeHtml(t.name)}</div>
+            <div class="task-card-desc">${escapeHtml(t.description)}</div>
+          </div>
+          <span class="task-status-badge ${statusClass}">
+            ${isRunning ? '<span class="pulse-dot-sm pulse-active"></span>' : ''}
+            ${escapeHtml(t.status)}
+          </span>
+        </div>
+
+        <div class="task-card-meta">
+          <div class="task-meta-row">
+            <span>Status Message:</span>
+            <strong>${escapeHtml(msg)}</strong>
+          </div>
+          <div class="task-meta-row">
+            <span>Processed Items:</span>
+            <strong>${t.items_processed} processed (${pending} pending)</strong>
+          </div>
+          <div class="task-meta-row">
+            <span>Last Started:</span>
+            <strong>${lastRunStr}</strong>
+          </div>
+          <div class="task-meta-row">
+            <span>Last Completed:</span>
+            <strong>${lastSuccessStr}</strong>
+          </div>
+        </div>
+
+        <div style="margin-top: 8px;">
+          <button class="btn btn-outline btn-sm btn-trigger-task" data-task-id="${t.id}" ${isRunning ? 'disabled' : ''}>
+            ${isRunning ? 'Running...' : 'Run Now'}
+          </button>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  el.adminTasksContainer.querySelectorAll('.btn-trigger-task').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const taskId = btn.dataset.taskId;
+      btn.disabled = true;
+      btn.textContent = 'Triggering...';
+      try {
+        await api.triggerAdminTask(taskId);
+        setTimeout(() => loadAdminTasks(), 500);
+      } catch (err) {
+        alert('Failed to trigger task: ' + err.message);
+        btn.disabled = false;
+        btn.textContent = 'Run Now';
+      }
+    });
+  });
+}
+
+if (el.btnRefreshAdminTasks) {
+  el.btnRefreshAdminTasks.addEventListener('click', () => loadAdminTasks());
+}
+
+// Admin: Application Logs
+let logsAutoRefreshInterval = null;
+
+async function loadAdminLogs() {
+  if (!el.adminLogsViewer) return;
+  try {
+    const level = el.adminLogsFilterLevel ? el.adminLogsFilterLevel.value : '';
+    const res = await api.getAdminLogs(level ? { level } : {});
+    const logs = Array.isArray(res) ? res : (res && res.entries ? res.entries : []);
+    renderAdminLogs(logs);
+  } catch (err) {
+    console.error('Failed to load admin logs:', err);
+  }
+}
+
+function renderAdminLogs(logs) {
+  if (!el.adminLogsViewer) return;
+  if (!logs || logs.length === 0) {
+    el.adminLogsViewer.innerHTML = `<div style="color:var(--text-dim);padding:14px;text-align:center;">No logs captured yet.</div>`;
+    return;
+  }
+
+  const wasAtBottom = el.adminLogsViewer.scrollHeight - el.adminLogsViewer.scrollTop <= el.adminLogsViewer.clientHeight + 40;
+
+  el.adminLogsViewer.innerHTML = logs.map(l => {
+    const time = new Date(l.timestamp).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const level = (l.level || 'INFO').toUpperCase();
+    return `
+      <div class="log-entry">
+        <span class="log-time">${time}</span>
+        <span class="log-level log-level-${level}">${level}</span>
+        <span class="log-target">${escapeHtml(l.target)}</span>
+        <span class="log-msg">${escapeHtml(l.message)}</span>
+      </div>
+    `;
+  }).join('');
+
+  if (wasAtBottom) {
+    el.adminLogsViewer.scrollTop = el.adminLogsViewer.scrollHeight;
+  }
+}
+
+function startLogsAutoRefresh() {
+  stopLogsAutoRefresh();
+  if (el.adminLogsAutorefresh && el.adminLogsAutorefresh.checked) {
+    logsAutoRefreshInterval = setInterval(() => {
+      if (state.activeTab === 'view-admin' && state.admin.activeSubview === 'admin-sub-logs') {
+        loadAdminLogs();
+      }
+    }, 3000);
+  }
+}
+
+function stopLogsAutoRefresh() {
+  if (logsAutoRefreshInterval) {
+    clearInterval(logsAutoRefreshInterval);
+    logsAutoRefreshInterval = null;
+  }
+}
+
+if (el.btnRefreshAdminLogs) {
+  el.btnRefreshAdminLogs.addEventListener('click', () => loadAdminLogs());
+}
+
+if (el.adminLogsFilterLevel) {
+  el.adminLogsFilterLevel.addEventListener('change', () => loadAdminLogs());
+}
+
+if (el.adminLogsAutorefresh) {
+  el.adminLogsAutorefresh.addEventListener('change', () => {
+    if (el.adminLogsAutorefresh.checked) {
+      startLogsAutoRefresh();
+    } else {
+      stopLogsAutoRefresh();
+    }
+  });
+}
+
+if (el.btnClearAdminLogs) {
+  el.btnClearAdminLogs.addEventListener('click', async () => {
+    if (confirm('Clear all captured application logs from memory?')) {
+      try {
+        await api.clearAdminLogs();
+        loadAdminLogs();
+      } catch (err) {
+        alert('Failed to clear logs: ' + err.message);
+      }
+    }
   });
 }
 

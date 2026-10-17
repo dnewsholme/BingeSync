@@ -30,7 +30,7 @@ pub async fn get_timeline(
     auth: AuthUser,
     Query(query): Query<TimelineQuery>,
 ) -> Result<Json<Vec<TimelineDay>>, (StatusCode, Json<serde_json::Value>)> {
-    let limit = query.limit.unwrap_or(50).clamp(1, 200);
+    let limit = query.limit.unwrap_or(50).clamp(1, 1000);
     let offset = query.offset.unwrap_or(0).max(0);
 
     let media_type_filter = query.media_type.as_deref().unwrap_or("all");

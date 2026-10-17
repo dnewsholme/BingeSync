@@ -16,8 +16,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
-  <script type="module" crossorigin src="./assets/index-bbk7kblO.js"></script>
-  <link rel="stylesheet" crossorigin href="./assets/index-CRA2ESeN.css">
+  <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+  <script type="module" crossorigin src="./assets/index-CHQTmQlm.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-BjKFy1S9.css">
 </head>
 <body>
   <div id="app">
@@ -55,8 +56,8 @@
             Webhook
           </button>
           <button class="nav-tab" id="tab-admin" data-target="view-admin" style="display: none;">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-            Users
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
+            Admin
           </button>
         </nav>
 
@@ -65,10 +66,18 @@
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
             Import Trakt
           </button>
+          <button class="btn btn-outline btn-sm" id="btn-open-tautulli-modal">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            Import Tautulli
+          </button>
           <button class="btn btn-primary btn-sm" id="btn-open-log-modal">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             Log Watch
           </button>
+          <a href="./docs" target="_blank" rel="noopener noreferrer" class="btn btn-ghost btn-sm" id="btn-nav-api-docs" title="Interactive API Docs (Swagger)">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"/><path d="M9 10h6"/><path d="M9 14h6"/></svg>
+            API Docs
+          </a>
           <div class="user-badge" id="user-badge">
             <span class="user-avatar" id="user-avatar">U</span>
             <span class="user-name" id="user-display-name">User</span>
@@ -165,9 +174,9 @@
           </div>
 
           <div class="timeline-filter-bar">
-            <div class="search-input-wrap">
+            <div class="search-input-wrap search-expandable" id="timeline-search-wrap">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-              <input type="search" id="timeline-search" class="form-control" placeholder="Search timeline by title, show..." />
+              <input type="search" id="timeline-search" class="form-control" placeholder="Search timeline..." />
             </div>
             <div class="timeline-filters-grid">
               <input type="date" id="timeline-date-filter" class="form-control filter-ctrl" title="Filter by date" />
@@ -193,8 +202,23 @@
             </div>
           </div>
 
-          <div id="timeline-container" class="timeline-container">
-            <!-- Timeline days injected here -->
+          <div class="timeline-layout-wrap">
+            <div id="timeline-container" class="timeline-container">
+              <!-- Timeline days injected here -->
+            </div>
+            <aside id="timeline-scrubber" class="timeline-scrubber" style="display:none;">
+              <div class="scrubber-header">Timeline</div>
+              <div id="timeline-scrubber-list" class="scrubber-list">
+                <!-- Jump dates injected here -->
+              </div>
+            </aside>
+          </div>
+
+          <div id="timeline-load-more-wrap" class="timeline-load-more-wrap" style="display:none;">
+            <button class="btn btn-outline btn-sm" id="btn-timeline-load-more">
+              Load More Watches
+            </button>
+            <span id="timeline-pagination-info" class="timeline-pagination-info"></span>
           </div>
         </section>
 
@@ -324,6 +348,13 @@
               <!-- Top shows injected here -->
             </div>
           </div>
+
+          <div class="stats-section" id="top-movies-section" style="margin-top: 24px;">
+            <h2 class="section-title">Top Watched Movies</h2>
+            <div id="top-movies-list" class="top-shows-list">
+              <!-- Top movies injected here -->
+            </div>
+          </div>
         </section>
 
         <!-- 4. WEBHOOK & SETTINGS VIEW -->
@@ -392,14 +423,34 @@
               </div>
             </div>
           </div>
+
+          <!-- TheTVDB Metadata Integration & Attribution Card -->
+          <div class="settings-card" id="settings-tvdb-card">
+            <h2 class="card-title">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 11a9 9 0 0 1 9 9"/><path d="M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1"/></svg>
+              TheTVDB Metadata Integration
+            </h2>
+            <p class="card-desc">
+              BingeSync automatically enriches your scrobble timeline in the background with genres, cast/actor details, director credits, and plot summaries retrieved from <a href="https://thetvdb.com" target="_blank" rel="noopener noreferrer" class="tvdb-inline-link">TheTVDB</a>.
+            </p>
+            <div class="tvdb-status-wrap">
+              <div class="tvdb-status-badge" id="tvdb-status-badge">
+                <span class="pulse-dot-sm" id="tvdb-pulse-dot"></span>
+                <span id="tvdb-status-text">Checking status...</span>
+              </div>
+              <p class="tvdb-attribution-note">
+                Media metadata, plot outlines, genres, and cast details are provided by <a href="https://thetvdb.com" target="_blank" rel="noopener noreferrer" class="tvdb-inline-link"><strong>TheTVDB</strong></a>. This product uses TheTVDB API but is not certified or endorsed by TheTVDB.
+              </p>
+            </div>
+          </div>
         </section>
 
-        <!-- View: Admin User Management -->
+        <!-- View: Admin Management & Settings -->
         <section id="view-admin" class="app-view" style="display: none;">
           <div class="view-header">
             <div>
-              <h1 class="view-title">User Management</h1>
-              <p class="view-subtitle">Manage registered users, inspect watch activity, and delete accounts</p>
+              <h1 class="view-title">Administration</h1>
+              <p class="view-subtitle">Manage registered users, configure service API keys, monitor background tasks, and inspect logs</p>
             </div>
             <div class="view-actions">
               <button class="btn btn-outline btn-sm" id="btn-refresh-admin-users">
@@ -409,42 +460,244 @@
             </div>
           </div>
 
-          <!-- OIDC Back-Channel Logout URL Info Card -->
-          <div class="settings-card" id="admin-oidc-backchannel-card">
-            <h2 class="card-title">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-              OpenID Connect Back-Channel Logout URL
-            </h2>
-            <p class="card-desc">
-              Provide this endpoint to your OpenID Connect Provider (e.g. Authentik, PocketID, Keycloak). When a user loses group access or is revoked/disabled, the IdP sends a revocation token to terminate their active sessions immediately.
-            </p>
-            <div class="webhook-input-group">
-              <input type="text" id="admin-backchannel-url-input" class="form-control" readonly />
-              <button class="btn btn-secondary" id="btn-copy-backchannel-url">Copy URL</button>
+          <!-- Admin Sub-Navigation Pills -->
+          <div class="admin-nav-pills" id="admin-subnav-pills">
+            <button class="pill active" data-subview="admin-sub-users">Users & Access</button>
+            <button class="pill" data-subview="admin-sub-settings">Services & API Keys</button>
+            <button class="pill" data-subview="admin-sub-tasks">Background Tasks</button>
+            <button class="pill" data-subview="admin-sub-logs">Application Logs</button>
+          </div>
+
+          <!-- Sub-view 1: Users & Access -->
+          <div id="admin-sub-users" class="admin-subview">
+            <!-- OIDC Back-Channel Logout URL Info Card -->
+            <div class="settings-card" id="admin-oidc-backchannel-card">
+              <h2 class="card-title">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                OpenID Connect Back-Channel Logout URL
+              </h2>
+              <p class="card-desc">
+                Provide this endpoint to your OpenID Connect Provider (e.g. Authentik, PocketID, Keycloak). When a user loses group access or is revoked/disabled, the IdP sends a revocation token to terminate their active sessions immediately.
+              </p>
+              <div class="webhook-input-group">
+                <input type="text" id="admin-backchannel-url-input" class="form-control" readonly />
+                <button class="btn btn-secondary" id="btn-copy-backchannel-url">Copy URL</button>
+              </div>
+            </div>
+
+            <div class="admin-users-card">
+              <div class="table-responsive">
+                <table class="admin-table">
+                  <thead>
+                    <tr>
+                      <th>User</th>
+                      <th>Role</th>
+                      <th>Scrobbles</th>
+                      <th>Joined</th>
+                      <th style="text-align: right;">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody id="admin-users-tbody">
+                    <!-- Injected via JavaScript -->
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
 
-          <div class="admin-users-card">
-            <div class="table-responsive">
-              <table class="admin-table">
-                <thead>
-                  <tr>
-                    <th>User</th>
-                    <th>Role</th>
-                    <th>Scrobbles</th>
-                    <th>Joined</th>
-                    <th style="text-align: right;">Actions</th>
-                  </tr>
-                </thead>
-                <tbody id="admin-users-tbody">
-                  <!-- Injected via JavaScript -->
-                </tbody>
-              </table>
+          <!-- Sub-view 2: System Settings & API Keys -->
+          <div id="admin-sub-settings" class="admin-subview" style="display: none;">
+            <div class="settings-card">
+              <h2 class="card-title">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
+                Service Integrations & API Keys
+              </h2>
+              <p class="card-desc">
+                Configure external services and credentials dynamically. Saved settings override environment variables at runtime without needing container restarts.
+              </p>
+
+              <form id="form-admin-settings" style="margin-top: 18px;">
+                <!-- Radarr -->
+                <div class="settings-group-header">
+                  <span class="arr-badge arr-badge-radarr">Radarr</span>
+                  <strong>Movie Library & Cleanup</strong>
+                </div>
+                <div class="form-row">
+                  <div class="form-group col-half">
+                    <label for="setting-radarr-url">Radarr Base URL</label>
+                    <input type="url" id="setting-radarr-url" class="form-control" placeholder="http://192.168.1.100:7878" />
+                  </div>
+                  <div class="form-group col-half">
+                    <label for="setting-radarr-api-key">Radarr API Key</label>
+                    <input type="password" id="setting-radarr-api-key" class="form-control" placeholder="API Key" />
+                  </div>
+                </div>
+
+                <!-- Sonarr -->
+                <div class="settings-group-header" style="margin-top: 16px;">
+                  <span class="arr-badge arr-badge-sonarr">Sonarr</span>
+                  <strong>TV Series Library & Cleanup</strong>
+                </div>
+                <div class="form-row">
+                  <div class="form-group col-half">
+                    <label for="setting-sonarr-url">Sonarr Base URL</label>
+                    <input type="url" id="setting-sonarr-url" class="form-control" placeholder="http://192.168.1.100:8989" />
+                  </div>
+                  <div class="form-group col-half">
+                    <label for="setting-sonarr-api-key">Sonarr API Key</label>
+                    <input type="password" id="setting-sonarr-api-key" class="form-control" placeholder="API Key" />
+                  </div>
+                </div>
+
+                <!-- TheTVDB -->
+                <div class="settings-group-header" style="margin-top: 16px;">
+                  <span class="badge-pill" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3);">TheTVDB v4</span>
+                  <strong>Metadata & Cast Enrichment</strong>
+                </div>
+                <div class="form-row">
+                  <div class="form-group col-half">
+                    <label for="setting-tvdb-api-key">TheTVDB API Key (v4)</label>
+                    <input type="password" id="setting-tvdb-api-key" class="form-control" placeholder="API Key" />
+                  </div>
+                  <div class="form-group col-half">
+                    <label for="setting-tvdb-pin">Subscriber PIN (Optional)</label>
+                    <input type="text" id="setting-tvdb-pin" class="form-control" placeholder="User PIN if subscriber key" />
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label for="setting-tvdb-base-url">TheTVDB API Base URL</label>
+                  <input type="url" id="setting-tvdb-base-url" class="form-control" placeholder="https://api4.thetvdb.com/v4" />
+                </div>
+
+                <!-- Tautulli -->
+                <div class="settings-group-header" style="margin-top: 16px;">
+                  <span class="badge-pill" style="background: rgba(234, 88, 12, 0.15); color: #fb923c; border: 1px solid rgba(234, 88, 12, 0.3);">Tautulli</span>
+                  <strong>Plex Watch History & Statistics</strong>
+                </div>
+                <div class="form-row">
+                  <div class="form-group col-half">
+                    <label for="setting-tautulli-url">Tautulli Base URL</label>
+                    <input type="url" id="setting-tautulli-url" class="form-control" placeholder="http://192.168.1.100:8181" />
+                  </div>
+                  <div class="form-group col-half">
+                    <label for="setting-tautulli-api-key">Tautulli API Key</label>
+                    <input type="password" id="setting-tautulli-api-key" class="form-control" placeholder="API Key" />
+                  </div>
+                </div>
+
+                <!-- OpenID Connect -->
+                <div class="settings-group-header" style="margin-top: 16px;">
+                  <span class="badge-pill" style="background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.3);">OpenID Connect</span>
+                  <strong>Single Sign-On (SSO)</strong>
+                </div>
+                <div class="form-group" style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+                  <input type="checkbox" id="setting-oidc-enabled" style="width:18px;height:18px;cursor:pointer;" />
+                  <label for="setting-oidc-enabled" style="margin:0;cursor:pointer;font-weight:600;">Enable OpenID Connect Login</label>
+                </div>
+                <div class="form-row">
+                  <div class="form-group col-half">
+                    <label for="setting-oidc-issuer-url">Issuer Discovery URL</label>
+                    <input type="url" id="setting-oidc-issuer-url" class="form-control" placeholder="https://auth.example.com" />
+                  </div>
+                  <div class="form-group col-half">
+                    <label for="setting-oidc-client-id">Client ID</label>
+                    <input type="text" id="setting-oidc-client-id" class="form-control" placeholder="bingesync-client" />
+                  </div>
+                </div>
+                <div class="form-row">
+                  <div class="form-group col-half">
+                    <label for="setting-oidc-client-secret">Client Secret</label>
+                    <input type="password" id="setting-oidc-client-secret" class="form-control" placeholder="Client secret" />
+                  </div>
+                  <div class="form-group col-half">
+                    <label for="setting-oidc-redirect-url">Redirect URL (Optional)</label>
+                    <input type="url" id="setting-oidc-redirect-url" class="form-control" placeholder="https://example.com/api/v1/auth/callback" />
+                  </div>
+                </div>
+
+                <!-- Playback & Scrobble Progress -->
+                <div class="settings-group-header" style="margin-top: 16px;">
+                  <span class="badge-pill" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3);">Scrobbling</span>
+                  <strong>Playback & Completion Threshold</strong>
+                </div>
+                <div class="form-row">
+                  <div class="form-group col-half">
+                    <label for="setting-scrobble-threshold">Watch Completion Threshold (%)</label>
+                    <input type="number" id="setting-scrobble-threshold" class="form-control" min="1" max="100" placeholder="80" />
+                    <small style="display:block;margin-top:4px;font-size:0.75rem;color:var(--text-dim);">Media is marked completed when playback reaches this percentage (default: 80%).</small>
+                  </div>
+                </div>
+
+                <div style="display:flex;align-items:center;gap:12px;margin-top:20px;">
+                  <button type="submit" class="btn btn-primary" id="btn-save-admin-settings">Save Settings</button>
+                  <span id="admin-settings-status" style="font-size:0.85rem;"></span>
+                </div>
+              </form>
+            </div>
+          </div>
+
+          <!-- Sub-view 3: Background Tasks Status -->
+          <div id="admin-sub-tasks" class="admin-subview" style="display: none;">
+            <div class="settings-card">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+                <div>
+                  <h2 class="card-title">Background Tasks & Workers</h2>
+                  <p class="card-desc">Inspect real-time execution status of poster caching and TheTVDB enrichment workers.</p>
+                </div>
+                <button class="btn btn-outline btn-sm" id="btn-refresh-admin-tasks">Refresh Status</button>
+              </div>
+
+              <div id="admin-tasks-container" class="admin-tasks-grid" style="display:grid;gap:16px;grid-template-columns:repeat(auto-fit, minmax(300px, 1fr));">
+                <!-- Injected via JavaScript -->
+              </div>
+            </div>
+          </div>
+
+          <!-- Sub-view 4: Application Logs -->
+          <div id="admin-sub-logs" class="admin-subview" style="display: none;">
+            <div class="settings-card">
+              <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:14px;">
+                <div>
+                  <h2 class="card-title">Live Application Logs</h2>
+                  <p class="card-desc">Real-time log stream captured from server tracing events.</p>
+                </div>
+                <div style="display:flex;align-items:center;gap:10px;">
+                  <select id="admin-logs-filter-level" class="form-control form-control-sm" style="width:auto;">
+                    <option value="">All Levels</option>
+                    <option value="INFO" selected>INFO & Above</option>
+                    <option value="WARN">WARN & ERROR</option>
+                    <option value="ERROR">ERROR Only</option>
+                  </select>
+                  <label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;color:var(--text-dim);cursor:pointer;">
+                    <input type="checkbox" id="admin-logs-autorefresh" checked /> Auto-refresh
+                  </label>
+                  <button class="btn btn-outline btn-sm" id="btn-refresh-admin-logs">Refresh</button>
+                  <button class="btn btn-outline btn-sm text-danger" id="btn-clear-admin-logs">Clear</button>
+                </div>
+              </div>
+
+              <div id="admin-logs-viewer" class="admin-logs-terminal">
+                <!-- Log entries injected here -->
+              </div>
             </div>
           </div>
         </section>
       </div>
     </main>
+
+    <!-- Global App Footer with TheTVDB Attribution -->
+    <footer class="app-footer">
+      <div class="footer-container">
+        <div class="footer-attribution">
+          <span>Metadata, plot summaries, genres, and cast details provided by <a href="https://thetvdb.com" target="_blank" rel="noopener noreferrer" class="tvdb-link">TheTVDB</a>.</span>
+          <span style="margin: 0 8px; opacity: 0.4;">&bull;</span>
+          <a href="./docs" target="_blank" rel="noopener noreferrer" class="footer-docs-link" style="color:var(--text-muted);text-decoration:none;font-weight:500;">Swagger API Docs</a>
+        </div>
+        <div class="footer-disclaimer">
+          <span>This product uses TheTVDB API but is not endorsed or certified by TheTVDB.</span>
+        </div>
+      </div>
+    </footer>
 
     <!-- Modal: Log Watch Manually -->
     <div id="modal-log-scrobble" class="modal-backdrop" style="display: none;">
@@ -560,9 +813,67 @@
       </div>
     </div>
 
+    <!-- Modal: Import Tautulli History -->
+    <div id="modal-import-tautulli" class="modal-backdrop" style="display: none;">
+      <div class="modal-dialog">
+        <div class="modal-header">
+          <h3 class="modal-title">Import History from Tautulli</h3>
+          <button class="modal-close" id="btn-close-tautulli-modal">&times;</button>
+        </div>
+        <form id="form-import-tautulli">
+          <div class="modal-body">
+            <p style="color:var(--text-muted);font-size:0.9rem;margin-bottom:16px;">
+              Import playback history directly from your Tautulli server or by uploading a Tautulli CSV/JSON export. Existing watches will be automatically deduplicated.
+            </p>
+
+            <div class="form-group">
+              <label for="tautulli-import-username">Tautulli User</label>
+              <div style="display:flex;gap:8px;">
+                <input type="text" id="tautulli-import-username" class="form-control" placeholder="Tautulli username" />
+                <button type="button" class="btn btn-outline btn-sm" id="btn-fetch-tautulli-users" title="Fetch registered users from Tautulli API">
+                  Fetch Users
+                </button>
+              </div>
+              <small style="display:block;margin-top:4px;font-size:0.75rem;color:var(--text-dim);">Defaults to your account username / OIDC preferred_username.</small>
+              <select id="tautulli-users-select" class="form-control" style="display:none;margin-top:8px;">
+                <option value="">-- Select a Tautulli user --</option>
+              </select>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group col-half">
+                <label for="tautulli-import-url">Tautulli URL (Optional if set in Admin)</label>
+                <input type="url" id="tautulli-import-url" class="form-control" placeholder="http://192.168.1.100:8181" />
+              </div>
+              <div class="form-group col-half">
+                <label for="tautulli-import-api-key">Tautulli API Key (Optional)</label>
+                <input type="password" id="tautulli-import-api-key" class="form-control" placeholder="API Key" />
+              </div>
+            </div>
+
+            <div class="form-group" style="margin-top:8px;">
+              <label for="tautulli-file-input">Or upload Tautulli export file (.csv or .json):</label>
+              <input type="file" id="tautulli-file-input" class="form-control" accept=".csv,.json,text/csv,application/json" />
+            </div>
+
+            <div class="form-group">
+              <label for="tautulli-paste-input">Or paste Tautulli JSON / CSV content:</label>
+              <textarea id="tautulli-paste-input" class="form-control font-mono" rows="4" placeholder="Paste CSV or JSON export from Tautulli..."></textarea>
+            </div>
+
+            <div id="tautulli-import-status" class="import-status-box" style="display: none;"></div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline" id="btn-cancel-tautulli-modal">Close</button>
+            <button type="submit" class="btn btn-primary" id="btn-submit-tautulli-import">Start Import</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
     <!-- Modal: Detail View -->
     <div id="modal-item-detail" class="modal-backdrop" style="display: none;">
-      <div class="modal-dialog">
+      <div class="modal-dialog modal-dialog-detail">
         <div class="modal-header">
           <h3 class="modal-title" id="detail-title">Item Title</h3>
           <button class="modal-close" id="btn-close-detail-modal">&times;</button>

@@ -438,5 +438,518 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     await expect(page.locator('#admin-users-tbody')).not.toContainText(standardEmail);
     await expect(page.locator('#admin-users-tbody')).not.toContainText(standardName);
   });
+
+  test('sonarr cleanup options: verify delete series, season, and all files in detail modal', async ({ page }) => {
+    const userEmail = `sonarr_ui_${Date.now()}@bingesync.local`;
+
+    // Intercept Sonarr library check to simulate series found in Sonarr
+    await page.route('**/api/v1/integrations/check*', async route => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          found: true,
+          service: 'sonarr',
+          series_id: 88,
+          title: 'Better Call Saul',
+        }),
+      });
+    });
+
+    let lastDeletePayload = null;
+    await page.route('**/api/v1/integrations/sonarr/delete-series', async route => {
+      lastDeletePayload = route.request().postDataJSON();
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          status: 'deleted',
+          service: 'sonarr',
+          series_id: 88,
+          action: lastDeletePayload.action,
+          message: 'Successfully processed Sonarr action',
+        }),
+      });
+    });
+
+    // Sign in
+    await page.goto('/');
+    await page.fill('#dev-email', userEmail);
+    await page.fill('#dev-name', 'Saul Fan');
+    await page.click('#btn-dev-submit');
+
+    // Add an episode scrobble (Better Call Saul, Season 2, Episode 3)
+    await page.click('#btn-open-log-modal');
+    await page.selectOption('#scrobble-media-type', 'episode');
+    await page.fill('#scrobble-show', 'Better Call Saul');
+    await page.fill('#scrobble-title', 'Amarillo');
+    await page.fill('#scrobble-season', '2');
+    await page.fill('#scrobble-episode', '3');
+    await page.click('#btn-submit-scrobble');
+
+    // Open detail modal from timeline
+    await page.locator('#timeline-container .scrobble-card', { hasText: 'Amarillo' }).click();
+    await expect(page.locator('#modal-item-detail')).toBeVisible();
+
+    // Verify Sonarr card is visible with all 3 options
+    await expect(page.locator('.arr-cleanup-card-sonarr')).toBeVisible();
+    const actionSelect = page.locator('#sonarr-action-select');
+    await expect(actionSelect).toBeVisible();
+
+    // Verify the 3 options exist
+    const optionsText = await actionSelect.locator('option').allTextContents();
+    expect(optionsText).toContain('Delete show and files');
+    expect(optionsText.some(t => t.includes('Delete and unmonitor season 2 files'))).toBe(true);
+    expect(optionsText).toContain('Delete all files and unmonitor all seasons');
+
+    // Test executing "delete_season"
+    await actionSelect.selectOption('delete_season');
+    page.once('dialog', dialog => dialog.accept());
+    await page.click('#btn-arr-cleanup');
+
+    // Verify success message appears and payload is correct
+    await expect(page.locator('#detail-arr-container')).toContainText('Successfully processed Sonarr action');
+    expect(lastDeletePayload).toEqual({
+      series_id: 88,
+      action: 'delete_season',
+      season_number: 2,
+      delete_files: true,
+    });
+  });
+
+  test('tvdb attribution: verify attribution in footer, settings, and scrobble detail modal', async ({ page }) => {
+    const userEmail = `tvdb_ui_${Date.now()}@bingesync.local`;
+
+    await page.goto('/');
+
+    // 1. Verify global footer attribution is present on the page
+    const footer = page.locator('.app-footer');
+    await expect(footer).toBeVisible();
+    await expect(footer).toContainText('TheTVDB');
+    await expect(footer).toContainText('This product uses TheTVDB API but is not endorsed or certified by TheTVDB');
+    const footerLink = footer.locator('a.tvdb-link');
+    await expect(footerLink).toHaveAttribute('href', 'https://thetvdb.com');
+
+    // 2. Sign in
+    await page.fill('#dev-email', userEmail);
+    await page.fill('#dev-name', 'TVDB User');
+    await page.click('#btn-dev-submit');
+
+    // 3. Navigate to Settings and verify TheTVDB card
+    await page.click('#tab-settings');
+    await expect(page.locator('#settings-tvdb-card')).toBeVisible();
+    await expect(page.locator('#settings-tvdb-card')).toContainText('TheTVDB Metadata Integration');
+    await expect(page.locator('#settings-tvdb-card')).toContainText('Media metadata, plot outlines, genres, and cast details are provided by');
+
+    // 4. Log a scrobble and verify detail modal attribution
+    await page.click('#btn-open-log-modal');
+    await page.fill('#scrobble-title', 'Chernobyl');
+    await page.click('#btn-submit-scrobble');
+
+    await page.click('#tab-timeline');
+    await page.locator('#timeline-container .scrobble-card', { hasText: 'Chernobyl' }).click();
+    await expect(page.locator('#modal-item-detail')).toBeVisible();
+
+    const detailAttribution = page.locator('.detail-tvdb-attribution');
+    await expect(detailAttribution).toBeVisible();
+    await expect(detailAttribution).toContainText('TheTVDB');
+    await expect(detailAttribution.locator('a')).toHaveAttribute('href', 'https://thetvdb.com');
+  });
+
+  test('item other watches: verify other watches table lists previous watches of exact same episode', async ({ page }) => {
+    const userEmail = `watches_e2e_${Date.now()}@bingesync.local`;
+
+    await page.goto('/');
+
+    // 1. Sign in
+    await page.fill('#dev-email', userEmail);
+    await page.fill('#dev-name', 'Watch Tester');
+    await page.click('#btn-dev-submit');
+
+    // 2. Log first watch of Severance S01E01
+    await page.click('#btn-open-log-modal');
+    await page.selectOption('#scrobble-media-type', 'episode');
+    await page.fill('#scrobble-show', 'Severance');
+    await page.fill('#scrobble-title', 'Good News About Hell');
+    await page.fill('#scrobble-season', '1');
+    await page.fill('#scrobble-episode', '1');
+    await page.selectOption('#scrobble-rating', '9');
+    await page.click('#btn-submit-scrobble');
+
+    // Wait for scrobble card to appear
+    await expect(page.locator('#timeline-container .scrobble-card', { hasText: 'Good News About Hell' })).toBeVisible();
+
+    // 3. Log second watch of Severance S01E01 (same episode!)
+    await page.click('#btn-open-log-modal');
+    await page.selectOption('#scrobble-media-type', 'episode');
+    await page.fill('#scrobble-show', 'Severance');
+    await page.fill('#scrobble-title', 'Good News About Hell');
+    await page.fill('#scrobble-season', '1');
+    await page.fill('#scrobble-episode', '1');
+    await page.selectOption('#scrobble-rating', '10');
+    await page.click('#btn-submit-scrobble');
+
+    // 4. Log watch of Severance S01E02 (different episode!)
+    await page.click('#btn-open-log-modal');
+    await page.selectOption('#scrobble-media-type', 'episode');
+    await page.fill('#scrobble-show', 'Severance');
+    await page.fill('#scrobble-title', 'Half Loop');
+    await page.fill('#scrobble-season', '1');
+    await page.fill('#scrobble-episode', '2');
+    await page.selectOption('#scrobble-rating', '8');
+    await page.click('#btn-submit-scrobble');
+
+    // Wait for S01E02 card to appear
+    await expect(page.locator('#timeline-container .scrobble-card', { hasText: 'Half Loop' })).toBeVisible();
+
+    // 5. Navigate to History view
+    await page.click('#tab-history');
+    await expect(page.locator('#history-list')).toBeVisible();
+
+    // Click on the S01E01 scrobble card in history
+    await page.locator('#history-list .scrobble-card', { hasText: 'Good News About Hell' }).first().click();
+    await expect(page.locator('#modal-item-detail')).toBeVisible();
+
+    // 6. Verify Other Watches section for S01E01
+    const watchesSection = page.locator('#detail-watches-container');
+    await expect(watchesSection).toBeVisible();
+    await expect(watchesSection).toContainText('Other Watches');
+    await expect(watchesSection).toContainText('1 other (2 total)');
+    await expect(watchesSection.locator('.watches-table')).toBeVisible();
+    await expect(watchesSection.locator('.other-watch-row')).toHaveCount(1);
+
+    // Close detail modal
+    await page.click('#btn-dismiss-detail-modal');
+    await expect(page.locator('#modal-item-detail')).toBeHidden();
+
+    // 7. Click on S01E02 scrobble card in history
+    await page.locator('#history-list .scrobble-card', { hasText: 'Half Loop' }).first().click();
+    await expect(page.locator('#modal-item-detail')).toBeVisible();
+
+    // Verify S01E02 shows 0 other watches (1 total) and "Only recorded watch for this episode"
+    await expect(watchesSection).toContainText('0 others (1 total)');
+    await expect(watchesSection).toContainText('Only recorded watch for this episode');
+  });
+
+  test('stats view displays top watched movies and updates with filters', async ({ page }) => {
+    const userEmail = `pw_topmovies_${Date.now()}@bingesync.local`;
+
+    await page.goto('/');
+    await page.fill('#dev-email', userEmail);
+    await page.fill('#dev-name', 'Movie Fan');
+    await page.click('#btn-dev-submit');
+    await expect(page.locator('#user-display-name')).toHaveText('Movie Fan');
+
+    // Log 2 watches of Dune and 1 watch of Inception
+    for (let i = 0; i < 2; i++) {
+      await page.click('#btn-open-log-modal');
+      await page.selectOption('#scrobble-media-type', 'movie');
+      await page.fill('#scrobble-title', 'Dune: Part Two');
+      await page.fill('#scrobble-year', '2024');
+      await page.fill('#scrobble-duration', '166');
+      await page.click('#btn-submit-scrobble');
+      await expect(page.locator('#modal-log-scrobble')).toBeHidden();
+    }
+
+    await page.click('#btn-open-log-modal');
+    await page.selectOption('#scrobble-media-type', 'movie');
+    await page.fill('#scrobble-title', 'Inception');
+    await page.fill('#scrobble-year', '2010');
+    await page.fill('#scrobble-duration', '148');
+    await page.click('#btn-submit-scrobble');
+    await expect(page.locator('#modal-log-scrobble')).toBeHidden();
+
+    // Switch to Stats view
+    await page.click('#tab-stats');
+    await expect(page.locator('#view-stats')).toBeVisible();
+
+    // Verify Top Watched Movies section exists and lists Dune and Inception
+    const topMoviesSection = page.locator('#top-movies-section');
+    await expect(topMoviesSection).toBeVisible();
+    await expect(topMoviesSection).toContainText('Top Watched Movies');
+    await expect(page.locator('#top-movies-list')).toContainText('Dune: Part Two (2024)');
+    await expect(page.locator('#top-movies-list')).toContainText('2 plays');
+    await expect(page.locator('#top-movies-list')).toContainText('Inception (2010)');
+    await expect(page.locator('#top-movies-list')).toContainText('1 play');
+
+    // Test filter pills: 'TV Shows' hides top movies, 'Movies' shows top movies
+    await page.click('#pill-stats-episodes');
+    await expect(topMoviesSection).toBeHidden();
+
+    await page.click('#pill-stats-movies');
+    await expect(topMoviesSection).toBeVisible();
+  });
+
+  test('timeline minimised search and date scrubber interaction', async ({ page }) => {
+    const userEmail = `pw_scrubber_${Date.now()}@bingesync.local`;
+
+    await page.goto('/');
+    await page.fill('#dev-email', userEmail);
+    await page.fill('#dev-name', 'Scrubber Tester');
+    await page.click('#btn-dev-submit');
+
+    // Log a movie
+    await page.click('#btn-open-log-modal');
+    await page.selectOption('#scrobble-media-type', 'movie');
+    await page.fill('#scrobble-title', 'Interstellar');
+    await page.fill('#scrobble-year', '2014');
+    await page.click('#btn-submit-scrobble');
+    await expect(page.locator('#modal-log-scrobble')).toBeHidden();
+
+    // Scrubber should be visible and contain the current day button
+    const scrubber = page.locator('#timeline-scrubber');
+    await expect(scrubber).toBeVisible();
+    await expect(page.locator('#timeline-scrubber-list .scrubber-item').first()).toBeVisible();
+
+    // Verify search expandable element exists and has search-expandable class
+    const searchWrap = page.locator('#timeline-search-wrap');
+    await expect(searchWrap).toHaveClass(/search-expandable/);
+
+    // Search for Interstellar
+    await page.fill('#timeline-search', 'Interstellar');
+    await expect(page.locator('#timeline-container')).toContainText('Interstellar');
+  });
+
+  test('admin settings, background tasks, and application logs management', async ({ page }) => {
+    const adminEmail = `admin_suite_${Date.now()}@bingesync.local`;
+
+    // Sign in via UI as admin
+    await page.goto('/');
+    await page.fill('#dev-email', adminEmail);
+    await page.fill('#dev-name', 'System Admin');
+    await page.click('#btn-dev-submit');
+
+    // Verify admin tab is visible and navigate to Admin view
+    await expect(page.locator('#tab-admin')).toBeVisible();
+    await page.click('#tab-admin');
+    await expect(page.locator('#view-admin')).toBeVisible();
+
+    // 1. Test Subview: Services & API Keys
+    await page.click('#admin-subnav-pills button[data-subview="admin-sub-settings"]');
+    await expect(page.locator('#admin-sub-settings')).toBeVisible();
+    await expect(page.locator('#admin-sub-users')).toBeHidden();
+
+    // Fill settings form and save
+    await page.fill('#setting-radarr-url', 'http://10.0.0.50:7878');
+    await page.fill('#setting-radarr-api-key', 'radarr_secret_key_123');
+    await page.fill('#setting-tvdb-api-key', 'tvdb_test_api_key_456');
+    await page.click('#btn-save-admin-settings');
+
+    // Verify success feedback
+    await expect(page.locator('#admin-settings-status')).toContainText('Settings saved successfully!');
+
+    // 2. Test Subview: Background Tasks
+    await page.click('#admin-subnav-pills button[data-subview="admin-sub-tasks"]');
+    await expect(page.locator('#admin-sub-tasks')).toBeVisible();
+
+    // Verify task cards exist (poster_cache and tvdb_metadata)
+    const taskCards = page.locator('.task-card');
+    await expect(taskCards).toHaveCount(2);
+    await expect(page.locator('.task-card', { hasText: 'Media Poster & Thumbnail Caching' })).toBeVisible();
+    await expect(page.locator('.task-card', { hasText: 'TheTVDB v4 Metadata Enrichment' })).toBeVisible();
+
+    // Trigger run now on a task
+    const runBtn = page.locator('.task-card', { hasText: 'Media Poster & Thumbnail Caching' }).locator('.btn-trigger-task');
+    await runBtn.click();
+    await expect(runBtn).toBeVisible();
+
+    // 3. Test Subview: Application Logs
+    await page.click('#admin-subnav-pills button[data-subview="admin-sub-logs"]');
+    await expect(page.locator('#admin-sub-logs')).toBeVisible();
+
+    // Verify logs terminal has entries
+    const logsViewer = page.locator('#admin-logs-viewer');
+    await expect(logsViewer).toBeVisible();
+    await expect(page.locator('#admin-logs-viewer .log-entry').first()).toBeVisible();
+
+    // Test log level filter
+    await page.selectOption('#admin-logs-filter-level', 'WARN');
+    await page.click('#btn-refresh-admin-logs');
+    await expect(logsViewer).toBeVisible();
+  });
+
+  test('favicon: verify favicon is linked and accessible', async ({ page }) => {
+    await page.goto('/');
+    const favicon = page.locator('link[rel="icon"]');
+    await expect(favicon).toHaveAttribute('href', './favicon.svg');
+
+    const response = await page.request.get('/favicon.svg');
+    expect(response.status()).toBe(200);
+    expect(response.headers()['content-type']).toContain('image/svg+xml');
+  });
+
+  test('scrobble in-progress: verify in-progress badge and watch status', async ({ page }) => {
+    const userEmail = `progress_ui_${Date.now()}@bingesync.local`;
+    await page.goto('/');
+    await page.fill('#dev-email', userEmail);
+    await page.fill('#dev-name', 'Progress UI User');
+    await page.click('#btn-dev-submit');
+
+    // Fetch user webhook token from settings
+    await page.click('#tab-settings');
+    const webhookUrl = await page.locator('#webhook-url-input').inputValue();
+    const token = new URL(webhookUrl).pathname.split('/').pop();
+
+    // Send a media.play event with 45% progress
+    const res = await page.request.post(`/api/v1/webhooks/plex/${token}`, {
+      data: {
+        event: 'media.play',
+        Metadata: {
+          title: 'Dune Part Two',
+          type: 'movie',
+          year: 2024,
+          duration: 10000,
+          viewOffset: 4500,
+        }
+      }
+    });
+    expect(res.status()).toBe(200);
+
+    // Navigate to timeline and verify in-progress badge and progress bar
+    await page.click('#tab-timeline');
+    const card = page.locator('#timeline-container .scrobble-card', { hasText: 'Dune Part Two' });
+    await expect(card).toBeVisible();
+    await expect(card.locator('.badge-in-progress')).toContainText('45%');
+    await expect(card.locator('.scrobble-progress-bar')).toBeVisible();
+
+    // Click card to open detail modal and verify status display
+    await card.click();
+    await expect(page.locator('#modal-item-detail')).toBeVisible();
+    await expect(page.locator('#detail-body')).toContainText('In Progress (45%)');
+  });
+
+  test('tautulli import: verify import modal, username defaulting, and deduplication', async ({ page }) => {
+    const userEmail = `tautulli_ui_${Date.now()}@bingesync.local`;
+    await page.goto('/');
+    await page.fill('#dev-email', userEmail);
+    await page.fill('#dev-name', 'Tautulli Streamer');
+    await page.click('#btn-dev-submit');
+
+    // 1. Open Tautulli import modal
+    await expect(page.locator('#btn-open-tautulli-modal')).toBeVisible();
+    await page.click('#btn-open-tautulli-modal');
+    await expect(page.locator('#modal-import-tautulli')).toBeVisible();
+
+    // 2. Verify username defaults to current user username
+    const usernameVal = await page.locator('#tautulli-import-username').inputValue();
+    expect(usernameVal.length).toBeGreaterThan(0);
+
+    // 3. Paste Tautulli JSON history for this user
+    const sampleHistory = {
+      response: {
+        result: 'success',
+        data: {
+          data: [
+            {
+              user: usernameVal,
+              media_type: 'movie',
+              title: 'Oppenheimer',
+              year: 2023,
+              date: 1690000000,
+              duration: 10800,
+              rating_key: '8888',
+              percent_complete: 100,
+            }
+          ]
+        }
+      }
+    };
+
+    await page.fill('#tautulli-paste-input', JSON.stringify(sampleHistory));
+    await page.click('#btn-submit-tautulli-import');
+
+    // 4. Verify import status success feedback
+    const statusBox = page.locator('#tautulli-import-status');
+    await expect(statusBox).toBeVisible();
+    await expect(statusBox).toContainText('Import Complete!');
+    await expect(statusBox).toContainText('Imported: 1');
+
+    // Close modal
+    await page.click('#btn-cancel-tautulli-modal');
+    await expect(page.locator('#modal-import-tautulli')).toBeHidden();
+
+    // 5. Verify item appeared on timeline
+    await page.click('#tab-timeline');
+    await expect(page.locator('#timeline-container .scrobble-card', { hasText: 'Oppenheimer' })).toBeVisible();
+
+    // 6. Test deduplication: re-open modal, submit same data again
+    await page.click('#btn-open-tautulli-modal');
+    await page.fill('#tautulli-paste-input', JSON.stringify(sampleHistory));
+    await page.click('#btn-submit-tautulli-import');
+
+    await expect(statusBox).toBeVisible();
+    await expect(statusBox).toContainText('Import Complete!');
+    await expect(statusBox).toContainText('Imported: 0');
+    await expect(statusBox).toContainText('Skipped duplicates: 1');
+  });
+
+  test('rating watched items: rate from item detail modal, update, and clear rating', async ({ page }) => {
+    const userEmail = `rater_ui_${Date.now()}@bingesync.local`;
+    await page.goto('/');
+    await page.fill('#dev-email', userEmail);
+    await page.fill('#dev-name', 'Film Critic');
+    await page.click('#btn-dev-submit');
+
+    // 1. Log a movie
+    await page.click('#btn-open-log-modal');
+    await page.selectOption('#scrobble-media-type', 'movie');
+    await page.fill('#scrobble-title', 'Blade Runner 2049');
+    await page.fill('#scrobble-year', '2017');
+    await page.click('#btn-submit-scrobble');
+    await expect(page.locator('#modal-log-scrobble')).toBeHidden();
+
+    // 2. Open detail modal
+    const card = page.locator('#timeline-container .scrobble-card', { hasText: 'Blade Runner 2049' });
+    await expect(card).toBeVisible();
+    await card.click();
+    await expect(page.locator('#modal-item-detail')).toBeVisible();
+
+    // 3. Select rating 9 and click Save Rating
+    await page.selectOption('#detail-rating-select', '9');
+    await page.click('#btn-save-detail-rating');
+
+    // 4. Verify feedback and rating display in modal
+    await expect(page.locator('#detail-rating-feedback')).toContainText('Rating saved');
+    await expect(page.locator('#detail-rating-display')).toContainText('★ 9/10');
+
+    // 5. Close modal and verify rating badge appears on card
+    await page.click('#btn-dismiss-detail-modal');
+    await expect(page.locator('#modal-item-detail')).toBeHidden();
+    await expect(card.locator('.scrobble-rating')).toContainText('★ 9/10');
+
+    // 6. Re-open modal, clear rating to 'No rating' and save
+    await card.click();
+    await expect(page.locator('#modal-item-detail')).toBeVisible();
+    await page.selectOption('#detail-rating-select', '');
+    await page.click('#btn-save-detail-rating');
+
+    await expect(page.locator('#detail-rating-feedback')).toContainText('Rating cleared');
+    await expect(page.locator('#detail-rating-display')).toContainText('Unrated');
+
+    await page.click('#btn-dismiss-detail-modal');
+    await expect(page.locator('#modal-item-detail')).toBeHidden();
+    await expect(card.locator('.scrobble-rating')).toBeHidden();
+  });
+
+  test('swagger ui & api documentation: verify /docs and openapi spec link', async ({ page, request }) => {
+    // 1. Direct OpenAPI spec request
+    const specRes = await request.get('/api/v1/openapi.json');
+    expect(specRes.status()).toBe(200);
+    const spec = await specRes.json();
+    expect(spec.openapi).toBe('3.0.3');
+    expect(spec.info.title).toBe('BingeSync API');
+    expect(spec.paths['/api/v1/history/{id}/rate']).toBeDefined();
+
+    // 2. Navigate to /docs
+    await page.goto('/docs');
+    await expect(page).toHaveTitle(/BingeSync API - Swagger UI/);
+    await expect(page.locator('.bingesync-brand-title')).toContainText('BingeSync');
+    await expect(page.locator('.bingesync-brand-title')).toContainText('API Docs');
+    await expect(page.locator('#swagger-ui')).toBeVisible();
+    await expect(page.locator('a[href*="openapi.json"]').first()).toBeVisible();
+  });
 });
+
+
+
 

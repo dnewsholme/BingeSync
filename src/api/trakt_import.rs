@@ -255,9 +255,10 @@ pub async fn import_trakt_handler(
         )
     })?;
 
-    // Trigger background image cache worker to download posters for newly imported scrobbles
+    // Trigger background image cache and metadata enrichment workers
     if imported_count > 0 {
         state.image_notify.notify_one();
+        state.metadata_notify.notify_one();
     }
 
     Ok(Json(ImportSummary {

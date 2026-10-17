@@ -134,6 +134,7 @@ pub async fn callback_handler(
         Some(&user_info.sub),
         user_info.sid.as_deref(),
         user_info.picture.as_deref(),
+        user_info.preferred_username.as_deref(),
         is_admin,
     )
     .await
@@ -282,7 +283,8 @@ pub async fn get_or_create_user(
     avatar_url: Option<&str>,
     is_admin: bool,
 ) -> Result<User, sqlx::Error> {
-    get_or_create_user_with_sid(pool, email, display_name, oidc_sub, None, avatar_url, is_admin).await
+    let pref = email.split('@').next();
+    get_or_create_user_with_sid(pool, email, display_name, oidc_sub, None, avatar_url, pref, is_admin).await
 }
 
 pub async fn get_or_create_user_with_sid(
@@ -292,6 +294,7 @@ pub async fn get_or_create_user_with_sid(
     oidc_sub: Option<&str>,
     oidc_sid: Option<&str>,
     avatar_url: Option<&str>,
+    preferred_username: Option<&str>,
     is_admin: bool,
 ) -> Result<User, sqlx::Error> {
     let desired_role = if is_admin { "admin" } else { "user" };
@@ -303,12 +306,13 @@ pub async fn get_or_create_user_with_sid(
             .fetch_optional(pool)
             .await?
         {
-            // Sync role, oidc_sid, and reset sessions_revoked_at on fresh login
+            // Sync role, oidc_sid, preferred_username, and reset sessions_revoked_at on fresh login
             sqlx::query(
-                "UPDATE users SET role = ?, oidc_sid = COALESCE(?, oidc_sid), sessions_revoked_at = NULL, updated_at = datetime('now') WHERE id = ?"
+                "UPDATE users SET role = ?, oidc_sid = COALESCE(?, oidc_sid), preferred_username = COALESCE(?, preferred_username), sessions_revoked_at = NULL, updated_at = datetime('now') WHERE id = ?"
             )
             .bind(desired_role)
             .bind(oidc_sid)
+            .bind(preferred_username)
             .bind(&user.id)
             .execute(pool)
             .await?;
@@ -328,10 +332,11 @@ pub async fn get_or_create_user_with_sid(
     {
         let role_to_set = if is_admin { "admin" } else { &user.role };
         sqlx::query(
-            "UPDATE users SET oidc_sub = COALESCE(oidc_sub, ?), oidc_sid = COALESCE(?, oidc_sid), role = ?, sessions_revoked_at = NULL, updated_at = datetime('now') WHERE id = ?"
+            "UPDATE users SET oidc_sub = COALESCE(oidc_sub, ?), oidc_sid = COALESCE(?, oidc_sid), preferred_username = COALESCE(?, preferred_username), role = ?, sessions_revoked_at = NULL, updated_at = datetime('now') WHERE id = ?"
         )
         .bind(oidc_sub)
         .bind(oidc_sid)
+        .bind(preferred_username)
         .bind(role_to_set)
         .bind(&user.id)
         .execute(pool)
@@ -343,15 +348,15 @@ pub async fn get_or_create_user_with_sid(
             .await;
     }
 
-    // 3. Create new user with unique webhook_token and role
+    // 3. Create new user with unique webhook_token, preferred_username, and role
     let user_id = Uuid::new_v4().to_string();
     let webhook_token = Uuid::new_v4().to_string().replace('-', "");
     let now = Utc::now().to_rfc3339();
 
     sqlx::query(
         r#"
-        INSERT INTO users (id, email, display_name, role, oidc_sub, oidc_sid, webhook_token, avatar_url, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO users (id, email, display_name, role, oidc_sub, oidc_sid, preferred_username, webhook_token, avatar_url, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
     )
     .bind(&user_id)
@@ -360,6 +365,7 @@ pub async fn get_or_create_user_with_sid(
     .bind(desired_role)
     .bind(oidc_sub)
     .bind(oidc_sid)
+    .bind(preferred_username)
     .bind(&webhook_token)
     .bind(avatar_url)
     .bind(&now)

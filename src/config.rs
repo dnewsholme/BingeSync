@@ -19,6 +19,12 @@ pub struct Config {
     pub sonarr_api_key: Option<String>,
     pub base_path: String,
     pub image_cache_dir: String,
+    pub tvdb_api_key: Option<String>,
+    pub tvdb_pin: Option<String>,
+    pub tvdb_base_url: String,
+    pub tautulli_url: Option<String>,
+    pub tautulli_api_key: Option<String>,
+    pub scrobble_threshold_percent: i64,
 }
 
 impl Config {
@@ -85,6 +91,9 @@ impl Config {
         let radarr_api_key = env::var("RADARR_API_KEY").ok().filter(|s| !s.trim().is_empty());
         let sonarr_url = env::var("SONARR_URL").ok().filter(|s| !s.trim().is_empty());
         let sonarr_api_key = env::var("SONARR_API_KEY").ok().filter(|s| !s.trim().is_empty());
+        let tvdb_api_key = env::var("TVDB_API_KEY").ok().filter(|s| !s.trim().is_empty());
+        let tvdb_pin = env::var("TVDB_PIN").ok().filter(|s| !s.trim().is_empty());
+        let tvdb_base_url = env::var("TVDB_BASE_URL").unwrap_or_else(|_| "https://api4.thetvdb.com/v4".to_string());
 
         let image_cache_dir = env::var("IMAGE_CACHE_DIR").unwrap_or_else(|_| {
             if let Some(path_str) = database_url
@@ -100,6 +109,14 @@ impl Config {
             }
             "./data/images".to_string()
         });
+
+        let scrobble_threshold_percent = env::var("SCROBBLE_THRESHOLD_PERCENT")
+            .ok()
+            .and_then(|v| v.parse::<i64>().ok())
+            .unwrap_or(80);
+
+        let tautulli_url = env::var("TAUTULLI_URL").ok().filter(|s| !s.trim().is_empty());
+        let tautulli_api_key = env::var("TAUTULLI_API_KEY").ok().filter(|s| !s.trim().is_empty());
 
         Self {
             host,
@@ -119,6 +136,12 @@ impl Config {
             sonarr_api_key,
             base_path,
             image_cache_dir,
+            tvdb_api_key,
+            tvdb_pin,
+            tvdb_base_url,
+            tautulli_url,
+            tautulli_api_key,
+            scrobble_threshold_percent,
         }
     }
 }

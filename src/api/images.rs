@@ -61,7 +61,9 @@ pub fn start_image_cache_worker(state: AppState) -> tokio::task::JoinHandle<()> 
         let mut failed_lookups: HashSet<String> = HashSet::new();
 
         loop {
+            state.task_tracker.set_image_running("Scanning for scrobbles without thumbnails...").await;
             let processed = process_missing_images_batch(&state, &client, &mut failed_lookups).await;
+            state.task_tracker.set_image_idle(processed, &format!("Processed {} poster(s)", processed)).await;
 
             if processed > 0 {
                 // If we processed items in the batch, immediately continue after a brief pause

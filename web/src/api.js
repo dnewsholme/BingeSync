@@ -83,6 +83,12 @@ export const api = {
     request(`/history/${id}`, {
       method: 'DELETE',
     }),
+  rateScrobble: (id, rating) =>
+    request(`/history/${id}/rate`, {
+      method: 'POST',
+      body: JSON.stringify({ rating }),
+    }),
+  getItemWatches: (id) => request(`/history/${id}/watches`),
   getStats: () => request('/stats'),
   getNowPlaying: () => request('/now-playing'),
   getWebhookInfo: () => request('/user/webhook'),
@@ -103,6 +109,28 @@ export const api = {
     return request('/import/trakt', {
       method: 'POST',
       body: typeof payload === 'string' ? payload : JSON.stringify(payload),
+    });
+  },
+  getTautulliUsers: (url, apiKey) => {
+    const params = new URLSearchParams();
+    if (url) params.append('url', url);
+    if (apiKey) params.append('api_key', apiKey);
+    const qs = params.toString();
+    return request(`/import/tautulli/users${qs ? '?' + qs : ''}`);
+  },
+  importTautulli: (payload) => {
+    if (payload instanceof FormData) {
+      return request('/import/tautulli', {
+        method: 'POST',
+        body: payload,
+      });
+    }
+    return request('/import/tautulli', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
     });
   },
   deleteByShow: (showTitle) =>
@@ -130,11 +158,33 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ movie_id: movieId, delete_files: deleteFiles }),
     }),
-  deleteFromSonarr: (seriesId, deleteFiles = true) =>
-    request('/integrations/sonarr/delete-series', {
+  deleteFromSonarr: (seriesId, options = {}) => {
+    let body = { series_id: seriesId };
+    if (typeof options === 'boolean') {
+      body.delete_files = options;
+      body.action = 'delete_series';
+    } else {
+      body.action = options.action || 'delete_series';
+      body.delete_files = options.delete_files !== false;
+      if (options.season_number != null) {
+        body.season_number = Number(options.season_number);
+      }
+    }
+    return request('/integrations/sonarr/delete-series', {
       method: 'POST',
-      body: JSON.stringify({ series_id: seriesId, delete_files: deleteFiles }),
-    }),
+      body: JSON.stringify(body),
+    });
+  },
   getAdminUsers: () => request('/admin/users'),
   deleteAdminUser: (userId) => request(`/admin/users/${userId}`, { method: 'DELETE' }),
+  getAdminSettings: () => request('/admin/settings'),
+  updateAdminSettings: (data) => request('/admin/settings', { method: 'POST', body: JSON.stringify(data) }),
+  getAdminLogs: (params = {}) => {
+    let url = `/admin/logs?limit=${params.limit || 200}`;
+    if (params.level) url += `&level=${encodeURIComponent(params.level)}`;
+    return request(url);
+  },
+  clearAdminLogs: () => request('/admin/logs', { method: 'DELETE' }),
+  getAdminTasks: () => request('/admin/tasks'),
+  triggerAdminTask: (taskId) => request(`/admin/tasks/${taskId}/run`, { method: 'POST' }),
 };

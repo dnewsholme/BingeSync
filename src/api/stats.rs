@@ -9,7 +9,7 @@ use std::collections::HashSet;
 use crate::{
     api::AppState,
     auth::AuthUser,
-    models::{StatsSummary, TopShowItem},
+    models::{StatsSummary, TopMovieItem, TopShowItem},
 };
 
 pub async fn get_user_stats(
@@ -91,6 +91,32 @@ pub async fn get_user_stats(
             show_title,
             count,
             thumb_url,
+        })
+        .collect();
+
+    // 2b. Top Movies
+    let top_movies_rows: Vec<(String, i64, Option<String>, Option<i32>)> = sqlx::query_as(
+        r#"
+        SELECT title, COUNT(*) as cnt, MAX(thumb_url) as thumb, MAX(year) as yr
+        FROM scrobbles
+        WHERE user_id = ? AND media_type = 'movie'
+        GROUP BY title
+        ORDER BY cnt DESC
+        LIMIT 5
+        "#,
+    )
+    .bind(&auth.user_id)
+    .fetch_all(&state.pool)
+    .await
+    .unwrap_or_default();
+
+    let top_movies = top_movies_rows
+        .into_iter()
+        .map(|(title, count, thumb_url, year)| TopMovieItem {
+            title,
+            count,
+            thumb_url,
+            year,
         })
         .collect();
 
@@ -201,6 +227,7 @@ pub async fn get_user_stats(
         episode_minutes,
         current_streak_days,
         top_shows,
+        top_movies,
         daily_activity,
         top_genres,
     }))

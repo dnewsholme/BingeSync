@@ -11,16 +11,21 @@ use bingesync::{
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // 1. Logging setup
+    // 1. In-memory logging buffer and background task tracker
+    let log_buffer = Arc::new(bingesync::api::logs::LogBuffer::new(1000));
+    let task_tracker = Arc::new(bingesync::api::jobs::BackgroundTaskTracker::new());
+
+    // 2. Logging setup with in-memory buffer capture
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env()
                 .unwrap_or_else(|_| "bingesync=info,tower_http=info".into()),
         )
         .with(tracing_subscriber::fmt::layer())
+        .with(bingesync::api::logs::TracingLogLayer::new(log_buffer.clone()))
         .init();
 
-    // 2. Load config
+    // 3. Load config
     let config = Arc::new(Config::from_env());
     tracing::info!(
         app_url = %config.app_url,
@@ -30,11 +35,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "Starting BingeSync..."
     );
 
-    // 3. Initialize SQLite DB
+    // 4. Initialize SQLite DB
     let pool = db::init_db(&config.database_url).await?;
     tracing::info!("SQLite database initialized and migrations applied successfully");
 
-    // 4. Initialize OIDC client if enabled
+    // 5. Initialize OIDC client if enabled
     let oidc_client = if config.oidc_enabled {
         if let (Some(issuer), Some(client_id)) = (&config.oidc_issuer_url, &config.oidc_client_id) {
             let redirect_uri = config
@@ -63,16 +68,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         None
     };
 
-    // 5. Build application state
+    // 6. Build application state
     let state = AppState {
         pool,
         config: config.clone(),
         oidc_client,
         image_notify: Arc::new(tokio::sync::Notify::new()),
+        metadata_notify: Arc::new(tokio::sync::Notify::new()),
+        log_buffer,
+        task_tracker,
     };
 
-    // 6. Start background image cache worker
+    // 6. Start background workers
     let _image_worker = bingesync::api::images::start_image_cache_worker(state.clone());
+    let _metadata_worker = bingesync::api::tvdb::start_metadata_worker(state.clone());
 
     // 7. Router assembly
     let app = create_api_router(state)

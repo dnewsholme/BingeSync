@@ -27,18 +27,29 @@ pub struct RadarrDeleteRequest {
 pub struct SonarrDeleteRequest {
     pub series_id: i64,
     pub delete_files: Option<bool>,
+    pub action: Option<String>,
+    pub season_number: Option<i32>,
 }
 
 pub async fn get_integrations_status(
     State(state): State<AppState>,
     _auth: AuthUser,
 ) -> impl IntoResponse {
-    let radarr_configured = state.config.radarr_url.is_some() && state.config.radarr_api_key.is_some();
-    let sonarr_configured = state.config.sonarr_url.is_some() && state.config.sonarr_api_key.is_some();
+    let radarr_url = state.get_effective_radarr_url().await;
+    let radarr_key = state.get_effective_radarr_api_key().await;
+    let radarr_configured = radarr_url.is_some() && radarr_key.is_some();
+
+    let sonarr_url = state.get_effective_sonarr_url().await;
+    let sonarr_key = state.get_effective_sonarr_api_key().await;
+    let sonarr_configured = sonarr_url.is_some() && sonarr_key.is_some();
+
+    let tvdb_key = state.get_effective_tvdb_api_key().await;
+    let tvdb_configured = tvdb_key.is_some() && !tvdb_key.as_deref().unwrap_or("").is_empty();
 
     Json(serde_json::json!({
         "radarr_configured": radarr_configured,
         "sonarr_configured": sonarr_configured,
+        "tvdb_configured": tvdb_configured,
     }))
 }
 
@@ -50,7 +61,7 @@ pub async fn check_media_in_library(
     let client = Client::builder().timeout(std::time::Duration::from_secs(5)).build().unwrap_or_default();
 
     if query.media_type == "movie" {
-        if let (Some(ref radarr_url), Some(ref api_key)) = (&state.config.radarr_url, &state.config.radarr_api_key) {
+        if let (Some(ref radarr_url), Some(ref api_key)) = (state.get_effective_radarr_url().await, state.get_effective_radarr_api_key().await) {
             let lookup_url = format!("{}/api/v3/movie/lookup", radarr_url.trim_end_matches('/'));
             let res = client
                 .get(&lookup_url)
@@ -91,7 +102,7 @@ pub async fn check_media_in_library(
         return Ok(Json(serde_json::json!({ "found": false, "service": "radarr" })));
     } else {
         // Episode / TV Series -> check Sonarr
-        if let (Some(ref sonarr_url), Some(ref api_key)) = (&state.config.sonarr_url, &state.config.sonarr_api_key) {
+        if let (Some(ref sonarr_url), Some(ref api_key)) = (state.get_effective_sonarr_url().await, state.get_effective_sonarr_api_key().await) {
             let search_term = query.grandparent_title.as_deref().unwrap_or(&query.title);
             let lookup_url = format!("{}/api/v3/series/lookup", sonarr_url.trim_end_matches('/'));
             let res = client
@@ -129,7 +140,7 @@ pub async fn delete_from_radarr(
     _auth: AuthUser,
     Json(payload): Json<RadarrDeleteRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
-    let (radarr_url, api_key) = match (&state.config.radarr_url, &state.config.radarr_api_key) {
+    let (radarr_url, api_key_val) = match (state.get_effective_radarr_url().await, state.get_effective_radarr_api_key().await) {
         (Some(u), Some(k)) => (u, k),
         _ => {
             return Err((
@@ -138,6 +149,7 @@ pub async fn delete_from_radarr(
             ));
         }
     };
+    let api_key = api_key_val.as_str();
 
     let delete_files = payload.delete_files.unwrap_or(true);
     let target_url = format!(
@@ -180,7 +192,7 @@ pub async fn delete_from_sonarr(
     _auth: AuthUser,
     Json(payload): Json<SonarrDeleteRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
-    let (sonarr_url, api_key) = match (&state.config.sonarr_url, &state.config.sonarr_api_key) {
+    let (sonarr_url, api_key_val) = match (state.get_effective_sonarr_url().await, state.get_effective_sonarr_api_key().await) {
         (Some(u), Some(k)) => (u, k),
         _ => {
             return Err((
@@ -189,39 +201,293 @@ pub async fn delete_from_sonarr(
             ));
         }
     };
+    let api_key = api_key_val.as_str();
 
-    let delete_files = payload.delete_files.unwrap_or(true);
-    let target_url = format!(
-        "{}/api/v3/series/{}?deleteFiles={}&addImportListExclusion=false",
-        sonarr_url.trim_end_matches('/'),
-        payload.series_id,
-        delete_files
-    );
+    let client = Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .unwrap_or_default();
+    let base_url = sonarr_url.trim_end_matches('/');
+    let action = payload.action.as_deref().unwrap_or("delete_series");
 
-    let client = Client::builder().timeout(std::time::Duration::from_secs(10)).build().unwrap_or_default();
-    let res = client
-        .delete(&target_url)
-        .header("X-Api-Key", api_key)
-        .send()
-        .await
-        .map_err(|e| {
-            (
-                StatusCode::BAD_GATEWAY,
-                Json(serde_json::json!({ "error": format!("Failed to communicate with Sonarr: {}", e) })),
-            )
-        })?;
+    match action {
+        "delete_season" => {
+            let season = match payload.season_number {
+                Some(s) => s,
+                None => {
+                    return Err((
+                        StatusCode::BAD_REQUEST,
+                        Json(serde_json::json!({ "error": "season_number is required for delete_season action" })),
+                    ));
+                }
+            };
 
-    if !res.status().is_success() {
-        return Err((
-            StatusCode::BAD_GATEWAY,
-            Json(serde_json::json!({ "error": format!("Sonarr returned error status: {}", res.status()) })),
-        ));
+            // 1. Fetch episode files and delete those belonging to this season
+            let ep_files_url = format!("{}/api/v3/episodefile?seriesId={}", base_url, payload.series_id);
+            let ep_files_res = client
+                .get(&ep_files_url)
+                .header("X-Api-Key", api_key)
+                .send()
+                .await;
+
+            let mut deleted_files_count = 0;
+            if let Ok(resp) = ep_files_res {
+                if resp.status().is_success() {
+                    if let Ok(files) = resp.json::<Vec<serde_json::Value>>().await {
+                        for f in files {
+                            if f.get("seasonNumber").and_then(|v| v.as_i64()) == Some(season as i64) {
+                                if let Some(file_id) = f.get("id").and_then(|v| v.as_i64()) {
+                                    let del_url = format!("{}/api/v3/episodefile/{}", base_url, file_id);
+                                    let _ = client
+                                        .delete(&del_url)
+                                        .header("X-Api-Key", api_key)
+                                        .send()
+                                        .await;
+                                    deleted_files_count += 1;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 2. Fetch series, update season monitored to false, and PUT back
+            let series_url = format!("{}/api/v3/series/{}", base_url, payload.series_id);
+            let series_res = client
+                .get(&series_url)
+                .header("X-Api-Key", api_key)
+                .send()
+                .await
+                .map_err(|e| {
+                    (
+                        StatusCode::BAD_GATEWAY,
+                        Json(serde_json::json!({ "error": format!("Failed to fetch series from Sonarr: {}", e) })),
+                    )
+                })?;
+
+            if !series_res.status().is_success() {
+                return Err((
+                    StatusCode::BAD_GATEWAY,
+                    Json(serde_json::json!({ "error": format!("Sonarr returned error status: {}", series_res.status()) })),
+                ));
+            }
+
+            let mut series_json: serde_json::Value = series_res.json().await.map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({ "error": format!("Failed to parse Sonarr response: {}", e) })),
+                )
+            })?;
+
+            if let Some(seasons) = series_json.get_mut("seasons").and_then(|v| v.as_array_mut()) {
+                for s in seasons {
+                    if s.get("seasonNumber").and_then(|v| v.as_i64()) == Some(season as i64) {
+                        s["monitored"] = serde_json::json!(false);
+                    }
+                }
+            }
+
+            let put_res = client
+                .put(&series_url)
+                .header("X-Api-Key", api_key)
+                .json(&series_json)
+                .send()
+                .await;
+
+            if let Ok(ref pr) = put_res {
+                if pr.status() == StatusCode::NOT_FOUND || pr.status() == StatusCode::METHOD_NOT_ALLOWED {
+                    let fallback_url = format!("{}/api/v3/series", base_url);
+                    let _ = client
+                        .put(&fallback_url)
+                        .header("X-Api-Key", api_key)
+                        .json(&series_json)
+                        .send()
+                        .await;
+                }
+            }
+
+            // 3. Unmonitor episodes in this season
+            let ep_url = format!("{}/api/v3/episode?seriesId={}&seasonNumber={}", base_url, payload.series_id, season);
+            if let Ok(ep_res) = client.get(&ep_url).header("X-Api-Key", api_key).send().await {
+                if ep_res.status().is_success() {
+                    if let Ok(episodes) = ep_res.json::<Vec<serde_json::Value>>().await {
+                        let ep_ids: Vec<i64> = episodes.iter().filter_map(|e| e.get("id").and_then(|v| v.as_i64())).collect();
+                        if !ep_ids.is_empty() {
+                            let mon_url = format!("{}/api/v3/episode/monitor", base_url);
+                            let _ = client
+                                .put(&mon_url)
+                                .header("X-Api-Key", api_key)
+                                .json(&serde_json::json!({
+                                    "episodeIds": ep_ids,
+                                    "monitored": false
+                                }))
+                                .send()
+                                .await;
+                        }
+                    }
+                }
+            }
+
+            Ok(Json(serde_json::json!({
+                "status": "deleted",
+                "service": "sonarr",
+                "series_id": payload.series_id,
+                "action": "delete_season",
+                "season_number": season,
+                "deleted_files_count": deleted_files_count,
+                "message": format!("Season {} files deleted and season unmonitored in Sonarr", season)
+            })))
+        }
+
+        "delete_all_files_unmonitor" => {
+            // 1. Fetch all episode files and delete all of them
+            let ep_files_url = format!("{}/api/v3/episodefile?seriesId={}", base_url, payload.series_id);
+            let ep_files_res = client
+                .get(&ep_files_url)
+                .header("X-Api-Key", api_key)
+                .send()
+                .await;
+
+            let mut deleted_files_count = 0;
+            if let Ok(resp) = ep_files_res {
+                if resp.status().is_success() {
+                    if let Ok(files) = resp.json::<Vec<serde_json::Value>>().await {
+                        for f in files {
+                            if let Some(file_id) = f.get("id").and_then(|v| v.as_i64()) {
+                                let del_url = format!("{}/api/v3/episodefile/{}", base_url, file_id);
+                                let _ = client
+                                    .delete(&del_url)
+                                    .header("X-Api-Key", api_key)
+                                    .send()
+                                    .await;
+                                deleted_files_count += 1;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 2. Fetch series, update all seasons and series monitored to false, and PUT back
+            let series_url = format!("{}/api/v3/series/{}", base_url, payload.series_id);
+            let series_res = client
+                .get(&series_url)
+                .header("X-Api-Key", api_key)
+                .send()
+                .await
+                .map_err(|e| {
+                    (
+                        StatusCode::BAD_GATEWAY,
+                        Json(serde_json::json!({ "error": format!("Failed to fetch series from Sonarr: {}", e) })),
+                    )
+                })?;
+
+            if !series_res.status().is_success() {
+                return Err((
+                    StatusCode::BAD_GATEWAY,
+                    Json(serde_json::json!({ "error": format!("Sonarr returned error status: {}", series_res.status()) })),
+                ));
+            }
+
+            let mut series_json: serde_json::Value = series_res.json().await.map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({ "error": format!("Failed to parse Sonarr response: {}", e) })),
+                )
+            })?;
+
+            series_json["monitored"] = serde_json::json!(false);
+            if let Some(seasons) = series_json.get_mut("seasons").and_then(|v| v.as_array_mut()) {
+                for s in seasons {
+                    s["monitored"] = serde_json::json!(false);
+                }
+            }
+
+            let put_res = client
+                .put(&series_url)
+                .header("X-Api-Key", api_key)
+                .json(&series_json)
+                .send()
+                .await;
+
+            if let Ok(ref pr) = put_res {
+                if pr.status() == StatusCode::NOT_FOUND || pr.status() == StatusCode::METHOD_NOT_ALLOWED {
+                    let fallback_url = format!("{}/api/v3/series", base_url);
+                    let _ = client
+                        .put(&fallback_url)
+                        .header("X-Api-Key", api_key)
+                        .json(&series_json)
+                        .send()
+                        .await;
+                }
+            }
+
+            // 3. Unmonitor all episodes
+            let ep_url = format!("{}/api/v3/episode?seriesId={}", base_url, payload.series_id);
+            if let Ok(ep_res) = client.get(&ep_url).header("X-Api-Key", api_key).send().await {
+                if ep_res.status().is_success() {
+                    if let Ok(episodes) = ep_res.json::<Vec<serde_json::Value>>().await {
+                        let ep_ids: Vec<i64> = episodes.iter().filter_map(|e| e.get("id").and_then(|v| v.as_i64())).collect();
+                        if !ep_ids.is_empty() {
+                            let mon_url = format!("{}/api/v3/episode/monitor", base_url);
+                            let _ = client
+                                .put(&mon_url)
+                                .header("X-Api-Key", api_key)
+                                .json(&serde_json::json!({
+                                    "episodeIds": ep_ids,
+                                    "monitored": false
+                                }))
+                                .send()
+                                .await;
+                        }
+                    }
+                }
+            }
+
+            Ok(Json(serde_json::json!({
+                "status": "deleted",
+                "service": "sonarr",
+                "series_id": payload.series_id,
+                "action": "delete_all_files_unmonitor",
+                "deleted_files_count": deleted_files_count,
+                "message": "All series files deleted and all seasons unmonitored in Sonarr"
+            })))
+        }
+
+        _ => {
+            let delete_files = payload.delete_files.unwrap_or(true);
+            let target_url = format!(
+                "{}/api/v3/series/{}?deleteFiles={}&addImportListExclusion=false",
+                base_url,
+                payload.series_id,
+                delete_files
+            );
+
+            let res = client
+                .delete(&target_url)
+                .header("X-Api-Key", api_key)
+                .send()
+                .await
+                .map_err(|e| {
+                    (
+                        StatusCode::BAD_GATEWAY,
+                        Json(serde_json::json!({ "error": format!("Failed to communicate with Sonarr: {}", e) })),
+                    )
+                })?;
+
+            if !res.status().is_success() {
+                return Err((
+                    StatusCode::BAD_GATEWAY,
+                    Json(serde_json::json!({ "error": format!("Sonarr returned error status: {}", res.status()) })),
+                ));
+            }
+
+            Ok(Json(serde_json::json!({
+                "status": "deleted",
+                "service": "sonarr",
+                "series_id": payload.series_id,
+                "action": "delete_series",
+                "message": "Series and all files successfully removed from Sonarr"
+            })))
+        }
     }
-
-    Ok(Json(serde_json::json!({
-        "status": "deleted",
-        "service": "sonarr",
-        "series_id": payload.series_id,
-        "message": "Series successfully removed from Sonarr"
-    })))
 }

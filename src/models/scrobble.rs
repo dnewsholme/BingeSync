@@ -22,6 +22,8 @@ pub struct Scrobble {
     pub directors: Option<String>,
     pub actors: Option<String>,
     pub watch_status: Option<String>,
+    pub progress_percent: Option<i64>,
+    pub view_offset_ms: Option<i64>,
     pub watched_at: String,
     pub created_at: String,
 }
@@ -43,6 +45,8 @@ pub struct NewScrobbleRequest {
     pub directors: Option<String>,
     pub actors: Option<String>,
     pub watch_status: Option<String>,
+    pub progress_percent: Option<i64>,
+    pub view_offset_ms: Option<i64>,
     pub watched_at: Option<String>,
 }
 
@@ -71,6 +75,14 @@ pub struct TopShowItem {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TopMovieItem {
+    pub title: String,
+    pub count: i64,
+    pub thumb_url: Option<String>,
+    pub year: Option<i32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DailyActivityItem {
     pub date: String,
     pub movies: i64,
@@ -94,6 +106,8 @@ pub struct StatsSummary {
     pub episode_minutes: i64,
     pub current_streak_days: i64,
     pub top_shows: Vec<TopShowItem>,
+    #[serde(default)]
+    pub top_movies: Vec<TopMovieItem>,
     pub daily_activity: Vec<DailyActivityItem>,
     pub top_genres: Vec<GenreCountItem>,
 }

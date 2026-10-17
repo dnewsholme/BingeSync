@@ -30,6 +30,7 @@ pub async fn list_users(
             u.email,
             u.display_name,
             u.role,
+            u.preferred_username,
             u.webhook_token,
             u.avatar_url,
             u.created_at,
