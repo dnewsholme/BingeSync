@@ -27,6 +27,7 @@ pub struct CallbackQuery {
 pub struct DevLoginRequest {
     pub email: Option<String>,
     pub display_name: Option<String>,
+    pub role: Option<String>,
 }
 
 pub async fn get_auth_status(State(state): State<AppState>) -> impl IntoResponse {
@@ -114,9 +115,12 @@ pub async fn callback_handler(
         .clone()
         .unwrap_or_else(|| format!("{}@oidc.local", user_info.sub));
 
+    let is_admin = user_info.is_admin();
+
     let display_name = user_info
         .name
-        .or(user_info.preferred_username)
+        .clone()
+        .or_else(|| user_info.preferred_username.clone())
         .unwrap_or_else(|| email.clone());
 
     let user = get_or_create_user(
@@ -125,6 +129,7 @@ pub async fn callback_handler(
         &display_name,
         Some(&user_info.sub),
         user_info.picture.as_deref(),
+        is_admin,
     )
     .await
     .map_err(|e| {
@@ -148,7 +153,13 @@ pub async fn callback_handler(
         .max_age(time::Duration::days(30))
         .build();
 
-    Ok((jar.add(cookie), Redirect::temporary("/")))
+    let redirect_url = if !state.config.base_path.is_empty() {
+        format!("{}/", state.config.base_path.trim_end_matches('/'))
+    } else {
+        "/".to_string()
+    };
+
+    Ok((jar.add(cookie), Redirect::temporary(&redirect_url)))
 }
 
 pub async fn dev_login_handler(
@@ -166,6 +177,7 @@ pub async fn dev_login_handler(
     let req = body.map(|b| b.0).unwrap_or(DevLoginRequest {
         email: None,
         display_name: None,
+        role: None,
     });
 
     let email = req
@@ -175,14 +187,27 @@ pub async fn dev_login_handler(
         .display_name
         .unwrap_or_else(|| "Demo User".to_string());
 
-    let user = get_or_create_user(&state.pool, &email, &display_name, None, None)
-        .await
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({ "error": format!("Database error: {}", e) })),
-            )
-        })?;
+    let is_admin = if let Some(ref r) = req.role {
+        r.to_lowercase() == "admin"
+    } else {
+        email.to_lowercase().contains("admin")
+    };
+
+    let user = get_or_create_user(
+        &state.pool,
+        &email,
+        &display_name,
+        None,
+        None,
+        is_admin,
+    )
+    .await
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": format!("Database error: {}", e) })),
+        )
+    })?;
 
     let token = create_jwt(&user.id, &user.email, &state.config.jwt_secret).map_err(|e| {
         (
@@ -250,7 +275,10 @@ pub async fn get_or_create_user(
     display_name: &str,
     oidc_sub: Option<&str>,
     avatar_url: Option<&str>,
+    is_admin: bool,
 ) -> Result<User, sqlx::Error> {
+    let desired_role = if is_admin { "admin" } else { "user" };
+
     // 1. Try finding by oidc_sub if provided
     if let Some(sub) = oidc_sub {
         if let Some(user) = sqlx::query_as::<_, User>("SELECT * FROM users WHERE oidc_sub = ?")
@@ -258,6 +286,19 @@ pub async fn get_or_create_user(
             .fetch_optional(pool)
             .await?
         {
+            // Sync role if it changed in IdP groups
+            if user.role != desired_role {
+                sqlx::query("UPDATE users SET role = ?, updated_at = datetime('now') WHERE id = ?")
+                    .bind(desired_role)
+                    .bind(&user.id)
+                    .execute(pool)
+                    .await?;
+
+                return sqlx::query_as::<_, User>("SELECT * FROM users WHERE id = ?")
+                    .bind(&user.id)
+                    .fetch_one(pool)
+                    .await;
+            }
             return Ok(user);
         }
     }
@@ -268,31 +309,35 @@ pub async fn get_or_create_user(
         .fetch_optional(pool)
         .await?
     {
-        // Update oidc_sub if missing
-        if oidc_sub.is_some() && user.oidc_sub.is_none() {
-            sqlx::query("UPDATE users SET oidc_sub = ?, updated_at = datetime('now') WHERE id = ?")
-                .bind(oidc_sub)
-                .bind(&user.id)
-                .execute(pool)
-                .await?;
-        }
-        return Ok(user);
+        let role_to_set = if is_admin { "admin" } else { &user.role };
+        sqlx::query("UPDATE users SET oidc_sub = COALESCE(oidc_sub, ?), role = ?, updated_at = datetime('now') WHERE id = ?")
+            .bind(oidc_sub)
+            .bind(role_to_set)
+            .bind(&user.id)
+            .execute(pool)
+            .await?;
+
+        return sqlx::query_as::<_, User>("SELECT * FROM users WHERE id = ?")
+            .bind(&user.id)
+            .fetch_one(pool)
+            .await;
     }
 
-    // 3. Create new user with unique webhook_token
+    // 3. Create new user with unique webhook_token and role
     let user_id = Uuid::new_v4().to_string();
     let webhook_token = Uuid::new_v4().to_string().replace('-', "");
     let now = Utc::now().to_rfc3339();
 
     sqlx::query(
         r#"
-        INSERT INTO users (id, email, display_name, oidc_sub, webhook_token, avatar_url, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO users (id, email, display_name, role, oidc_sub, webhook_token, avatar_url, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
     )
     .bind(&user_id)
     .bind(email)
     .bind(display_name)
+    .bind(desired_role)
     .bind(oidc_sub)
     .bind(&webhook_token)
     .bind(avatar_url)

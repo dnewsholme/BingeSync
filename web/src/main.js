@@ -1,4 +1,4 @@
-import { api } from './api.js';
+import { api, API_BASE } from './api.js';
 
 // Application State
 const state = {
@@ -154,6 +154,11 @@ const el = {
   detailBody: document.getElementById('detail-body'),
   detailImdbLink: document.getElementById('detail-imdb-link'),
   btnDeleteShowScrobbles: document.getElementById('btn-delete-show-scrobbles'),
+
+  // Admin User Management
+  tabAdmin: document.getElementById('tab-admin'),
+  adminUsersTbody: document.getElementById('admin-users-tbody'),
+  btnRefreshAdminUsers: document.getElementById('btn-refresh-admin-users'),
 };
 
 // Initialization
@@ -163,6 +168,7 @@ async function init() {
     state.authStatus = await api.getAuthStatus();
 
     if (state.authStatus.oidc_enabled) {
+      el.btnOidcLogin.href = `${API_BASE}/auth/login`;
       el.btnOidcLogin.style.display = 'inline-flex';
     }
     if (state.authStatus.oidc_enabled && state.authStatus.dev_login_enabled) {
@@ -215,6 +221,13 @@ function onUserAuthenticated(user) {
     el.webhookUrlInput.value = user.webhook_url;
   }
 
+  // Show Admin tab if user has admin role
+  if (user.role === 'admin') {
+    if (el.tabAdmin) el.tabAdmin.style.display = 'inline-flex';
+  } else {
+    if (el.tabAdmin) el.tabAdmin.style.display = 'none';
+  }
+
   // Load Initial Data
   loadTimeline();
   loadStats();
@@ -229,7 +242,11 @@ function onUserAuthenticated(user) {
 function switchTab(targetViewId) {
   state.activeTab = targetViewId;
 
-  el.navTabs.forEach(tab => {
+  // Update querySelector for dynamically toggled tabs
+  const navTabs = document.querySelectorAll('.nav-tab');
+  const appViews = document.querySelectorAll('.app-view');
+
+  navTabs.forEach(tab => {
     if (tab.dataset.target === targetViewId) {
       tab.classList.add('active');
     } else {
@@ -237,7 +254,7 @@ function switchTab(targetViewId) {
     }
   });
 
-  el.appViews.forEach(view => {
+  appViews.forEach(view => {
     if (view.id === targetViewId) {
       view.style.display = 'block';
     } else {
@@ -249,6 +266,7 @@ function switchTab(targetViewId) {
   if (targetViewId === 'view-history') loadHistory();
   if (targetViewId === 'view-stats') loadStats();
   if (targetViewId === 'view-settings') loadWebhookInfo();
+  if (targetViewId === 'view-admin') loadAdminUsers();
 }
 
 el.navTabs.forEach(tab => {
@@ -1230,6 +1248,80 @@ function escapeHtml(str) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
+}
+
+// Admin: User Management
+async function loadAdminUsers() {
+  if (!el.adminUsersTbody) return;
+  try {
+    el.adminUsersTbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:30px;color:var(--text-muted);">Loading registered users...</td></tr>';
+    const users = await api.getAdminUsers();
+    renderAdminUsers(users);
+  } catch (err) {
+    console.error('Error loading admin users:', err);
+    el.adminUsersTbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:30px;color:var(--accent-red);">Failed to load users: ${escapeHtml(err.message)}</td></tr>`;
+  }
+}
+
+function renderAdminUsers(users) {
+  if (!el.adminUsersTbody) return;
+  if (!users || users.length === 0) {
+    el.adminUsersTbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:30px;color:var(--text-muted);">No users found.</td></tr>';
+    return;
+  }
+
+  el.adminUsersTbody.innerHTML = users.map(u => {
+    const initial = (u.display_name || u.email || 'U').charAt(0).toUpperCase();
+    const created = new Date(u.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+    const isSelf = state.user && u.id === state.user.id;
+    const deleteBtn = isSelf
+      ? '<span class="text-muted" style="font-size:0.8rem;font-weight:500;">Current Account</span>'
+      : `<button class="btn btn-danger btn-sm btn-delete-user" data-id="${u.id}" data-email="${escapeHtml(u.email)}">Delete User</button>`;
+
+    return `
+      <tr>
+        <td>
+          <div class="admin-user-cell">
+            <div class="admin-user-avatar">${initial}</div>
+            <div class="admin-user-info">
+              <span class="admin-user-name">${escapeHtml(u.display_name)}</span>
+              <span class="admin-user-email">${escapeHtml(u.email)}</span>
+            </div>
+          </div>
+        </td>
+        <td>
+          <span class="role-badge role-${u.role}">${u.role}</span>
+        </td>
+        <td><strong>${u.scrobble_count}</strong> scrobbles</td>
+        <td class="text-muted">${created}</td>
+        <td style="text-align: right;">${deleteBtn}</td>
+      </tr>
+    `;
+  }).join('');
+
+  // Attach delete user click listeners
+  el.adminUsersTbody.querySelectorAll('.btn-delete-user').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const userId = btn.dataset.id;
+      const email = btn.dataset.email;
+      if (confirm(`Are you sure you want to permanently delete user "${email}"?\n\nAll associated watch history, scrobbles, and active playback sessions will be permanently erased.`)) {
+        try {
+          btn.disabled = true;
+          btn.textContent = 'Deleting...';
+          await api.deleteAdminUser(userId);
+          loadAdminUsers();
+        } catch (err) {
+          alert('Failed to delete user: ' + err.message);
+          btn.disabled = false;
+          btn.textContent = 'Delete User';
+        }
+      }
+    });
+  });
+}
+
+if (el.btnRefreshAdminUsers) {
+  el.btnRefreshAdminUsers.addEventListener('click', () => loadAdminUsers());
 }
 
 // Kickoff

@@ -6,7 +6,7 @@ function getApiBase() {
   return '/api/v1';
 }
 
-const API_BASE = getApiBase();
+export const API_BASE = getApiBase();
 
 async function request(endpoint, options = {}) {
   const config = {
@@ -125,4 +125,6 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ series_id: seriesId, delete_files: deleteFiles }),
     }),
+  getAdminUsers: () => request('/admin/users'),
+  deleteAdminUser: (userId) => request(`/admin/users/${userId}`, { method: 'DELETE' }),
 };

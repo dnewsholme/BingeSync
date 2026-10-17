@@ -7,6 +7,7 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
             id TEXT PRIMARY KEY NOT NULL,
             email TEXT UNIQUE NOT NULL,
             display_name TEXT NOT NULL,
+            role TEXT NOT NULL DEFAULT 'user',
             oidc_sub TEXT UNIQUE,
             webhook_token TEXT UNIQUE NOT NULL,
             avatar_url TEXT,
@@ -78,6 +79,13 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
     .await?;
 
     // Idempotent column addition for existing databases
+    let _ = sqlx::query("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'user'")
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_users_role ON users(role)")
+        .execute(pool)
+        .await;
+
     let _ = sqlx::query("ALTER TABLE scrobbles ADD COLUMN user_rating INTEGER")
         .execute(pool)
         .await;

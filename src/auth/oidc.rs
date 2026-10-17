@@ -23,13 +23,62 @@ pub struct OidcTokenResponse {
     pub expires_in: Option<u64>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct OidcUserInfo {
     pub sub: String,
     pub email: Option<String>,
     pub name: Option<String>,
     pub preferred_username: Option<String>,
     pub picture: Option<String>,
+    #[serde(default)]
+    pub groups: serde_json::Value,
+    #[serde(default)]
+    pub roles: serde_json::Value,
+}
+
+impl OidcUserInfo {
+    pub fn is_admin(&self) -> bool {
+        let mut extracted: Vec<String> = Vec::new();
+
+        let mut extract = |val: &serde_json::Value| {
+            match val {
+                serde_json::Value::Array(arr) => {
+                    for item in arr {
+                        match item {
+                            serde_json::Value::String(s) => extracted.push(s.clone()),
+                            serde_json::Value::Object(map) => {
+                                if let Some(serde_json::Value::String(name)) = map.get("name") {
+                                    extracted.push(name.clone());
+                                } else if let Some(serde_json::Value::String(slug)) = map.get("slug") {
+                                    extracted.push(slug.clone());
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                serde_json::Value::String(s) => {
+                    for part in s.split([',', ' ', ';']) {
+                        let trimmed = part.trim();
+                        if !trimmed.is_empty() {
+                            extracted.push(trimmed.to_string());
+                        }
+                    }
+                }
+                _ => {}
+            }
+        };
+
+        extract(&self.groups);
+        extract(&self.roles);
+
+        let check = |s: &str| {
+            let l = s.trim().to_lowercase();
+            l == "admin" || l == "admins" || l == "administrator" || l == "administrators"
+        };
+
+        extracted.iter().any(|g| check(g))
+    }
 }
 
 pub struct OidcClient {
@@ -134,7 +183,7 @@ impl OidcClient {
         auth_url.query_pairs_mut()
             .append_pair("client_id", &self.client_id)
             .append_pair("response_type", "code")
-            .append_pair("scope", "openid email profile")
+            .append_pair("scope", "openid email profile groups")
             .append_pair("redirect_uri", &self.redirect_uri)
             .append_pair("state", &state)
             .append_pair("nonce", &nonce)
@@ -207,6 +256,8 @@ impl OidcClient {
             .await
             .map_err(|e| format!("Failed to parse token response JSON: {}", e))?;
 
+        let mut userinfo_opt: Option<OidcUserInfo> = None;
+
         // If userinfo_endpoint is available, fetch userinfo with access_token
         if let Some(userinfo_url) = disc.userinfo_endpoint {
             let userinfo_res = self
@@ -219,24 +270,38 @@ impl OidcClient {
             if let Ok(resp) = userinfo_res {
                 if resp.status().is_success() {
                     if let Ok(info) = resp.json::<OidcUserInfo>().await {
-                        return Ok(info);
+                        userinfo_opt = Some(info);
                     }
                 }
             }
         }
 
-        // Fallback: parse claims from id_token if present
+        // Also parse claims from id_token if present (e.g. PocketID groups)
+        let mut id_token_info: Option<OidcUserInfo> = None;
         if let Some(id_token) = token_payload.id_token {
             let parts: Vec<&str> = id_token.split('.').collect();
             if parts.len() >= 2 {
                 if let Ok(decoded_bytes) = URL_SAFE_NO_PAD.decode(parts[1]) {
                     if let Ok(info) = serde_json::from_slice::<OidcUserInfo>(&decoded_bytes) {
-                        return Ok(info);
+                        id_token_info = Some(info);
                     }
                 }
             }
         }
 
-        Err("Could not retrieve user info from OIDC provider".to_string())
+        match (userinfo_opt, id_token_info) {
+            (Some(mut u), Some(id)) => {
+                if (u.groups.is_null() || u.groups == serde_json::Value::Array(vec![])) && !id.groups.is_null() {
+                    u.groups = id.groups;
+                }
+                if (u.roles.is_null() || u.roles == serde_json::Value::Array(vec![])) && !id.roles.is_null() {
+                    u.roles = id.roles;
+                }
+                Ok(u)
+            }
+            (Some(u), None) => Ok(u),
+            (None, Some(id)) => Ok(id),
+            (None, None) => Err("Could not retrieve user info from OIDC provider".to_string()),
+        }
     }
 }

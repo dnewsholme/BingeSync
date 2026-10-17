@@ -1,3 +1,4 @@
+pub mod admin;
 pub mod auth;
 pub mod history;
 pub mod integrations;
@@ -62,6 +63,9 @@ pub fn create_api_router(state: AppState) -> Router {
         .route("/api/v1/integrations/check", get(integrations::check_media_in_library))
         .route("/api/v1/integrations/radarr/delete", post(integrations::delete_from_radarr))
         .route("/api/v1/integrations/sonarr/delete-series", post(integrations::delete_from_sonarr))
+        // Admin user management
+        .route("/api/v1/admin/users", get(admin::list_users))
+        .route("/api/v1/admin/users/{id}", delete(admin::delete_user))
         .layer(cors)
         .layer(Extension(state.clone()))
         .with_state(state)

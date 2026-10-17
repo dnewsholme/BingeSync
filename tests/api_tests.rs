@@ -88,6 +88,7 @@ async fn test_plex_webhook_scrobble_movie_and_episode() {
         "Alice",
         None,
         None,
+        false,
     )
     .await
     .unwrap();
@@ -210,6 +211,7 @@ async fn test_multi_user_isolation() {
         "User A",
         None,
         None,
+        false,
     )
     .await
     .unwrap();
@@ -220,6 +222,7 @@ async fn test_multi_user_isolation() {
         "User B",
         None,
         None,
+        false,
     )
     .await
     .unwrap();
@@ -286,6 +289,7 @@ async fn test_webhook_token_regeneration() {
         "Regen User",
         None,
         None,
+        false,
     )
     .await
     .unwrap();
@@ -342,6 +346,7 @@ async fn test_active_session_playback_state() {
         "Player User",
         None,
         None,
+        false,
     )
     .await
     .unwrap();
@@ -431,6 +436,7 @@ async fn test_manual_scrobble_filter_search_and_delete() {
         "Manual Scrobbler",
         None,
         None,
+        false,
     )
     .await
     .unwrap();
@@ -546,6 +552,7 @@ async fn test_multipart_form_data_plex_webhook() {
         "Multipart Plex",
         None,
         None,
+        false,
     )
     .await
     .unwrap();
@@ -605,6 +612,7 @@ async fn test_trakt_import_json_and_csv_preserves_timestamp_and_rating() {
         "Trakt User",
         None,
         None,
+        false,
     )
     .await
     .unwrap();
@@ -753,6 +761,7 @@ async fn test_delete_by_show_delete_batch_and_delete_by_date() {
         "Deleter",
         None,
         None,
+        false,
     )
     .await
     .unwrap();
@@ -881,6 +890,7 @@ async fn test_timeline_and_history_rich_filters() {
         "FilterTester",
         None,
         None,
+        false,
     )
     .await
     .unwrap();
@@ -1067,5 +1077,142 @@ async fn test_subpath_routing_and_assets() {
     println!("Status for /bingesync/assets/index-DTQhH7_5.css: {}", res_asset.status());
     assert_eq!(res_asset.status(), StatusCode::OK);
 }
+
+#[tokio::test]
+async fn test_admin_user_management_and_cascading_deletion() {
+    let (app, pool, config) = setup_test_app().await;
+
+    // 1. Create an admin user and a standard user
+    let admin_user = bingesync::api::auth::get_or_create_user(
+        &pool,
+        "superadmin@test.local",
+        "Super Admin",
+        None,
+        None,
+        true, // is_admin
+    )
+    .await
+    .unwrap();
+    assert_eq!(admin_user.role, "admin");
+
+    let standard_user = bingesync::api::auth::get_or_create_user(
+        &pool,
+        "standard@test.local",
+        "Standard User",
+        None,
+        None,
+        false, // not admin
+    )
+    .await
+    .unwrap();
+    assert_eq!(standard_user.role, "user");
+
+    let admin_token = create_jwt(&admin_user.id, &admin_user.email, &config.jwt_secret).unwrap();
+    let standard_token = create_jwt(&standard_user.id, &standard_user.email, &config.jwt_secret).unwrap();
+
+    // 2. Standard user scrobbles an item
+    let scrobble_req = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/webhooks/plex/{}", standard_user.webhook_token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(json!({
+            "event": "media.scrobble",
+            "Metadata": {
+                "type": "movie",
+                "title": "Inception",
+                "year": 2010
+            }
+        }).to_string()))
+        .unwrap();
+    let res_scrobble = app.clone().oneshot(scrobble_req).await.unwrap();
+    assert_eq!(res_scrobble.status(), StatusCode::CREATED);
+
+    // Standard user has an active session
+    let play_req = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/webhooks/plex/{}", standard_user.webhook_token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(json!({
+            "event": "media.play",
+            "Player": { "title": "Living Room TV" },
+            "Metadata": { "type": "movie", "title": "Interstellar", "duration": 10000 },
+            "viewOffset": 2000
+        }).to_string()))
+        .unwrap();
+    let res_play = app.clone().oneshot(play_req).await.unwrap();
+    assert_eq!(res_play.status(), StatusCode::OK);
+
+    // 3. Non-admin attempting to list users receives 403 Forbidden
+    let non_admin_list_req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/admin/users")
+        .header(header::AUTHORIZATION, format!("Bearer {}", standard_token))
+        .body(Body::empty())
+        .unwrap();
+    let res_forbidden = app.clone().oneshot(non_admin_list_req).await.unwrap();
+    assert_eq!(res_forbidden.status(), StatusCode::FORBIDDEN);
+
+    // 4. Admin listing users receives 200 OK with scrobble counts
+    let admin_list_req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/admin/users")
+        .header(header::AUTHORIZATION, format!("Bearer {}", admin_token))
+        .body(Body::empty())
+        .unwrap();
+    let res_users = app.clone().oneshot(admin_list_req).await.unwrap();
+    assert_eq!(res_users.status(), StatusCode::OK);
+
+    let body = axum::body::to_bytes(res_users.into_body(), usize::MAX).await.unwrap();
+    let users_list: Vec<bingesync::models::AdminUserItem> = serde_json::from_slice(&body).unwrap();
+    assert!(users_list.len() >= 2);
+
+    let found_standard = users_list.iter().find(|u| u.id == standard_user.id).unwrap();
+    assert_eq!(found_standard.email, "standard@test.local");
+    assert_eq!(found_standard.role, "user");
+    assert_eq!(found_standard.scrobble_count, 1);
+
+    // 5. Admin cannot delete self (400 Bad Request)
+    let self_delete_req = Request::builder()
+        .method("DELETE")
+        .uri(format!("/api/v1/admin/users/{}", admin_user.id))
+        .header(header::AUTHORIZATION, format!("Bearer {}", admin_token))
+        .body(Body::empty())
+        .unwrap();
+    let res_self_del = app.clone().oneshot(self_delete_req).await.unwrap();
+    assert_eq!(res_self_del.status(), StatusCode::BAD_REQUEST);
+
+    // 6. Admin deletes standard user (200 OK)
+    let delete_req = Request::builder()
+        .method("DELETE")
+        .uri(format!("/api/v1/admin/users/{}", standard_user.id))
+        .header(header::AUTHORIZATION, format!("Bearer {}", admin_token))
+        .body(Body::empty())
+        .unwrap();
+    let res_del = app.clone().oneshot(delete_req).await.unwrap();
+    assert_eq!(res_del.status(), StatusCode::OK);
+
+    // 7. Verify all data associated with deleted user is completely gone
+    let scrobble_count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM scrobbles WHERE user_id = ?")
+        .bind(&standard_user.id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(scrobble_count.0, 0);
+
+    let session_count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM active_sessions WHERE user_id = ?")
+        .bind(&standard_user.id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(session_count.0, 0);
+
+    let user_exists: Option<(String,)> = sqlx::query_as("SELECT id FROM users WHERE id = ?")
+        .bind(&standard_user.id)
+        .fetch_optional(&pool)
+        .await
+        .unwrap();
+    assert!(user_exists.is_none());
+}
+
 
 

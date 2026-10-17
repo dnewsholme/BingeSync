@@ -340,5 +340,50 @@ test.describe('BingeSync Web UI & Webhooks', () => {
     await expect(page.locator('#history-bulk-bar')).toBeHidden();
     await expect(page.locator('#history-list')).toContainText('No scrobbles match');
   });
+
+  test('admin role and user management: list users and delete user', async ({ page, request }) => {
+    const timestamp = Date.now();
+    const adminEmail = `admin_${timestamp}@bingesync.local`;
+    const standardEmail = `standard_${timestamp}@bingesync.local`;
+    const standardName = `User_${timestamp}`;
+
+    // 1. Create standard user via dev-login API
+    await request.post('/api/v1/auth/dev-login', {
+      data: {
+        email: standardEmail,
+        display_name: standardName,
+        role: 'user',
+      },
+    });
+
+    // 2. Sign in via UI as admin (email contains 'admin')
+    await page.goto('/');
+    await page.fill('#dev-email', adminEmail);
+    await page.fill('#dev-name', 'System Admin');
+    await page.click('#btn-dev-submit');
+
+    // Admin tab should be visible
+    await expect(page.locator('#tab-admin')).toBeVisible();
+
+    // 3. Switch to Users tab
+    await page.click('#tab-admin');
+    await expect(page.locator('#view-admin')).toBeVisible();
+
+    // Verify both users are displayed
+    await expect(page.locator('#admin-users-tbody')).toContainText('System Admin');
+    await expect(page.locator('#admin-users-tbody')).toContainText(standardName);
+    await expect(page.locator('#admin-users-tbody')).toContainText(/admin/i);
+    await expect(page.locator('#admin-users-tbody')).toContainText(/user/i);
+
+    // 4. Delete the standard user
+    page.once('dialog', dialog => dialog.accept());
+    const deleteBtn = page.locator(`.btn-delete-user[data-email="${standardEmail}"]`);
+    await expect(deleteBtn).toBeVisible();
+    await deleteBtn.click();
+
+    // 5. Verify the standard user is removed from the table
+    await expect(page.locator('#admin-users-tbody')).not.toContainText(standardEmail);
+    await expect(page.locator('#admin-users-tbody')).not.toContainText(standardName);
+  });
 });
 

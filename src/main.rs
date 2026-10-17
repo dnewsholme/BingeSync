@@ -40,7 +40,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let redirect_uri = config
                 .oidc_redirect_url
                 .clone()
-                .unwrap_or_else(|| format!("{}/api/v1/auth/callback", config.app_url));
+                .unwrap_or_else(|| format!("{}/api/v1/auth/callback", config.app_url.trim_end_matches('/')));
 
             tracing::info!(
                 issuer = %issuer,
