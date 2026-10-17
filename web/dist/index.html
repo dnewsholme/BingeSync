@@ -17,8 +17,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
   <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
-  <script type="module" crossorigin src="./assets/index-CHQTmQlm.js"></script>
-  <link rel="stylesheet" crossorigin href="./assets/index-BjKFy1S9.css">
+  <script type="module" crossorigin src="./assets/index-Ctyn1l-g.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-BmIT9JZG.css">
 </head>
 <body>
   <div id="app">
@@ -64,20 +64,12 @@
         <div class="nav-actions" id="nav-actions" style="display: none;">
           <button class="btn btn-outline btn-sm" id="btn-open-import-modal">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-            Import Trakt
-          </button>
-          <button class="btn btn-outline btn-sm" id="btn-open-tautulli-modal">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-            Import Tautulli
+            Import
           </button>
           <button class="btn btn-primary btn-sm" id="btn-open-log-modal">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             Log Watch
           </button>
-          <a href="./docs" target="_blank" rel="noopener noreferrer" class="btn btn-ghost btn-sm" id="btn-nav-api-docs" title="Interactive API Docs (Swagger)">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"/><path d="M9 10h6"/><path d="M9 14h6"/></svg>
-            API Docs
-          </a>
           <div class="user-badge" id="user-badge">
             <span class="user-avatar" id="user-avatar">U</span>
             <span class="user-name" id="user-display-name">User</span>
@@ -173,12 +165,14 @@
             </button>
           </div>
 
-          <div class="timeline-filter-bar">
-            <div class="search-input-wrap search-expandable" id="timeline-search-wrap">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-              <input type="search" id="timeline-search" class="form-control" placeholder="Search timeline..." />
+          <div class="timeline-filter-bar" id="timeline-filter-bar">
+            <div class="timeline-search-row">
+              <div class="search-input-wrap search-expandable" id="timeline-search-wrap" title="Click to search & filter">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input type="search" id="timeline-search" class="form-control" placeholder="Search timeline..." />
+              </div>
             </div>
-            <div class="timeline-filters-grid">
+            <div class="timeline-filters-grid" id="timeline-filters-grid" style="display: none;">
               <input type="date" id="timeline-date-filter" class="form-control filter-ctrl" title="Filter by date" />
               <input type="text" id="timeline-genre-filter" class="form-control filter-ctrl" placeholder="Genre (e.g. Action)" />
               <input type="text" id="timeline-person-filter" class="form-control filter-ctrl" placeholder="Director / Actor" />
@@ -199,6 +193,21 @@
                 <option value="in_progress">In Progress</option>
               </select>
               <button class="btn btn-outline btn-sm" id="btn-reset-timeline-filters" title="Reset all timeline filters">Clear</button>
+            </div>
+          </div>
+
+          <!-- Hierarchical Timeline Drill-down Navigation -->
+          <div class="timeline-hierarchy-nav" id="timeline-hierarchy-nav">
+            <div class="hierarchy-top-row">
+              <nav class="hierarchy-breadcrumbs" id="hierarchy-breadcrumbs" aria-label="Timeline navigation">
+                <!-- Breadcrumbs: All Years > Year > Month -->
+              </nav>
+              <div class="hierarchy-controls" id="hierarchy-controls">
+                <!-- Drill-up button & period stepper -->
+              </div>
+            </div>
+            <div class="timeline-month-chips" id="timeline-month-chips">
+              <!-- Quick-select month chips for current year -->
             </div>
           </div>
 
@@ -529,7 +538,12 @@
                   </div>
                   <div class="form-group col-half">
                     <label for="setting-radarr-api-key">Radarr API Key</label>
-                    <input type="password" id="setting-radarr-api-key" class="form-control" placeholder="API Key" />
+                    <div class="input-secret-wrapper">
+                      <input type="text" id="setting-radarr-api-key" class="form-control font-mono" placeholder="API Key" autocomplete="off" spellcheck="false" />
+                      <button type="button" class="btn-toggle-secret" data-target="setting-radarr-api-key" title="Unhide / Show full key">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                      </button>
+                    </div>
                   </div>
                 </div>
 
@@ -545,7 +559,12 @@
                   </div>
                   <div class="form-group col-half">
                     <label for="setting-sonarr-api-key">Sonarr API Key</label>
-                    <input type="password" id="setting-sonarr-api-key" class="form-control" placeholder="API Key" />
+                    <div class="input-secret-wrapper">
+                      <input type="text" id="setting-sonarr-api-key" class="form-control font-mono" placeholder="API Key" autocomplete="off" spellcheck="false" />
+                      <button type="button" class="btn-toggle-secret" data-target="setting-sonarr-api-key" title="Unhide / Show full key">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                      </button>
+                    </div>
                   </div>
                 </div>
 
@@ -557,7 +576,12 @@
                 <div class="form-row">
                   <div class="form-group col-half">
                     <label for="setting-tvdb-api-key">TheTVDB API Key (v4)</label>
-                    <input type="password" id="setting-tvdb-api-key" class="form-control" placeholder="API Key" />
+                    <div class="input-secret-wrapper">
+                      <input type="text" id="setting-tvdb-api-key" class="form-control font-mono" placeholder="API Key" autocomplete="off" spellcheck="false" />
+                      <button type="button" class="btn-toggle-secret" data-target="setting-tvdb-api-key" title="Unhide / Show full key">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                      </button>
+                    </div>
                   </div>
                   <div class="form-group col-half">
                     <label for="setting-tvdb-pin">Subscriber PIN (Optional)</label>
@@ -581,7 +605,12 @@
                   </div>
                   <div class="form-group col-half">
                     <label for="setting-tautulli-api-key">Tautulli API Key</label>
-                    <input type="password" id="setting-tautulli-api-key" class="form-control" placeholder="API Key" />
+                    <div class="input-secret-wrapper">
+                      <input type="text" id="setting-tautulli-api-key" class="form-control font-mono" placeholder="API Key" autocomplete="off" spellcheck="false" />
+                      <button type="button" class="btn-toggle-secret" data-target="setting-tautulli-api-key" title="Unhide / Show full key">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                      </button>
+                    </div>
                   </div>
                 </div>
 
@@ -607,7 +636,12 @@
                 <div class="form-row">
                   <div class="form-group col-half">
                     <label for="setting-oidc-client-secret">Client Secret</label>
-                    <input type="password" id="setting-oidc-client-secret" class="form-control" placeholder="Client secret" />
+                    <div class="input-secret-wrapper">
+                      <input type="text" id="setting-oidc-client-secret" class="form-control font-mono" placeholder="Client secret" autocomplete="off" spellcheck="false" />
+                      <button type="button" class="btn-toggle-secret" data-target="setting-oidc-client-secret" title="Unhide / Show full secret">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                      </button>
+                    </div>
                   </div>
                   <div class="form-group col-half">
                     <label for="setting-oidc-redirect-url">Redirect URL (Optional)</label>
@@ -778,96 +812,102 @@
       </div>
     </div>
 
-    <!-- Modal: Import Trakt History -->
-    <div id="modal-import-trakt" class="modal-backdrop" style="display: none;">
+    <!-- Modal: Unified Watch History Import (Trakt.tv & Tautulli) -->
+    <div id="modal-import-history" class="modal-backdrop" style="display: none;">
       <div class="modal-dialog">
         <div class="modal-header">
-          <h3 class="modal-title">Import History from Trakt.tv</h3>
+          <h3 class="modal-title" id="import-modal-title">Import Watch History</h3>
           <button class="modal-close" id="btn-close-import-modal">&times;</button>
         </div>
-        <form id="form-import-trakt">
-          <div class="modal-body">
-            <p style="color:var(--text-muted);font-size:0.9rem;margin-bottom:16px;">
-              Upload your Trakt.tv exported data (<strong>.zip</strong> archive, .json, or .csv). BingeSync will extract all history and rating files, automatically sort chronologically, and maintain exact timestamps and ratings (1-10).
-            </p>
 
-            <div class="form-group">
-              <label for="import-file-input">Select Trakt Export File (.zip, .json, or .csv)</label>
-              <input type="file" id="import-file-input" class="form-control" accept=".zip,.json,.csv,application/zip,application/x-zip-compressed,text/csv,application/json" />
-            </div>
-
-            <div class="form-group">
-              <label for="import-paste-input">Or paste Trakt JSON / CSV content:</label>
-              <textarea id="import-paste-input" class="form-control font-mono" rows="6" placeholder='[{"watched_at":"2023-08-14T20:30:00Z","type":"movie","movie":{"title":"Inception","year":2010},"rating":10}]'></textarea>
-            </div>
-
-            <div id="import-status-box" class="import-status-box" style="display: none;">
-              <!-- Dynamic import message -->
-            </div>
+        <div class="modal-body" style="padding-top:14px;">
+          <!-- Source selector tabs -->
+          <div class="import-tabs">
+            <button type="button" class="import-tab-btn active" id="btn-import-tab-trakt" data-target="import-pane-trakt">
+              Trakt.tv (.zip / .json / .csv)
+            </button>
+            <button type="button" class="import-tab-btn" id="btn-import-tab-tautulli" data-target="import-pane-tautulli">
+              Tautulli (API / .csv / .json)
+            </button>
           </div>
-          <div class="modal-footer">
-            <button type="button" class="btn btn-outline" id="btn-cancel-import-modal">Close</button>
-            <button type="submit" class="btn btn-primary" id="btn-submit-import">Start Import</button>
-          </div>
-        </form>
-      </div>
-    </div>
 
-    <!-- Modal: Import Tautulli History -->
-    <div id="modal-import-tautulli" class="modal-backdrop" style="display: none;">
-      <div class="modal-dialog">
-        <div class="modal-header">
-          <h3 class="modal-title">Import History from Tautulli</h3>
-          <button class="modal-close" id="btn-close-tautulli-modal">&times;</button>
+          <!-- Pane 1: Trakt.tv -->
+          <div id="import-pane-trakt" class="import-pane">
+            <form id="form-import-trakt">
+              <p style="color:var(--text-muted);font-size:0.9rem;margin-bottom:16px;">
+                Upload your Trakt.tv exported data (<strong>.zip</strong> archive, .json, or .csv). BingeSync will extract all history and rating files, automatically sort chronologically, and maintain exact timestamps and ratings (1-10).
+              </p>
+
+              <div class="form-group">
+                <label for="import-file-input">Select Trakt Export File (.zip, .json, or .csv)</label>
+                <input type="file" id="import-file-input" class="form-control" accept=".zip,.json,.csv,application/zip,application/x-zip-compressed,text/csv,application/json" />
+              </div>
+
+              <div class="form-group">
+                <label for="import-paste-input">Or paste Trakt JSON / CSV content:</label>
+                <textarea id="import-paste-input" class="form-control font-mono" rows="5" placeholder='[{"watched_at":"2023-08-14T20:30:00Z","type":"movie","movie":{"title":"Inception","year":2010},"rating":10}]'></textarea>
+              </div>
+
+              <div id="import-status-box" class="import-status-box" style="display: none;"></div>
+
+              <div class="modal-footer" style="padding:14px 0 0;margin-top:16px;border-top:1px solid var(--border-color);">
+                <button type="button" class="btn btn-outline" id="btn-cancel-import-modal">Close</button>
+                <button type="submit" class="btn btn-primary" id="btn-submit-import">Start Trakt Import</button>
+              </div>
+            </form>
+          </div>
+
+          <!-- Pane 2: Tautulli -->
+          <div id="import-pane-tautulli" class="import-pane" style="display:none;">
+            <form id="form-import-tautulli">
+              <p style="color:var(--text-muted);font-size:0.9rem;margin-bottom:16px;">
+                Import playback history directly from your Tautulli server or by uploading a Tautulli CSV/JSON export. Existing watches will be automatically deduplicated.
+              </p>
+
+              <div class="form-group">
+                <label for="tautulli-import-username">Tautulli User</label>
+                <div style="display:flex;gap:8px;">
+                  <input type="text" id="tautulli-import-username" class="form-control" placeholder="Tautulli username" />
+                  <button type="button" class="btn btn-outline btn-sm" id="btn-fetch-tautulli-users" title="Fetch registered users from Tautulli API">
+                    Fetch Users
+                  </button>
+                </div>
+                <small style="display:block;margin-top:4px;font-size:0.75rem;color:var(--text-dim);">Defaults to your account username / OIDC preferred_username.</small>
+                <select id="tautulli-users-select" class="form-control" style="display:none;margin-top:8px;">
+                  <option value="">-- Select a Tautulli user --</option>
+                </select>
+              </div>
+
+              <div class="form-row">
+                <div class="form-group col-half">
+                  <label for="tautulli-import-url">Tautulli URL (Optional if set in Admin)</label>
+                  <input type="url" id="tautulli-import-url" class="form-control" placeholder="http://192.168.1.100:8181" />
+                </div>
+                <div class="form-group col-half">
+                  <label for="tautulli-import-api-key">Tautulli API Key (Optional)</label>
+                  <input type="password" id="tautulli-import-api-key" class="form-control" placeholder="API Key" />
+                </div>
+              </div>
+
+              <div class="form-group" style="margin-top:8px;">
+                <label for="tautulli-file-input">Or upload Tautulli export file (.csv or .json):</label>
+                <input type="file" id="tautulli-file-input" class="form-control" accept=".csv,.json,text/csv,application/json" />
+              </div>
+
+              <div class="form-group">
+                <label for="tautulli-paste-input">Or paste Tautulli JSON / CSV content:</label>
+                <textarea id="tautulli-paste-input" class="form-control font-mono" rows="4" placeholder="Paste CSV or JSON export from Tautulli..."></textarea>
+              </div>
+
+              <div id="tautulli-import-status" class="import-status-box" style="display: none;"></div>
+
+              <div class="modal-footer" style="padding:14px 0 0;margin-top:16px;border-top:1px solid var(--border-color);">
+                <button type="button" class="btn btn-outline" id="btn-cancel-tautulli-modal">Close</button>
+                <button type="submit" class="btn btn-primary" id="btn-submit-tautulli-import">Start Tautulli Import</button>
+              </div>
+            </form>
+          </div>
         </div>
-        <form id="form-import-tautulli">
-          <div class="modal-body">
-            <p style="color:var(--text-muted);font-size:0.9rem;margin-bottom:16px;">
-              Import playback history directly from your Tautulli server or by uploading a Tautulli CSV/JSON export. Existing watches will be automatically deduplicated.
-            </p>
-
-            <div class="form-group">
-              <label for="tautulli-import-username">Tautulli User</label>
-              <div style="display:flex;gap:8px;">
-                <input type="text" id="tautulli-import-username" class="form-control" placeholder="Tautulli username" />
-                <button type="button" class="btn btn-outline btn-sm" id="btn-fetch-tautulli-users" title="Fetch registered users from Tautulli API">
-                  Fetch Users
-                </button>
-              </div>
-              <small style="display:block;margin-top:4px;font-size:0.75rem;color:var(--text-dim);">Defaults to your account username / OIDC preferred_username.</small>
-              <select id="tautulli-users-select" class="form-control" style="display:none;margin-top:8px;">
-                <option value="">-- Select a Tautulli user --</option>
-              </select>
-            </div>
-
-            <div class="form-row">
-              <div class="form-group col-half">
-                <label for="tautulli-import-url">Tautulli URL (Optional if set in Admin)</label>
-                <input type="url" id="tautulli-import-url" class="form-control" placeholder="http://192.168.1.100:8181" />
-              </div>
-              <div class="form-group col-half">
-                <label for="tautulli-import-api-key">Tautulli API Key (Optional)</label>
-                <input type="password" id="tautulli-import-api-key" class="form-control" placeholder="API Key" />
-              </div>
-            </div>
-
-            <div class="form-group" style="margin-top:8px;">
-              <label for="tautulli-file-input">Or upload Tautulli export file (.csv or .json):</label>
-              <input type="file" id="tautulli-file-input" class="form-control" accept=".csv,.json,text/csv,application/json" />
-            </div>
-
-            <div class="form-group">
-              <label for="tautulli-paste-input">Or paste Tautulli JSON / CSV content:</label>
-              <textarea id="tautulli-paste-input" class="form-control font-mono" rows="4" placeholder="Paste CSV or JSON export from Tautulli..."></textarea>
-            </div>
-
-            <div id="tautulli-import-status" class="import-status-box" style="display: none;"></div>
-          </div>
-          <div class="modal-footer">
-            <button type="button" class="btn btn-outline" id="btn-cancel-tautulli-modal">Close</button>
-            <button type="submit" class="btn btn-primary" id="btn-submit-tautulli-import">Start Import</button>
-          </div>
-        </form>
       </div>
     </div>
 
@@ -886,6 +926,10 @@
             <a id="detail-imdb-link" href="#" target="_blank" rel="noopener noreferrer" class="btn btn-imdb btn-sm" style="display:none;">
               <span class="imdb-badge-icon">IMDb</span>
               View on IMDb
+            </a>
+            <a id="detail-tvdb-link" href="#" target="_blank" rel="noopener noreferrer" class="btn btn-tvdb btn-sm" style="display:none;">
+              <span class="tvdb-badge-icon">TheTVDB</span>
+              View on TheTVDB
             </a>
             <button class="btn btn-outline btn-sm text-danger" id="btn-delete-show-scrobbles" style="display:none;">
               Delete Show Scrobbles

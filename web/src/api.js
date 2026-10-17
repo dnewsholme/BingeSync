@@ -60,6 +60,7 @@ export const api = {
     if (params.media_type && params.media_type !== 'all') url += `&media_type=${encodeURIComponent(params.media_type)}`;
     return request(url);
   },
+  getTimelinePeriods: () => request('/timeline/periods'),
   getHistory: (arg1 = {}, limitArg, mediaTypeArg, searchArg) => {
     const params = typeof arg1 === 'number'
       ? { page: arg1, limit: limitArg || 20, media_type: mediaTypeArg || 'all', search: searchArg || '' }

@@ -160,6 +160,7 @@ pub fn create_api_router(state: AppState) -> Router {
         .route("/api/v1/history/{id}", delete(history::delete_scrobble))
         // Timeline & Stats
         .route("/api/v1/timeline", get(timeline::get_timeline))
+        .route("/api/v1/timeline/periods", get(timeline::get_timeline_periods))
         .route("/api/v1/stats", get(stats::get_user_stats))
         .route("/api/v1/now-playing", get(now_playing::get_now_playing))
         // User settings

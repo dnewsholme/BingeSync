@@ -14,24 +14,30 @@ pub struct SystemSettingsView {
     pub radarr_url: Option<String>,
     pub radarr_api_key_configured: bool,
     pub radarr_api_key_masked: Option<String>,
+    pub radarr_api_key: Option<String>,
 
     pub sonarr_url: Option<String>,
     pub sonarr_api_key_configured: bool,
     pub sonarr_api_key_masked: Option<String>,
+    pub sonarr_api_key: Option<String>,
 
     pub tvdb_api_key_configured: bool,
     pub tvdb_api_key_masked: Option<String>,
+    pub tvdb_api_key: Option<String>,
     pub tvdb_pin: Option<String>,
     pub tvdb_base_url: Option<String>,
 
     pub tautulli_url: Option<String>,
     pub tautulli_api_key_configured: bool,
     pub tautulli_api_key_masked: Option<String>,
+    pub tautulli_api_key: Option<String>,
 
     pub oidc_enabled: bool,
     pub oidc_issuer_url: Option<String>,
     pub oidc_client_id: Option<String>,
     pub oidc_client_secret_configured: bool,
+    pub oidc_client_secret_masked: Option<String>,
+    pub oidc_client_secret: Option<String>,
     pub oidc_redirect_url: Option<String>,
     pub scrobble_threshold_percent: i64,
 }
@@ -156,28 +162,45 @@ pub async fn get_admin_settings_handler(
         _ => state.config.tautulli_api_key.clone(),
     };
 
+fn mask_api_key(key: &str) -> String {
+    let chars: Vec<char> = key.chars().collect();
+    if chars.is_empty() {
+        return String::new();
+    }
+    let visible_count = if chars.len() <= 2 { chars.len() } else { 2 };
+    let prefix: String = chars[..visible_count].iter().collect();
+    let bullets = "•".repeat(chars.len() - visible_count);
+    format!("{}{}", prefix, bullets)
+}
+
     let view = SystemSettingsView {
         radarr_url,
         radarr_api_key_configured: radarr_api_key.is_some() && !radarr_api_key.as_deref().unwrap_or("").is_empty(),
-        radarr_api_key_masked: radarr_api_key.map(|_| "••••••••".to_string()),
+        radarr_api_key_masked: radarr_api_key.as_deref().map(mask_api_key),
+        radarr_api_key: radarr_api_key.clone(),
 
         sonarr_url,
         sonarr_api_key_configured: sonarr_api_key.is_some() && !sonarr_api_key.as_deref().unwrap_or("").is_empty(),
-        sonarr_api_key_masked: sonarr_api_key.map(|_| "••••••••".to_string()),
+        sonarr_api_key_masked: sonarr_api_key.as_deref().map(mask_api_key),
+        sonarr_api_key: sonarr_api_key.clone(),
 
         tvdb_api_key_configured: tvdb_api_key.is_some() && !tvdb_api_key.as_deref().unwrap_or("").is_empty(),
-        tvdb_api_key_masked: tvdb_api_key.map(|_| "••••••••".to_string()),
+        tvdb_api_key_masked: tvdb_api_key.as_deref().map(mask_api_key),
+        tvdb_api_key: tvdb_api_key.clone(),
         tvdb_pin,
         tvdb_base_url,
 
         tautulli_url,
         tautulli_api_key_configured: tautulli_api_key.is_some() && !tautulli_api_key.as_deref().unwrap_or("").is_empty(),
-        tautulli_api_key_masked: tautulli_api_key.map(|_| "••••••••".to_string()),
+        tautulli_api_key_masked: tautulli_api_key.as_deref().map(mask_api_key),
+        tautulli_api_key: tautulli_api_key.clone(),
 
         oidc_enabled,
         oidc_issuer_url,
         oidc_client_id,
         oidc_client_secret_configured: oidc_client_secret.is_some() && !oidc_client_secret.as_deref().unwrap_or("").is_empty(),
+        oidc_client_secret_masked: oidc_client_secret.as_deref().map(mask_api_key),
+        oidc_client_secret: oidc_client_secret.clone(),
         oidc_redirect_url,
         scrobble_threshold_percent: state.get_effective_scrobble_threshold().await,
     };
@@ -197,12 +220,12 @@ pub async fn update_admin_settings_handler(
         ));
     }
 
-    // Persist non-empty values or updates
+    // Persist non-empty values or updates (ignoring masked strings containing bullets)
     if let Some(ref val) = payload.radarr_url {
         let _ = set_db_setting(&state.pool, "radarr_url", val.trim()).await;
     }
     if let Some(ref val) = payload.radarr_api_key {
-        if !val.trim().is_empty() && val != "••••••••" {
+        if !val.trim().is_empty() && !val.contains('•') {
             let _ = set_db_setting(&state.pool, "radarr_api_key", val.trim()).await;
         }
     }
@@ -211,14 +234,14 @@ pub async fn update_admin_settings_handler(
         let _ = set_db_setting(&state.pool, "sonarr_url", val.trim()).await;
     }
     if let Some(ref val) = payload.sonarr_api_key {
-        if !val.trim().is_empty() && val != "••••••••" {
+        if !val.trim().is_empty() && !val.contains('•') {
             let _ = set_db_setting(&state.pool, "sonarr_api_key", val.trim()).await;
         }
     }
 
     let mut tvdb_updated = false;
     if let Some(ref val) = payload.tvdb_api_key {
-        if !val.trim().is_empty() && val != "••••••••" {
+        if !val.trim().is_empty() && !val.contains('•') {
             let _ = set_db_setting(&state.pool, "tvdb_api_key", val.trim()).await;
             tvdb_updated = true;
         }
@@ -236,7 +259,7 @@ pub async fn update_admin_settings_handler(
         let _ = set_db_setting(&state.pool, "tautulli_url", val.trim()).await;
     }
     if let Some(ref val) = payload.tautulli_api_key {
-        if !val.trim().is_empty() && val != "••••••••" {
+        if !val.trim().is_empty() && !val.contains('•') {
             let _ = set_db_setting(&state.pool, "tautulli_api_key", val.trim()).await;
         }
     }
@@ -251,7 +274,7 @@ pub async fn update_admin_settings_handler(
         let _ = set_db_setting(&state.pool, "oidc_client_id", val.trim()).await;
     }
     if let Some(ref val) = payload.oidc_client_secret {
-        if !val.trim().is_empty() && val != "••••••••" {
+        if !val.trim().is_empty() && !val.contains('•') {
             let _ = set_db_setting(&state.pool, "oidc_client_secret", val.trim()).await;
         }
     }

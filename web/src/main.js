@@ -1,11 +1,25 @@
 import { api, API_BASE } from './api.js';
 
+export const MONTH_NAMES = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'
+];
+export const MONTH_SHORT_NAMES = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+];
+
 // Application State
 const state = {
   user: null,
   authStatus: null,
   activeTab: 'view-timeline',
   timeline: {
+    level: 'month', // 'years' | 'year' | 'month'
+    selectedYear: String(new Date().getFullYear()),
+    selectedMonth: String(new Date().getMonth() + 1).padStart(2, '0'),
+    userManuallySelected: false,
+    periodsData: null,
     limit: 60,
     offset: 0,
     search: '',
@@ -49,6 +63,24 @@ function getImdbUrl(item) {
     ? `${item.grandparent_title} ${item.title}`
     : `${item.title} ${item.year || ''}`;
   return `https://www.imdb.com/find/?q=${encodeURIComponent(query.trim())}`;
+}
+
+// Helper: TheTVDB URL generator
+function getTvdbUrl(item) {
+  if (item.guid) {
+    const match = item.guid.match(/(?:the)?tvdb:\/\/(?:series\/|movie\/)?(\d+)/i);
+    if (match) {
+      if (item.media_type === 'movie') {
+        return `https://thetvdb.com/dereferrer/movie/${match[1]}`;
+      } else {
+        return `https://thetvdb.com/dereferrer/series/${match[1]}`;
+      }
+    }
+  }
+  const query = item.media_type === 'episode' && item.grandparent_title
+    ? item.grandparent_title
+    : (item.title || '');
+  return `https://thetvdb.com/search?query=${encodeURIComponent(query.trim())}`;
 }
 
 // Helper: Resolve image URL (resolves relative cached image paths to active API_BASE)
@@ -99,7 +131,13 @@ const el = {
 
   // Timeline View
   timelineContainer: document.getElementById('timeline-container'),
+  timelineHierarchyNav: document.getElementById('timeline-hierarchy-nav'),
+  hierarchyBreadcrumbs: document.getElementById('hierarchy-breadcrumbs'),
+  hierarchyControls: document.getElementById('hierarchy-controls'),
+  timelineMonthChips: document.getElementById('timeline-month-chips'),
   btnRefreshTimeline: document.getElementById('btn-refresh-timeline'),
+  timelineFilterBar: document.getElementById('timeline-filter-bar'),
+  timelineFiltersGrid: document.getElementById('timeline-filters-grid'),
   timelineSearchWrap: document.getElementById('timeline-search-wrap'),
   timelineSearch: document.getElementById('timeline-search'),
   timelineDateFilter: document.getElementById('timeline-date-filter'),
@@ -165,7 +203,11 @@ const el = {
 
   btnOpenImportModal: document.getElementById('btn-open-import-modal'),
   btnOpenTautulliModal: document.getElementById('btn-open-tautulli-modal'),
-  modalImportTrakt: document.getElementById('modal-import-trakt'),
+  modalImportHistory: document.getElementById('modal-import-history'),
+  btnImportTabTrakt: document.getElementById('btn-import-tab-trakt'),
+  btnImportTabTautulli: document.getElementById('btn-import-tab-tautulli'),
+  importPaneTrakt: document.getElementById('import-pane-trakt'),
+  importPaneTautulli: document.getElementById('import-pane-tautulli'),
   btnCloseImportModal: document.getElementById('btn-close-import-modal'),
   btnCancelImportModal: document.getElementById('btn-cancel-import-modal'),
   formImportTrakt: document.getElementById('form-import-trakt'),
@@ -173,9 +215,7 @@ const el = {
   importPasteInput: document.getElementById('import-paste-input'),
   importStatusBox: document.getElementById('import-status-box'),
 
-  // Tautulli Modal
-  modalImportTautulli: document.getElementById('modal-import-tautulli'),
-  btnCloseTautulliModal: document.getElementById('btn-close-tautulli-modal'),
+  // Tautulli Modal components
   btnCancelTautulliModal: document.getElementById('btn-cancel-tautulli-modal'),
   formImportTautulli: document.getElementById('form-import-tautulli'),
   tautulliImportUsername: document.getElementById('tautulli-import-username'),
@@ -195,6 +235,7 @@ const el = {
   detailTitle: document.getElementById('detail-title'),
   detailBody: document.getElementById('detail-body'),
   detailImdbLink: document.getElementById('detail-imdb-link'),
+  detailTvdbLink: document.getElementById('detail-tvdb-link'),
   btnDeleteShowScrobbles: document.getElementById('btn-delete-show-scrobbles'),
 
   // Admin Management & Subviews
@@ -359,13 +400,51 @@ async function loadTimeline(append = false) {
     if (!append) {
       state.timeline.offset = 0;
       state.timeline.days = [];
+
+      try {
+        const periodsData = await api.getTimelinePeriods();
+        state.timeline.periodsData = periodsData;
+
+        // If user hasn't manually selected a period, default to latest active month
+        if (!state.timeline.userManuallySelected && periodsData) {
+          const currentYm = `${state.timeline.selectedYear}-${state.timeline.selectedMonth}`;
+          const currentYearObj = periodsData.years?.find(y => y.year === state.timeline.selectedYear);
+          const currentMonthHasData = currentYearObj?.months?.some(m => m.month === currentYm);
+          if (!currentMonthHasData && periodsData.latest_year && periodsData.latest_month) {
+            state.timeline.selectedYear = periodsData.latest_year;
+            state.timeline.selectedMonth = periodsData.latest_month.slice(5, 7);
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to load timeline periods:', e);
+      }
     }
+
+    renderTimelineHierarchyNav();
+
+    if (state.timeline.level === 'years') {
+      renderTimelineYearsView();
+      renderTimelineScrubberYears();
+      if (el.timelineLoadMoreWrap) el.timelineLoadMoreWrap.style.display = 'none';
+      return;
+    }
+
+    if (state.timeline.level === 'year') {
+      renderTimelineMonthsView();
+      renderTimelineScrubberMonths();
+      if (el.timelineLoadMoreWrap) el.timelineLoadMoreWrap.style.display = 'none';
+      return;
+    }
+
+    // Level === 'month': "the time line ui should only show dates for the currently selected month"
+    const monthFilter = `${state.timeline.selectedYear}-${state.timeline.selectedMonth}`;
+    const dateParam = state.timeline.date || monthFilter;
 
     const days = await api.getTimeline({
       limit: state.timeline.limit,
       offset: state.timeline.offset,
       search: state.timeline.search,
-      date: state.timeline.date,
+      date: dateParam,
       genre: state.timeline.genre,
       person: state.timeline.person,
       rating: state.timeline.rating,
@@ -404,25 +483,420 @@ async function loadTimeline(append = false) {
   }
 }
 
+function renderTimelineHierarchyNav() {
+  if (!el.hierarchyBreadcrumbs || !el.hierarchyControls) return;
+
+  const level = state.timeline.level;
+  const year = state.timeline.selectedYear;
+  const monthIdx = parseInt(state.timeline.selectedMonth, 10) - 1;
+  const monthName = MONTH_NAMES[monthIdx] || 'Month';
+
+  // 1. Breadcrumbs
+  if (level === 'years') {
+    el.hierarchyBreadcrumbs.innerHTML = `
+      <span class="crumb-current">All Years</span>
+    `;
+  } else if (level === 'year') {
+    el.hierarchyBreadcrumbs.innerHTML = `
+      <button class="crumb-btn" id="btn-crumb-years" title="Dig back to all years">All Years</button>
+      <span class="crumb-separator">/</span>
+      <span class="crumb-current">${year}</span>
+    `;
+  } else {
+    // level === 'month'
+    el.hierarchyBreadcrumbs.innerHTML = `
+      <button class="crumb-btn" id="btn-crumb-years" title="Dig back to all years">All Years</button>
+      <span class="crumb-separator">/</span>
+      <button class="crumb-btn" id="btn-crumb-year" title="View ${year} months">${year}</button>
+      <span class="crumb-separator">/</span>
+      <span class="crumb-current">${monthName}</span>
+    `;
+  }
+
+  // 2. Controls & Steppers
+  if (level === 'years') {
+    el.hierarchyControls.innerHTML = `
+      <span class="hierarchy-active-label">All Years History</span>
+    `;
+  } else if (level === 'year') {
+    el.hierarchyControls.innerHTML = `
+      <button class="btn btn-outline btn-xs btn-drill-up" id="btn-timeline-up" title="Dig back further to all years">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="18 15 12 9 6 15"/></svg>
+        All Years
+      </button>
+      <div class="hierarchy-nav-stepper">
+        <button class="btn btn-icon btn-xs" id="btn-timeline-prev-year" title="Previous Year">‹</button>
+        <span class="hierarchy-active-label">${year}</span>
+        <button class="btn btn-icon btn-xs" id="btn-timeline-next-year" title="Next Year">›</button>
+      </div>
+    `;
+  } else {
+    // level === 'month'
+    el.hierarchyControls.innerHTML = `
+      <button class="btn btn-outline btn-xs btn-drill-up" id="btn-timeline-up" title="View all months of ${year}">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="18 15 12 9 6 15"/></svg>
+        ${year} Months
+      </button>
+      <div class="hierarchy-nav-stepper">
+        <button class="btn btn-icon btn-xs" id="btn-timeline-prev-month" title="Previous Month">‹</button>
+        <span class="hierarchy-active-label">${monthName} ${year}</span>
+        <button class="btn btn-icon btn-xs" id="btn-timeline-next-month" title="Next Month">›</button>
+      </div>
+    `;
+  }
+
+  // Attach breadcrumb & control listeners
+  const crumbYears = el.hierarchyBreadcrumbs.querySelector('#btn-crumb-years');
+  if (crumbYears) {
+    crumbYears.addEventListener('click', () => {
+      state.timeline.level = 'years';
+      state.timeline.userManuallySelected = true;
+      loadTimeline();
+    });
+  }
+
+  const crumbYear = el.hierarchyBreadcrumbs.querySelector('#btn-crumb-year');
+  if (crumbYear) {
+    crumbYear.addEventListener('click', () => {
+      state.timeline.level = 'year';
+      state.timeline.userManuallySelected = true;
+      loadTimeline();
+    });
+  }
+
+  const btnUp = el.hierarchyControls.querySelector('#btn-timeline-up');
+  if (btnUp) {
+    btnUp.addEventListener('click', () => {
+      if (state.timeline.level === 'month') {
+        state.timeline.level = 'year';
+      } else if (state.timeline.level === 'year') {
+        state.timeline.level = 'years';
+      }
+      state.timeline.userManuallySelected = true;
+      loadTimeline();
+    });
+  }
+
+  const prevMonthBtn = el.hierarchyControls.querySelector('#btn-timeline-prev-month');
+  if (prevMonthBtn) {
+    prevMonthBtn.addEventListener('click', () => {
+      let m = parseInt(state.timeline.selectedMonth, 10) - 1;
+      let y = parseInt(state.timeline.selectedYear, 10);
+      if (m < 1) {
+        m = 12;
+        y -= 1;
+      }
+      state.timeline.selectedYear = String(y);
+      state.timeline.selectedMonth = String(m).padStart(2, '0');
+      state.timeline.date = '';
+      state.timeline.userManuallySelected = true;
+      loadTimeline();
+    });
+  }
+
+  const nextMonthBtn = el.hierarchyControls.querySelector('#btn-timeline-next-month');
+  if (nextMonthBtn) {
+    nextMonthBtn.addEventListener('click', () => {
+      let m = parseInt(state.timeline.selectedMonth, 10) + 1;
+      let y = parseInt(state.timeline.selectedYear, 10);
+      if (m > 12) {
+        m = 1;
+        y += 1;
+      }
+      state.timeline.selectedYear = String(y);
+      state.timeline.selectedMonth = String(m).padStart(2, '0');
+      state.timeline.date = '';
+      state.timeline.userManuallySelected = true;
+      loadTimeline();
+    });
+  }
+
+  const prevYearBtn = el.hierarchyControls.querySelector('#btn-timeline-prev-year');
+  if (prevYearBtn) {
+    prevYearBtn.addEventListener('click', () => {
+      state.timeline.selectedYear = String(parseInt(state.timeline.selectedYear, 10) - 1);
+      state.timeline.date = '';
+      state.timeline.userManuallySelected = true;
+      loadTimeline();
+    });
+  }
+
+  const nextYearBtn = el.hierarchyControls.querySelector('#btn-timeline-next-year');
+  if (nextYearBtn) {
+    nextYearBtn.addEventListener('click', () => {
+      state.timeline.selectedYear = String(parseInt(state.timeline.selectedYear, 10) + 1);
+      state.timeline.date = '';
+      state.timeline.userManuallySelected = true;
+      loadTimeline();
+    });
+  }
+
+  // 3. Month Chips for currently selected year
+  if (el.timelineMonthChips) {
+    if (level === 'years') {
+      el.timelineMonthChips.style.display = 'none';
+    } else {
+      el.timelineMonthChips.style.display = 'flex';
+      const yearData = state.timeline.periodsData?.years?.find(y => y.year === year);
+      const monthMap = new Map();
+      if (yearData && yearData.months) {
+        yearData.months.forEach(m => monthMap.set(m.month_num, m.count));
+      }
+
+      el.timelineMonthChips.innerHTML = MONTH_SHORT_NAMES.map((shortName, idx) => {
+        const monthNumStr = String(idx + 1).padStart(2, '0');
+        const count = monthMap.get(monthNumStr) || 0;
+        const isActive = level === 'month' && state.timeline.selectedMonth === monthNumStr;
+        const badge = count > 0 ? `<span class="month-chip-badge">${count}</span>` : '';
+        const classes = ['month-chip'];
+        if (isActive) classes.push('active');
+        if (count > 0) classes.push('has-data');
+        return `
+          <button class="${classes.join(' ')}" data-month-num="${monthNumStr}" title="${MONTH_NAMES[idx]} ${year}: ${count} watches">
+            ${shortName} ${badge}
+          </button>
+        `;
+      }).join('');
+
+      el.timelineMonthChips.querySelectorAll('.month-chip').forEach(btn => {
+        btn.addEventListener('click', () => {
+          state.timeline.selectedMonth = btn.dataset.monthNum;
+          state.timeline.level = 'month';
+          state.timeline.date = '';
+          state.timeline.userManuallySelected = true;
+          loadTimeline();
+        });
+      });
+    }
+  }
+}
+
+function renderTimelineMonthsView() {
+  const year = state.timeline.selectedYear;
+  const yearData = state.timeline.periodsData?.years?.find(y => y.year === year);
+  const totalCount = yearData ? yearData.count : 0;
+  const totalMinutes = yearData ? yearData.minutes : 0;
+  const totalHours = Math.round(totalMinutes / 60);
+
+  const monthMap = new Map();
+  if (yearData && yearData.months) {
+    yearData.months.forEach(m => monthMap.set(m.month_num, m));
+  }
+
+  let html = `
+    <div class="timeline-day-header" style="margin-bottom: 16px;">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <div class="timeline-date-title">${year} — Months Overview</div>
+      </div>
+      <div class="timeline-day-stats">
+        <span class="stat-chip">${totalCount} ${totalCount === 1 ? 'watch' : 'watches'} in ${year}</span>
+        <span class="stat-chip">${totalHours} hours</span>
+      </div>
+    </div>
+    <div class="timeline-months-grid">
+  `;
+
+  for (let i = 0; i < 12; i++) {
+    const monthNum = String(i + 1).padStart(2, '0');
+    const mData = monthMap.get(monthNum);
+    const count = mData ? mData.count : 0;
+    const minutes = mData ? mData.minutes : 0;
+    const hours = Math.floor(minutes / 60);
+    const remMins = minutes % 60;
+    const timeStr = count > 0 ? (hours > 0 ? `${hours}h ${remMins}m watched` : `${remMins}m watched`) : 'No activity';
+    const posters = mData?.poster_urls || [];
+    const posterImgs = posters.map(url => `<img src="${url}" class="month-card-poster" alt="Poster" loading="lazy" />`).join('');
+
+    html += `
+      <div class="timeline-month-card ${count > 0 ? 'has-data' : 'empty'}" data-month-num="${monthNum}">
+        <div class="month-card-header">
+          <span class="month-card-title">${MONTH_NAMES[i]}</span>
+          <span class="month-card-badge">${count} ${count === 1 ? 'watch' : 'watches'}</span>
+        </div>
+        <div class="month-card-stats">${timeStr}</div>
+        <div class="month-card-posters">
+          ${posterImgs || '<div style="display:flex;align-items:center;justify-content:center;width:100%;color:var(--text-dim);font-size:0.75rem;">No posters</div>'}
+        </div>
+        <button class="btn btn-outline btn-xs" style="width: 100%; margin-top: 4px;">View Dates →</button>
+      </div>
+    `;
+  }
+
+  html += `</div>`;
+  el.timelineContainer.innerHTML = html;
+
+  el.timelineContainer.querySelectorAll('.timeline-month-card').forEach(card => {
+    card.addEventListener('click', () => {
+      state.timeline.selectedMonth = card.dataset.monthNum;
+      state.timeline.level = 'month';
+      state.timeline.date = '';
+      state.timeline.userManuallySelected = true;
+      loadTimeline();
+    });
+  });
+}
+
+function renderTimelineYearsView() {
+  const years = state.timeline.periodsData?.years || [];
+  const currentYearStr = state.timeline.periodsData?.current_year || String(new Date().getFullYear());
+
+  let displayYears = [...years];
+  if (!displayYears.some(y => y.year === currentYearStr)) {
+    displayYears.unshift({
+      year: currentYearStr,
+      count: 0,
+      minutes: 0,
+      months: [],
+      poster_urls: [],
+    });
+  }
+
+  const totalLifetimeWatches = displayYears.reduce((sum, y) => sum + y.count, 0);
+
+  let html = `
+    <div class="timeline-day-header" style="margin-bottom: 16px;">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <div class="timeline-date-title">Watch History by Year</div>
+      </div>
+      <div class="timeline-day-stats">
+        <span class="stat-chip">${totalLifetimeWatches} total scrobbles</span>
+        <span class="stat-chip">${displayYears.length} ${displayYears.length === 1 ? 'year' : 'years'}</span>
+      </div>
+    </div>
+    <div class="timeline-years-grid">
+  `;
+
+  for (const y of displayYears) {
+    const hours = Math.round(y.minutes / 60);
+    const activeMonths = y.months ? y.months.length : 0;
+    const posters = y.poster_urls || [];
+    const posterImgs = posters.map(url => `<img src="${url}" class="year-card-poster" alt="Poster" loading="lazy" />`).join('');
+
+    html += `
+      <div class="timeline-year-card" data-year="${y.year}">
+        <div class="year-card-top">
+          <div class="year-card-number">${y.year}</div>
+          <span class="year-card-badge">${y.count} ${y.count === 1 ? 'watch' : 'watches'}</span>
+        </div>
+        <div class="year-card-stats">${hours} hours watched • ${activeMonths} active ${activeMonths === 1 ? 'month' : 'months'}</div>
+        <div class="year-card-posters">
+          ${posterImgs || '<div style="display:flex;align-items:center;justify-content:center;width:100%;color:var(--text-dim);font-size:0.75rem;">No posters</div>'}
+        </div>
+        <button class="btn btn-outline btn-sm" style="width: 100%; margin-top: 6px;">Explore Year →</button>
+      </div>
+    `;
+  }
+
+  html += `</div>`;
+  el.timelineContainer.innerHTML = html;
+
+  el.timelineContainer.querySelectorAll('.timeline-year-card').forEach(card => {
+    card.addEventListener('click', () => {
+      state.timeline.selectedYear = card.dataset.year;
+      state.timeline.level = 'year';
+      state.timeline.date = '';
+      state.timeline.userManuallySelected = true;
+      loadTimeline();
+    });
+  });
+}
+
+function renderTimelineScrubberMonths() {
+  if (!el.timelineScrubber || !el.timelineScrubberList) return;
+  const year = state.timeline.selectedYear;
+  const yearData = state.timeline.periodsData?.years?.find(y => y.year === year);
+  if (!yearData || !yearData.months || yearData.months.length === 0) {
+    el.timelineScrubber.style.display = 'none';
+    el.timelineScrubberList.innerHTML = '';
+    return;
+  }
+
+  el.timelineScrubber.style.display = 'block';
+  const header = el.timelineScrubber.querySelector('.scrubber-header');
+  if (header) header.textContent = `${year} Months`;
+
+  el.timelineScrubberList.innerHTML = yearData.months.map(m => {
+    return `<button class="scrubber-item" data-month-num="${m.month_num}" title="${m.month_name} (${m.count} watches)">${m.month_name} (${m.count})</button>`;
+  }).join('');
+
+  el.timelineScrubberList.querySelectorAll('.scrubber-item').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.timeline.selectedMonth = btn.dataset.monthNum;
+      state.timeline.level = 'month';
+      state.timeline.date = '';
+      state.timeline.userManuallySelected = true;
+      loadTimeline();
+    });
+  });
+}
+
+function renderTimelineScrubberYears() {
+  if (!el.timelineScrubber || !el.timelineScrubberList) return;
+  const years = state.timeline.periodsData?.years || [];
+  if (years.length === 0) {
+    el.timelineScrubber.style.display = 'none';
+    el.timelineScrubberList.innerHTML = '';
+    return;
+  }
+
+  el.timelineScrubber.style.display = 'block';
+  const header = el.timelineScrubber.querySelector('.scrubber-header');
+  if (header) header.textContent = 'Years';
+
+  el.timelineScrubberList.innerHTML = years.map(y => {
+    return `<button class="scrubber-item" data-year="${y.year}" title="${y.year} (${y.count} watches)">${y.year} (${y.count})</button>`;
+  }).join('');
+
+  el.timelineScrubberList.querySelectorAll('.scrubber-item').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.timeline.selectedYear = btn.dataset.year;
+      state.timeline.level = 'year';
+      state.timeline.date = '';
+      state.timeline.userManuallySelected = true;
+      loadTimeline();
+    });
+  });
+}
+
 function renderTimeline(days) {
   if (!days || days.length === 0) {
     const hasFilters = Boolean(
       state.timeline.search ||
-      state.timeline.date ||
       state.timeline.genre ||
       state.timeline.person ||
       (state.timeline.rating && state.timeline.rating !== 'all') ||
       (state.timeline.watch_status && state.timeline.watch_status !== 'all')
     );
-    const msg = hasFilters
-      ? 'No watch history matches your timeline filters.'
-      : 'No watch history yet. Connect your Plex Webhook or log a scrobble to see your timeline!';
+    const monthIdx = parseInt(state.timeline.selectedMonth, 10) - 1;
+    const monthName = MONTH_NAMES[monthIdx] || 'Month';
+    const totalLifetimeWatches = state.timeline.periodsData?.years?.reduce((sum, y) => sum + y.count, 0) || 0;
+
+    let msg = '';
+    let actionBtn = '';
+    if (hasFilters) {
+      msg = 'No watch history matches your timeline filters.';
+    } else if (totalLifetimeWatches === 0) {
+      msg = 'No watch history yet. Connect your Plex Webhook or log a scrobble to see your timeline!';
+    } else {
+      msg = `No watch history logged for ${monthName} ${state.timeline.selectedYear}.`;
+      actionBtn = `<button class="btn btn-outline btn-xs" id="btn-empty-view-year" style="margin-top:12px;">View ${state.timeline.selectedYear} Months</button>`;
+    }
 
     el.timelineContainer.innerHTML = `
       <div class="empty-state">
         <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
         <p>${msg}</p>
+        ${actionBtn}
       </div>`;
+
+    const emptyBtn = el.timelineContainer.querySelector('#btn-empty-view-year');
+    if (emptyBtn) {
+      emptyBtn.addEventListener('click', () => {
+        state.timeline.level = 'year';
+        state.timeline.userManuallySelected = true;
+        loadTimeline();
+      });
+    }
     return;
   }
 
@@ -478,6 +952,10 @@ function renderTimelineScrubber(days) {
   }
 
   el.timelineScrubber.style.display = 'block';
+  const header = el.timelineScrubber.querySelector('.scrubber-header');
+  const monthIdx = parseInt(state.timeline.selectedMonth, 10) - 1;
+  if (header) header.textContent = `${MONTH_SHORT_NAMES[monthIdx] || 'Month'} Dates`;
+
   const dateMap = new Map();
   days.forEach(d => {
     if (!dateMap.has(d.date)) {
@@ -525,24 +1003,53 @@ if (el.btnTimelineLoadMore) {
   });
 }
 
-// Expandable Search Interaction
+function hasActiveTimelineFilters() {
+  return Boolean(
+    state.timeline.search ||
+    state.timeline.date ||
+    state.timeline.genre ||
+    state.timeline.person ||
+    (state.timeline.rating && state.timeline.rating !== 'all') ||
+    (state.timeline.watch_status && state.timeline.watch_status !== 'all')
+  );
+}
+
+function showTimelineFilters() {
+  if (el.timelineFiltersGrid) {
+    el.timelineFiltersGrid.style.display = 'grid';
+  }
+}
+
+function hideTimelineFilters() {
+  if (el.timelineFiltersGrid && !hasActiveTimelineFilters()) {
+    el.timelineFiltersGrid.style.display = 'none';
+  }
+}
+
+// Expandable Search Interaction & Hidden Filter UI
 if (el.timelineSearchWrap && el.timelineSearch) {
   el.timelineSearchWrap.addEventListener('click', () => {
     el.timelineSearch.focus();
     el.timelineSearchWrap.classList.add('expanded');
+    showTimelineFilters();
   });
 
   el.timelineSearch.addEventListener('focus', () => {
     el.timelineSearchWrap.classList.add('expanded');
-  });
-
-  el.timelineSearch.addEventListener('blur', () => {
-    if (!el.timelineSearch.value.trim()) {
-      el.timelineSearchWrap.classList.remove('expanded');
-      el.timelineSearchWrap.classList.remove('has-value');
-    }
+    showTimelineFilters();
   });
 }
+
+document.addEventListener('click', (e) => {
+  if (!el.timelineFilterBar) return;
+  if (!el.timelineFilterBar.contains(e.target)) {
+    if (!hasActiveTimelineFilters() && !el.timelineSearch?.value.trim()) {
+      el.timelineSearchWrap?.classList.remove('expanded');
+      el.timelineSearchWrap?.classList.remove('has-value');
+      hideTimelineFilters();
+    }
+  }
+});
 
 // Timeline Filter Event Listeners
 let timelineSearchTimer = null;
@@ -553,6 +1060,7 @@ if (el.timelineSearch) {
     } else {
       el.timelineSearchWrap?.classList.remove('has-value');
     }
+    showTimelineFilters();
     clearTimeout(timelineSearchTimer);
     timelineSearchTimer = setTimeout(() => {
       state.timeline.search = e.target.value.trim();
@@ -563,7 +1071,17 @@ if (el.timelineSearch) {
 
 if (el.timelineDateFilter) {
   el.timelineDateFilter.addEventListener('change', (e) => {
-    state.timeline.date = e.target.value;
+    const val = e.target.value;
+    state.timeline.date = val;
+    if (val) {
+      const parts = val.split('-');
+      if (parts.length >= 2) {
+        state.timeline.selectedYear = parts[0];
+        state.timeline.selectedMonth = parts[1];
+        state.timeline.level = 'month';
+        state.timeline.userManuallySelected = true;
+      }
+    }
     loadTimeline();
   });
 }
@@ -612,6 +1130,8 @@ if (el.btnResetTimelineFilters) {
     state.timeline.person = '';
     state.timeline.rating = 'all';
     state.timeline.watch_status = 'all';
+    state.timeline.level = 'month';
+    state.timeline.userManuallySelected = false;
 
     if (el.timelineSearch) el.timelineSearch.value = '';
     if (el.timelineSearchWrap) {
@@ -624,6 +1144,7 @@ if (el.btnResetTimelineFilters) {
     if (el.timelineRatingFilter) el.timelineRatingFilter.value = 'all';
     if (el.timelineStatusFilter) el.timelineStatusFilter.value = 'all';
 
+    hideTimelineFilters();
     loadTimeline();
   });
 }
@@ -660,6 +1181,7 @@ function renderScrobbleCard(item, isHistory = false) {
     : '';
 
   const imdbUrl = getImdbUrl(item);
+  const tvdbUrl = getTvdbUrl(item);
 
   const isInProgress = item.watch_status === 'in_progress';
   const progressBadgeHtml = isInProgress
@@ -678,7 +1200,10 @@ function renderScrobbleCard(item, isHistory = false) {
         <span class="scrobble-badge ${badgeClass}">${badgeText}</span>
         ${progressBadgeHtml}
         ${ratingHtml}
-        <a href="${imdbUrl}" target="_blank" rel="noopener noreferrer" class="card-imdb-link" title="Open on IMDb" onclick="event.stopPropagation()">IMDb ↗</a>
+        <div class="card-external-links">
+          <a href="${imdbUrl}" target="_blank" rel="noopener noreferrer" class="card-imdb-link" title="Open on IMDb" onclick="event.stopPropagation()">IMDb ↗</a>
+          <a href="${tvdbUrl}" target="_blank" rel="noopener noreferrer" class="card-tvdb-link" title="View on TheTVDB" onclick="event.stopPropagation()">TVDB ↗</a>
+        </div>
       </div>
       <div class="scrobble-card-title">${escapeHtml(item.title)}</div>
       ${subTitle ? `<div class="scrobble-card-sub">${escapeHtml(subTitle)}</div>` : ''}
@@ -1237,25 +1762,66 @@ el.formManualScrobble.addEventListener('submit', async (e) => {
   }
 });
 
-// Modal: Trakt Import
+// Modal: Unified Watch History Import (Trakt.tv & Tautulli)
+function switchImportTab(source) {
+  if (source === 'tautulli') {
+    if (el.btnImportTabTrakt) el.btnImportTabTrakt.classList.remove('active');
+    if (el.btnImportTabTautulli) el.btnImportTabTautulli.classList.add('active');
+    if (el.importPaneTrakt) el.importPaneTrakt.style.display = 'none';
+    if (el.importPaneTautulli) el.importPaneTautulli.style.display = 'block';
+    if (el.tautulliImportUsername && !el.tautulliImportUsername.value) {
+      el.tautulliImportUsername.value = state.user?.preferred_username || state.user?.display_name || (state.user?.email ? state.user.email.split('@')[0] : '');
+    }
+  } else {
+    if (el.btnImportTabTrakt) el.btnImportTabTrakt.classList.add('active');
+    if (el.btnImportTabTautulli) el.btnImportTabTautulli.classList.remove('active');
+    if (el.importPaneTrakt) el.importPaneTrakt.style.display = 'block';
+    if (el.importPaneTautulli) el.importPaneTautulli.style.display = 'none';
+  }
+}
+
+if (el.btnImportTabTrakt) {
+  el.btnImportTabTrakt.addEventListener('click', () => switchImportTab('trakt'));
+}
+
+if (el.btnImportTabTautulli) {
+  el.btnImportTabTautulli.addEventListener('click', () => switchImportTab('tautulli'));
+}
+
 if (el.btnOpenImportModal) {
   el.btnOpenImportModal.addEventListener('click', () => {
-    el.formImportTrakt.reset();
-    el.importStatusBox.style.display = 'none';
-    el.importStatusBox.className = 'import-status-box';
-    el.modalImportTrakt.style.display = 'flex';
+    switchImportTab('trakt');
+    if (el.formImportTrakt) el.formImportTrakt.reset();
+    if (el.importStatusBox) {
+      el.importStatusBox.style.display = 'none';
+      el.importStatusBox.className = 'import-status-box';
+    }
+    if (el.modalImportHistory) el.modalImportHistory.style.display = 'flex';
+  });
+}
+
+if (el.btnOpenTautulliModal) {
+  el.btnOpenTautulliModal.addEventListener('click', () => {
+    switchImportTab('tautulli');
+    if (el.modalImportHistory) el.modalImportHistory.style.display = 'flex';
   });
 }
 
 if (el.btnCloseImportModal) {
   el.btnCloseImportModal.addEventListener('click', () => {
-    el.modalImportTrakt.style.display = 'none';
+    if (el.modalImportHistory) el.modalImportHistory.style.display = 'none';
   });
 }
 
 if (el.btnCancelImportModal) {
   el.btnCancelImportModal.addEventListener('click', () => {
-    el.modalImportTrakt.style.display = 'none';
+    if (el.modalImportHistory) el.modalImportHistory.style.display = 'none';
+  });
+}
+
+if (el.btnCancelTautulliModal) {
+  el.btnCancelTautulliModal.addEventListener('click', () => {
+    if (el.modalImportHistory) el.modalImportHistory.style.display = 'none';
   });
 }
 
@@ -1307,35 +1873,6 @@ if (el.formImportTrakt) {
       el.importStatusBox.className = 'import-status-box error';
       el.importStatusBox.textContent = `Import failed: ${err.message}`;
     }
-  });
-}
-
-// Modal: Tautulli Import
-if (el.btnOpenTautulliModal) {
-  el.btnOpenTautulliModal.addEventListener('click', () => {
-    if (el.formImportTautulli) el.formImportTautulli.reset();
-    if (el.tautulliImportStatus) {
-      el.tautulliImportStatus.style.display = 'none';
-      el.tautulliImportStatus.className = 'import-status-box';
-    }
-    // Default username to current user's preferred_username or username
-    if (el.tautulliImportUsername) {
-      el.tautulliImportUsername.value = state.user?.preferred_username || state.user?.display_name || (state.user?.email ? state.user.email.split('@')[0] : '');
-    }
-    if (el.tautulliUsersSelect) el.tautulliUsersSelect.style.display = 'none';
-    if (el.modalImportTautulli) el.modalImportTautulli.style.display = 'flex';
-  });
-}
-
-if (el.btnCloseTautulliModal) {
-  el.btnCloseTautulliModal.addEventListener('click', () => {
-    if (el.modalImportTautulli) el.modalImportTautulli.style.display = 'none';
-  });
-}
-
-if (el.btnCancelTautulliModal) {
-  el.btnCancelTautulliModal.addEventListener('click', () => {
-    if (el.modalImportTautulli) el.modalImportTautulli.style.display = 'none';
   });
 }
 
@@ -1568,6 +2105,12 @@ async function openDetailModal(item) {
   if (el.detailImdbLink) {
     el.detailImdbLink.href = getImdbUrl(item);
     el.detailImdbLink.style.display = 'inline-flex';
+  }
+
+  // TVDB button setup
+  if (el.detailTvdbLink) {
+    el.detailTvdbLink.href = getTvdbUrl(item);
+    el.detailTvdbLink.style.display = 'inline-flex';
   }
 
   // Delete show scrobbles button setup
@@ -2062,24 +2605,89 @@ if (el.adminSubnavPills) {
   });
 }
 
+// Helper to configure masked API key inputs with show/hide toggle
+function applySecretField(inputEl, rawKey, maskedKey) {
+  if (!inputEl) return;
+  inputEl.dataset.raw = rawKey || '';
+  inputEl.dataset.masked = maskedKey || '';
+  inputEl.dataset.revealed = 'false';
+  inputEl.value = maskedKey || rawKey || '';
+
+  const parent = inputEl.closest('.input-secret-wrapper');
+  if (parent) {
+    const btn = parent.querySelector('.btn-toggle-secret');
+    if (btn) {
+      btn.title = 'Unhide / Show full key';
+      btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`;
+    }
+  }
+
+  inputEl.oninput = () => {
+    inputEl.dataset.raw = inputEl.value;
+    inputEl.dataset.masked = '';
+    inputEl.dataset.revealed = 'true';
+  };
+}
+
+function getSecretValue(inputEl) {
+  if (!inputEl) return null;
+  const val = inputEl.value.trim();
+  if (!val) return '';
+  if (inputEl.dataset.masked && val === inputEl.dataset.masked) {
+    return inputEl.dataset.raw || null;
+  }
+  return val;
+}
+
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('.btn-toggle-secret');
+  if (!btn) return;
+  const targetId = btn.getAttribute('data-target');
+  const input = document.getElementById(targetId);
+  if (!input) return;
+
+  const raw = input.dataset.raw || '';
+  const masked = input.dataset.masked || '';
+  if (!raw && !masked) return;
+
+  const isRevealed = input.dataset.revealed === 'true';
+  if (isRevealed) {
+    // Hide again
+    input.value = masked || raw;
+    input.dataset.revealed = 'false';
+    btn.title = 'Unhide / Show full key';
+    btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`;
+  } else {
+    // Reveal full key
+    input.value = raw;
+    input.dataset.revealed = 'true';
+    btn.title = 'Hide / Redact key';
+    btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>`;
+  }
+});
+
 // Admin: Settings & API Keys
 async function loadAdminSettings() {
   if (!el.formAdminSettings) return;
   try {
     const s = await api.getAdminSettings();
     if (el.settingRadarrUrl) el.settingRadarrUrl.value = s.radarr_url || '';
-    if (el.settingRadarrApiKey) el.settingRadarrApiKey.value = s.radarr_api_key || '';
+    applySecretField(el.settingRadarrApiKey, s.radarr_api_key, s.radarr_api_key_masked);
+
     if (el.settingSonarrUrl) el.settingSonarrUrl.value = s.sonarr_url || '';
-    if (el.settingSonarrApiKey) el.settingSonarrApiKey.value = s.sonarr_api_key || '';
-    if (el.settingTvdbApiKey) el.settingTvdbApiKey.value = s.tvdb_api_key || '';
+    applySecretField(el.settingSonarrApiKey, s.sonarr_api_key, s.sonarr_api_key_masked);
+
+    applySecretField(el.settingTvdbApiKey, s.tvdb_api_key, s.tvdb_api_key_masked);
     if (el.settingTvdbPin) el.settingTvdbPin.value = s.tvdb_pin || '';
     if (el.settingTvdbBaseUrl) el.settingTvdbBaseUrl.value = s.tvdb_base_url || '';
+
     if (el.settingTautulliUrl) el.settingTautulliUrl.value = s.tautulli_url || '';
-    if (el.settingTautulliApiKey) el.settingTautulliApiKey.value = s.tautulli_api_key || '';
+    applySecretField(el.settingTautulliApiKey, s.tautulli_api_key, s.tautulli_api_key_masked);
+
     if (el.settingOidcEnabled) el.settingOidcEnabled.checked = Boolean(s.oidc_enabled);
     if (el.settingOidcIssuerUrl) el.settingOidcIssuerUrl.value = s.oidc_issuer_url || '';
     if (el.settingOidcClientId) el.settingOidcClientId.value = s.oidc_client_id || '';
-    if (el.settingOidcClientSecret) el.settingOidcClientSecret.value = s.oidc_client_secret || '';
+    applySecretField(el.settingOidcClientSecret, s.oidc_client_secret, s.oidc_client_secret_masked);
     if (el.settingOidcRedirectUrl) el.settingOidcRedirectUrl.value = s.oidc_redirect_url || '';
     if (el.settingScrobbleThreshold) el.settingScrobbleThreshold.value = s.scrobble_threshold_percent != null ? s.scrobble_threshold_percent : 80;
   } catch (err) {
@@ -2103,18 +2711,18 @@ if (el.formAdminSettings) {
     try {
       const payload = {
         radarr_url: el.settingRadarrUrl ? el.settingRadarrUrl.value.trim() : null,
-        radarr_api_key: el.settingRadarrApiKey ? el.settingRadarrApiKey.value.trim() : null,
+        radarr_api_key: getSecretValue(el.settingRadarrApiKey),
         sonarr_url: el.settingSonarrUrl ? el.settingSonarrUrl.value.trim() : null,
-        sonarr_api_key: el.settingSonarrApiKey ? el.settingSonarrApiKey.value.trim() : null,
-        tvdb_api_key: el.settingTvdbApiKey ? el.settingTvdbApiKey.value.trim() : null,
+        sonarr_api_key: getSecretValue(el.settingSonarrApiKey),
+        tvdb_api_key: getSecretValue(el.settingTvdbApiKey),
         tvdb_pin: el.settingTvdbPin ? el.settingTvdbPin.value.trim() : null,
         tvdb_base_url: el.settingTvdbBaseUrl ? el.settingTvdbBaseUrl.value.trim() : null,
         tautulli_url: el.settingTautulliUrl ? el.settingTautulliUrl.value.trim() : null,
-        tautulli_api_key: el.settingTautulliApiKey ? el.settingTautulliApiKey.value.trim() : null,
+        tautulli_api_key: getSecretValue(el.settingTautulliApiKey),
         oidc_enabled: el.settingOidcEnabled ? el.settingOidcEnabled.checked : null,
         oidc_issuer_url: el.settingOidcIssuerUrl ? el.settingOidcIssuerUrl.value.trim() : null,
         oidc_client_id: el.settingOidcClientId ? el.settingOidcClientId.value.trim() : null,
-        oidc_client_secret: el.settingOidcClientSecret ? el.settingOidcClientSecret.value.trim() : null,
+        oidc_client_secret: getSecretValue(el.settingOidcClientSecret),
         oidc_redirect_url: el.settingOidcRedirectUrl ? el.settingOidcRedirectUrl.value.trim() : null,
         scrobble_threshold_percent: el.settingScrobbleThreshold && el.settingScrobbleThreshold.value ? parseInt(el.settingScrobbleThreshold.value, 10) : null,
       };

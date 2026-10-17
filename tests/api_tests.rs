@@ -2369,7 +2369,9 @@ async fn test_admin_settings_logs_and_tasks_management() {
 
     assert_eq!(settings.radarr_url.as_deref(), Some("http://radarr.local:7878"));
     assert!(settings.radarr_api_key_configured);
-    assert_eq!(settings.radarr_api_key_masked.as_deref(), Some("••••••••"));
+    assert!(settings.radarr_api_key_masked.as_deref().unwrap().starts_with("ra"));
+    assert!(settings.radarr_api_key_masked.as_deref().unwrap().contains('•'));
+    assert_eq!(settings.radarr_api_key.as_deref(), Some("radarr_key_xyz123"));
     assert_eq!(settings.sonarr_url.as_deref(), Some("http://sonarr.local:8989"));
     assert!(settings.sonarr_api_key_configured);
     assert!(settings.tvdb_api_key_configured);

@@ -169,7 +169,7 @@ test.describe('BingeSync Web UI & Webhooks', () => {
 
     // 1. Open Import Trakt modal
     await page.click('#btn-open-import-modal');
-    await expect(page.locator('#modal-import-trakt')).toBeVisible();
+    await expect(page.locator('#modal-import-history')).toBeVisible();
 
     // 2. Paste Trakt JSON sample with exact past timestamp and 10/10 rating
     const traktData = JSON.stringify([
@@ -193,7 +193,7 @@ test.describe('BingeSync Web UI & Webhooks', () => {
 
     // Close modal
     await page.click('#btn-cancel-import-modal');
-    await expect(page.locator('#modal-import-trakt')).toBeHidden();
+    await expect(page.locator('#modal-import-history')).toBeHidden();
 
     // 4. Verify item and star rating appear on timeline
     await expect(page.locator('.timeline-container')).toContainText('Interstellar (Trakt Import)');
@@ -229,7 +229,7 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     try {
       // 1. Open Import Trakt modal
       await page.click('#btn-open-import-modal');
-      await expect(page.locator('#modal-import-trakt')).toBeVisible();
+      await expect(page.locator('#modal-import-history')).toBeVisible();
 
       // 2. Upload zip file
       await page.setInputFiles('#import-file-input', tempZipPath);
@@ -241,11 +241,23 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
 
       // Close modal
       await page.click('#btn-cancel-import-modal');
-      await expect(page.locator('#modal-import-trakt')).toBeHidden();
+      await expect(page.locator('#modal-import-history')).toBeHidden();
 
-      // 4. Verify items and ratings appear on timeline sorted chronologically
+      // 4. Verify latest month (March 2024) displays Dune: Part Two with rating
       await expect(page.locator('.timeline-container')).toContainText('Dune: Part Two');
       await expect(page.locator('.timeline-container')).toContainText('★ 9/10');
+
+      // 5. Test drill-down: Drill up to Year view, then All Years, then down into 2023 January for Avatar 2
+      await page.click('#btn-timeline-up');
+      await expect(page.locator('.timeline-container')).toContainText('Months Overview');
+
+      await page.click('#btn-timeline-up');
+      await expect(page.locator('.timeline-container')).toContainText('Watch History by Year');
+
+      await page.locator('.timeline-year-card', { hasText: '2023' }).click();
+      await expect(page.locator('.timeline-container')).toContainText('2023 — Months Overview');
+
+      await page.locator('.timeline-month-card', { hasText: 'January' }).click();
       await expect(page.locator('.timeline-container')).toContainText('Avatar 2');
     } finally {
       if (fs.existsSync(tempZipPath)) {
@@ -338,6 +350,12 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     await expect(imdbLink).toBeVisible();
     await expect(imdbLink).toHaveAttribute('href', /imdb\.com\/title\/tt0141842/);
 
+    // Check TVDB button
+    const tvdbLink = page.locator('#detail-tvdb-link');
+    await expect(tvdbLink).toBeVisible();
+    await expect(tvdbLink).toHaveAttribute('href', /thetvdb\.com/);
+    await expect(tvdbLink).toContainText('View on TheTVDB');
+
     // Check Delete Show button
     const deleteShowBtn = page.locator('#btn-delete-show-scrobbles');
     await expect(deleteShowBtn).toBeVisible();
@@ -372,6 +390,10 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     await page.click('#tab-history');
     await expect(page.locator('#history-list')).toContainText('Movie Alpha');
     await expect(page.locator('#history-list')).toContainText('Movie Beta');
+
+    // Verify TVDB links exist on items in history
+    await expect(page.locator('#history-list .card-tvdb-link').first()).toBeVisible();
+    await expect(page.locator('#history-list .card-tvdb-link').first()).toContainText('TVDB');
 
     // Enter select mode
     await page.click('#btn-toggle-select-mode');
@@ -701,13 +723,25 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     await expect(scrubber).toBeVisible();
     await expect(page.locator('#timeline-scrubber-list .scrubber-item').first()).toBeVisible();
 
+    // Verify filters grid is hidden initially until search is clicked
+    const filtersGrid = page.locator('#timeline-filters-grid');
+    await expect(filtersGrid).toBeHidden();
+
     // Verify search expandable element exists and has search-expandable class
     const searchWrap = page.locator('#timeline-search-wrap');
     await expect(searchWrap).toHaveClass(/search-expandable/);
 
+    // Clicking search opens filters grid
+    await page.click('#timeline-search-wrap');
+    await expect(filtersGrid).toBeVisible();
+
     // Search for Interstellar
     await page.fill('#timeline-search', 'Interstellar');
     await expect(page.locator('#timeline-container')).toContainText('Interstellar');
+
+    // Clearing filters hides filter grid again
+    await page.click('#btn-reset-timeline-filters');
+    await expect(filtersGrid).toBeHidden();
   });
 
   test('admin settings, background tasks, and application logs management', async ({ page }) => {
@@ -737,6 +771,22 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
 
     // Verify success feedback
     await expect(page.locator('#admin-settings-status')).toContainText('Settings saved successfully!');
+
+    // Verify API key redaction: starts with 'ra' and contains bullet '•'
+    const maskedVal = await page.locator('#setting-radarr-api-key').inputValue();
+    expect(maskedVal.startsWith('ra')).toBeTruthy();
+    expect(maskedVal.includes('•')).toBeTruthy();
+
+    // Toggle reveal button to view full key
+    const toggleBtn = page.locator('#setting-radarr-api-key + .btn-toggle-secret');
+    await toggleBtn.click();
+    await expect(page.locator('#setting-radarr-api-key')).toHaveValue('radarr_secret_key_123');
+
+    // Toggle again to re-mask
+    await toggleBtn.click();
+    const remaskedVal = await page.locator('#setting-radarr-api-key').inputValue();
+    expect(remaskedVal.startsWith('ra')).toBeTruthy();
+    expect(remaskedVal.includes('•')).toBeTruthy();
 
     // 2. Test Subview: Background Tasks
     await page.click('#admin-subnav-pills button[data-subview="admin-sub-tasks"]');
@@ -825,10 +875,12 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     await page.fill('#dev-name', 'Tautulli Streamer');
     await page.click('#btn-dev-submit');
 
-    // 1. Open Tautulli import modal
-    await expect(page.locator('#btn-open-tautulli-modal')).toBeVisible();
-    await page.click('#btn-open-tautulli-modal');
-    await expect(page.locator('#modal-import-tautulli')).toBeVisible();
+    // 1. Open unified Import modal and switch to Tautulli tab
+    await expect(page.locator('#btn-open-import-modal')).toBeVisible();
+    await page.click('#btn-open-import-modal');
+    await expect(page.locator('#modal-import-history')).toBeVisible();
+    await page.click('#btn-import-tab-tautulli');
+    await expect(page.locator('#import-pane-tautulli')).toBeVisible();
 
     // 2. Verify username defaults to current user username
     const usernameVal = await page.locator('#tautulli-import-username').inputValue();
@@ -866,14 +918,15 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
 
     // Close modal
     await page.click('#btn-cancel-tautulli-modal');
-    await expect(page.locator('#modal-import-tautulli')).toBeHidden();
+    await expect(page.locator('#modal-import-history')).toBeHidden();
 
     // 5. Verify item appeared on timeline
     await page.click('#tab-timeline');
     await expect(page.locator('#timeline-container .scrobble-card', { hasText: 'Oppenheimer' })).toBeVisible();
 
     // 6. Test deduplication: re-open modal, submit same data again
-    await page.click('#btn-open-tautulli-modal');
+    await page.click('#btn-open-import-modal');
+    await page.click('#btn-import-tab-tautulli');
     await page.fill('#tautulli-paste-input', JSON.stringify(sampleHistory));
     await page.click('#btn-submit-tautulli-import');
 
@@ -881,6 +934,47 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     await expect(statusBox).toContainText('Import Complete!');
     await expect(statusBox).toContainText('Imported: 0');
     await expect(statusBox).toContainText('Skipped duplicates: 1');
+  });
+
+  test('timeline hierarchical drill-down navigation: Year -> Month -> Dates', async ({ page }) => {
+    const user = `tl_hierarchy_${Date.now()}@bingesync.local`;
+    await page.goto('/');
+    await page.fill('#dev-email', user);
+    await page.fill('#dev-name', 'Hierarchy Explorer');
+    await page.click('#btn-dev-submit');
+
+    // 1. Log a watch in current month
+    await page.click('#btn-open-log-modal');
+    await page.selectOption('#scrobble-media-type', 'movie');
+    await page.fill('#scrobble-title', 'Arrival');
+    await page.fill('#scrobble-year', '2016');
+    await page.click('#btn-submit-scrobble');
+    await expect(page.locator('#modal-log-scrobble')).toBeHidden();
+
+    // Verify Arrival appears in current month dates
+    await expect(page.locator('.timeline-container')).toContainText('Arrival');
+
+    // Verify breadcrumbs and drill-up button
+    await expect(page.locator('#hierarchy-breadcrumbs')).toContainText('All Years');
+    await expect(page.locator('#btn-timeline-up')).toBeVisible();
+
+    // 2. Drill up to Months view for the current year
+    await page.click('#btn-timeline-up');
+    await expect(page.locator('.timeline-container')).toContainText('Months Overview');
+    await expect(page.locator('.timeline-month-card', { hasText: 'October' })).toBeVisible();
+
+    // 3. Drill up to Years view
+    await page.click('#btn-timeline-up');
+    await expect(page.locator('.timeline-container')).toContainText('Watch History by Year');
+    await expect(page.locator('.timeline-year-card', { hasText: '2026' })).toBeVisible();
+
+    // 4. Drill back down: click 2026 year card
+    await page.locator('.timeline-year-card', { hasText: '2026' }).click();
+    await expect(page.locator('.timeline-container')).toContainText('2026 — Months Overview');
+
+    // Click October month card to view dates
+    await page.locator('.timeline-month-card', { hasText: 'October' }).click();
+    await expect(page.locator('.timeline-container')).toContainText('Arrival');
   });
 
   test('rating watched items: rate from item detail modal, update, and clear rating', async ({ page }) => {

@@ -171,3 +171,166 @@ pub async fn get_timeline(
 
     Ok(Json(result))
 }
+
+fn month_name(month_num: &str) -> &'static str {
+    match month_num {
+        "01" => "January",
+        "02" => "February",
+        "03" => "March",
+        "04" => "April",
+        "05" => "May",
+        "06" => "June",
+        "07" => "July",
+        "08" => "August",
+        "09" => "September",
+        "10" => "October",
+        "11" => "November",
+        "12" => "December",
+        _ => "Unknown",
+    }
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct TimelineMonthSummary {
+    pub month: String,      // "YYYY-MM"
+    pub month_num: String,  // "MM"
+    pub month_name: String, // "October"
+    pub count: i64,
+    pub minutes: i64,
+    pub poster_urls: Vec<String>,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct TimelineYearSummary {
+    pub year: String,       // "YYYY"
+    pub count: i64,
+    pub minutes: i64,
+    pub months: Vec<TimelineMonthSummary>,
+    pub poster_urls: Vec<String>,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct TimelinePeriodsResponse {
+    pub current_year: String,
+    pub current_month: String,
+    pub latest_year: Option<String>,
+    pub latest_month: Option<String>,
+    pub years: Vec<TimelineYearSummary>,
+}
+
+pub async fn get_timeline_periods(
+    State(state): State<AppState>,
+    auth: AuthUser,
+) -> Result<Json<TimelinePeriodsResponse>, (StatusCode, Json<serde_json::Value>)> {
+    let now = chrono::Utc::now();
+    let current_year = now.format("%Y").to_string();
+    let current_month = now.format("%Y-%m").to_string();
+
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        r#"
+        SELECT 
+            substr(watched_at, 1, 7) as ym,
+            COUNT(*) as cnt,
+            COALESCE(SUM(duration_ms), 0) as dur
+        FROM scrobbles
+        WHERE user_id = ?
+        GROUP BY ym
+        ORDER BY ym DESC
+        "#,
+    )
+    .bind(&auth.user_id)
+    .fetch_all(&state.pool)
+    .await
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": format!("Database error fetching timeline periods: {}", e) })),
+        )
+    })?;
+
+    let poster_rows: Vec<(String, Option<String>)> = sqlx::query_as(
+        r#"
+        SELECT 
+            substr(watched_at, 1, 7) as ym,
+            thumb_url
+        FROM scrobbles
+        WHERE user_id = ? AND thumb_url IS NOT NULL AND thumb_url != ''
+        ORDER BY watched_at DESC
+        "#,
+    )
+    .bind(&auth.user_id)
+    .fetch_all(&state.pool)
+    .await
+    .unwrap_or_default();
+
+    let mut month_posters: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
+    for (ym, thumb) in poster_rows {
+        if let Some(t) = thumb {
+            let list = month_posters.entry(ym).or_default();
+            if list.len() < 4 && !list.contains(&t) {
+                list.push(t);
+            }
+        }
+    }
+
+    let mut year_map: std::collections::BTreeMap<String, Vec<TimelineMonthSummary>> = std::collections::BTreeMap::new();
+    let mut year_totals: std::collections::HashMap<String, (i64, i64)> = std::collections::HashMap::new();
+    let mut latest_year = None;
+    let mut latest_month = None;
+
+    for (ym, cnt, dur_ms) in rows {
+        if ym.len() < 7 {
+            continue;
+        }
+        if latest_year.is_none() {
+            latest_year = Some(ym[0..4].to_string());
+            latest_month = Some(ym.clone());
+        }
+        let year_str = ym[0..4].to_string();
+        let month_num = ym[5..7].to_string();
+        let m_name = month_name(&month_num).to_string();
+        let minutes = dur_ms / 60_000;
+        let posters = month_posters.get(&ym).cloned().unwrap_or_default();
+
+        let totals = year_totals.entry(year_str.clone()).or_insert((0, 0));
+        totals.0 += cnt;
+        totals.1 += minutes;
+
+        year_map.entry(year_str).or_default().push(TimelineMonthSummary {
+            month: ym,
+            month_num,
+            month_name: m_name,
+            count: cnt,
+            minutes,
+            poster_urls: posters,
+        });
+    }
+
+    let mut years = Vec::new();
+    for (year_str, months) in year_map.into_iter().rev() {
+        let (total_cnt, total_min) = year_totals.get(&year_str).copied().unwrap_or((0, 0));
+        let mut year_posters = Vec::new();
+        for m in &months {
+            for p in &m.poster_urls {
+                if year_posters.len() < 4 && !year_posters.contains(p) {
+                    year_posters.push(p.clone());
+                }
+            }
+        }
+        years.push(TimelineYearSummary {
+            year: year_str,
+            count: total_cnt,
+            minutes: total_min,
+            months,
+            poster_urls: year_posters,
+        });
+    }
+
+    Ok(Json(TimelinePeriodsResponse {
+        current_year,
+        current_month,
+        latest_year,
+        latest_month,
+        years,
+    }))
+}
