@@ -399,15 +399,14 @@ pub fn start_metadata_worker(state: AppState) -> tokio::task::JoinHandle<()> {
                 state.task_tracker.set_tvdb_idle(0, "TVDB API key not configured").await;
             }
 
-            // Wait for new scrobbles or timeout
+            // Wait for new scrobbles or 4-hour periodic timer
             tokio::select! {
                 _ = state.metadata_notify.notified() => {
-                    tokio::time::sleep(Duration::from_millis(500)).await;
+                    failed_lookups.clear();
+                    tokio::time::sleep(Duration::from_millis(100)).await;
                 }
-                _ = tokio::time::sleep(Duration::from_secs(300)) => {
-                    if failed_lookups.len() > 200 {
-                        failed_lookups.clear();
-                    }
+                _ = tokio::time::sleep(Duration::from_secs(4 * 3600)) => {
+                    failed_lookups.clear();
                 }
             }
         }
@@ -439,9 +438,12 @@ pub async fn process_missing_metadata_batch(
         r#"
         SELECT id, title, media_type, grandparent_title, year, overview, genres, actors, directors, thumb_url
         FROM scrobbles
-        WHERE (genres IS NULL OR genres = '')
-           OR (actors IS NULL OR actors = '')
-           OR (overview IS NULL OR overview = '')
+        WHERE metadata_updated_at IS NULL
+          AND (
+            (genres IS NULL OR genres = '')
+            OR (actors IS NULL OR actors = '')
+            OR (overview IS NULL OR overview = '')
+          )
         ORDER BY watched_at DESC
         LIMIT 10
         "#
@@ -479,6 +481,11 @@ pub async fn process_missing_metadata_batch(
         let match_result = match search_res {
             Ok(Some(res)) => res,
             _ => {
+                // Mark metadata_updated_at so we don't query TVDB on every loop for unmatchable items
+                let _ = sqlx::query("UPDATE scrobbles SET metadata_updated_at = datetime('now') WHERE id = ?")
+                    .bind(&item.id)
+                    .execute(&state.pool)
+                    .await;
                 failed_lookups.insert(cache_key);
                 continue;
             }
@@ -513,7 +520,8 @@ pub async fn process_missing_metadata_batch(
                 SET genres = COALESCE(NULLIF(genres, ''), ?),
                     actors = COALESCE(NULLIF(actors, ''), ?),
                     directors = COALESCE(NULLIF(directors, ''), ?),
-                    overview = CASE WHEN overview IS NULL OR overview = '' THEN ? ELSE overview END
+                    overview = CASE WHEN overview IS NULL OR overview = '' THEN ? ELSE overview END,
+                    metadata_updated_at = datetime('now')
                 WHERE grandparent_title = ? OR (media_type = 'episode' AND title = ?)
                 "#
             )
@@ -533,7 +541,8 @@ pub async fn process_missing_metadata_batch(
                 SET genres = COALESCE(NULLIF(genres, ''), ?),
                     actors = COALESCE(NULLIF(actors, ''), ?),
                     directors = COALESCE(NULLIF(directors, ''), ?),
-                    overview = CASE WHEN overview IS NULL OR overview = '' THEN ? ELSE overview END
+                    overview = CASE WHEN overview IS NULL OR overview = '' THEN ? ELSE overview END,
+                    metadata_updated_at = datetime('now')
                 WHERE id = ?
                 "#
             )
@@ -546,8 +555,9 @@ pub async fn process_missing_metadata_batch(
             .await;
         }
 
-        // If scrobble had no poster and TVDB returned an image, wake image cache worker
-        if item.thumb_url.is_none() && meta.image_url.is_some() {
+        // If scrobble had no poster (or relative internal path) and TVDB returned an image, update or wake image cache worker
+        let has_valid_thumb = item.thumb_url.as_deref().map(|u| !u.is_empty() && !u.starts_with("/library/")).unwrap_or(false);
+        if !has_valid_thumb && meta.image_url.is_some() {
             state.image_notify.notify_waiters();
         }
 

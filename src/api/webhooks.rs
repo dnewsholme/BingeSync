@@ -116,9 +116,12 @@ async fn process_webhook(
     let episode_number = metadata.index;
     let year = metadata.year;
     let overview = metadata.summary;
-    let thumb_url = metadata.thumb
+    let raw_thumb = metadata.thumb
         .or(metadata.grandparent_thumb)
         .or(metadata.parent_thumb);
+    let thumb_url = raw_thumb.filter(|u| {
+        u.starts_with("http://") || u.starts_with("https://") || u.starts_with("/api/v1/images/")
+    });
     let rating_key = metadata.rating_key;
     let guid = metadata.guid;
     let duration_ms = metadata.duration;

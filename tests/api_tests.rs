@@ -1846,10 +1846,7 @@ async fn test_sonarr_delete_options() {
         axum::serve(listener, mock_sonarr_router).await.unwrap();
     });
 
-    let mut config = Config::from_env();
-    config.sonarr_url = Some(format!("http://{}", addr));
-    config.sonarr_api_key = Some("test_api_key".to_string());
-    let config = Arc::new(config);
+    let config = Arc::new(Config::from_env());
     let state = AppState {
         pool: pool.clone(),
         config: config.clone(),
@@ -1878,7 +1875,11 @@ async fn test_sonarr_delete_options() {
     assert_eq!(res.status(), StatusCode::OK);
     let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
     let login_data: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    let user_id = login_data["user"]["id"].as_str().unwrap();
     let token = login_data["token"].as_str().unwrap().to_string();
+
+    bingesync::api::user_settings::set_user_setting(&pool, user_id, "sonarr_url", &format!("http://{}", addr)).await.unwrap();
+    bingesync::api::user_settings::set_user_setting(&pool, user_id, "sonarr_api_key", "test_api_key").await.unwrap();
 
     // 1. Test Option 1: delete_series (delete show and files)
     let req = Request::builder()
@@ -2116,6 +2117,11 @@ async fn test_tvdb_metadata_enrichment_worker() {
     assert_eq!(scrobble.directors.as_deref(), Some("Vince Gilligan"));
     assert!(scrobble.overview.is_some());
     assert!(scrobble.overview.unwrap().contains("chemistry teacher"));
+    assert!(scrobble.metadata_updated_at.is_some());
+
+    // 5. Subsequent runs must NOT re-fetch already enriched metadata
+    let processed_second_run = bingesync::api::tvdb::process_missing_metadata_once(&state).await;
+    assert_eq!(processed_second_run, 0);
 }
 
 #[tokio::test]
@@ -2335,16 +2341,13 @@ async fn test_admin_settings_logs_and_tasks_management() {
 
     // 4. Admin updating settings
     let update_body = json!({
-        "radarr_url": "http://radarr.local:7878",
-        "radarr_api_key": "radarr_key_xyz123",
-        "sonarr_url": "http://sonarr.local:8989",
-        "sonarr_api_key": "sonarr_key_abc456",
         "tvdb_api_key": "tvdb_dyn_key_789",
         "tvdb_pin": "1234",
         "oidc_enabled": true,
         "oidc_issuer_url": "https://auth.local",
         "oidc_client_id": "bs-client",
-        "oidc_client_secret": "secret999"
+        "oidc_client_secret": "secret999",
+        "scrobble_threshold_percent": 85
     });
 
     let req = Request::builder()
@@ -2367,16 +2370,12 @@ async fn test_admin_settings_logs_and_tasks_management() {
     let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
     let settings: bingesync::api::settings::SystemSettingsView = serde_json::from_slice(&body).unwrap();
 
-    assert_eq!(settings.radarr_url.as_deref(), Some("http://radarr.local:7878"));
-    assert!(settings.radarr_api_key_configured);
-    assert!(settings.radarr_api_key_masked.as_deref().unwrap().starts_with("ra"));
-    assert!(settings.radarr_api_key_masked.as_deref().unwrap().contains('•'));
-    assert_eq!(settings.radarr_api_key.as_deref(), Some("radarr_key_xyz123"));
-    assert_eq!(settings.sonarr_url.as_deref(), Some("http://sonarr.local:8989"));
-    assert!(settings.sonarr_api_key_configured);
     assert!(settings.tvdb_api_key_configured);
     assert_eq!(settings.tvdb_pin.as_deref(), Some("1234"));
+    assert!(settings.tvdb_api_key_masked.as_deref().unwrap().starts_with("tv"));
+    assert!(settings.tvdb_api_key_masked.as_deref().unwrap().contains('•'));
     assert!(settings.oidc_enabled);
+    assert_eq!(settings.scrobble_threshold_percent, 85);
 
     // 5. Test logs endpoint
     let req = Request::builder()
@@ -3006,12 +3005,215 @@ async fn test_openapi_spec_and_swagger_ui() {
     assert!(swagger_body.contains("Swagger UI"));
 }
 
+#[tokio::test]
+async fn test_plex_webhook_internal_thumb_and_refresh_metadata_endpoint() {
+    let (app, pool, config) = setup_test_app().await;
 
+    let user = bingesync::api::auth::get_or_create_user(
+        &pool,
+        "southpark_fan@bingesync.local",
+        "South Park Fan",
+        None,
+        None,
+        false,
+    )
+    .await
+    .unwrap();
 
+    // 1. Send Plex webhook with internal unreachable Plex relative thumb path (e.g. /library/metadata/123/thumb/456)
+    let payload = json!({
+        "event": "media.scrobble",
+        "user": true,
+        "owner": true,
+        "Account": { "title": "sp_fan" },
+        "Metadata": {
+            "type": "episode",
+            "title": "Help, My Teenager Hates Me!",
+            "grandparentTitle": "South Park",
+            "parentTitle": "Season 25",
+            "index": 3,
+            "parentIndex": 25,
+            "year": 2022,
+            "duration": 1320000,
+            "summary": "The boys get into airsofting.",
+            "thumb": "/library/metadata/54321/thumb/1680000000"
+        }
+    });
 
+    let webhook_req = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/webhooks/plex/{}", user.webhook_token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(payload.to_string()))
+        .unwrap();
 
+    let res = app.clone().oneshot(webhook_req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::CREATED);
 
+    // Verify stored scrobble has thumb_url = None (not the broken internal /library/ path)
+    let scrobble: Scrobble = sqlx::query_as("SELECT * FROM scrobbles WHERE user_id = ?")
+        .bind(&user.id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(scrobble.thumb_url, None);
+    assert_eq!(scrobble.metadata_updated_at, None);
 
+    // 2. Call POST /api/v1/history/{id}/refresh-metadata
+    let token = create_jwt(&user.id, &user.email, &config.jwt_secret).unwrap();
+    let refresh_req = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/history/{}/refresh-metadata", scrobble.id))
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .body(Body::empty())
+        .unwrap();
 
+    let refresh_res = app.clone().oneshot(refresh_req).await.unwrap();
+    assert_eq!(refresh_res.status(), StatusCode::OK);
 
+    let refresh_body: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(refresh_res.into_body(), usize::MAX).await.unwrap()
+    ).unwrap();
+    assert_eq!(refresh_body["status"], "refreshed");
+    assert!(refresh_body["scrobble"]["metadata_updated_at"].is_string());
 
+    // 3. User B cannot refresh User A's scrobble (isolation)
+    let user_b = bingesync::api::auth::get_or_create_user(
+        &pool,
+        "intruder@bingesync.local",
+        "Intruder",
+        None,
+        None,
+        false,
+    )
+    .await
+    .unwrap();
+    let token_b = create_jwt(&user_b.id, &user_b.email, &config.jwt_secret).unwrap();
+    let unauthorized_req = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/history/{}/refresh-metadata", scrobble.id))
+        .header(header::AUTHORIZATION, format!("Bearer {}", token_b))
+        .body(Body::empty())
+        .unwrap();
+
+    let unauthorized_res = app.oneshot(unauthorized_req).await.unwrap();
+    assert_eq!(unauthorized_res.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn test_user_settings_isolation_and_credentials() {
+    let (app, pool, config) = setup_test_app().await;
+
+    // Create User A
+    let user_a = bingesync::api::auth::get_or_create_user(
+        &pool,
+        "user_a@bingesync.local",
+        "User A",
+        None,
+        None,
+        false,
+    )
+    .await
+    .unwrap();
+    let token_a = create_jwt(&user_a.id, &user_a.email, &config.jwt_secret).unwrap();
+
+    // Create User B
+    let user_b = bingesync::api::auth::get_or_create_user(
+        &pool,
+        "user_b@bingesync.local",
+        "User B",
+        None,
+        None,
+        false,
+    )
+    .await
+    .unwrap();
+    let token_b = create_jwt(&user_b.id, &user_b.email, &config.jwt_secret).unwrap();
+
+    // 1. User A saves their personal Radarr, Sonarr, and Tautulli settings
+    let update_body = json!({
+        "radarr_url": "http://user-a-radarr:7878",
+        "radarr_api_key": "user_a_radarr_secret_key",
+        "sonarr_url": "http://user-a-sonarr:8989",
+        "sonarr_api_key": "user_a_sonarr_secret_key",
+        "tautulli_url": "http://user-a-tautulli:8181/api/v2",
+        "tautulli_api_key": "user_a_tautulli_secret_key"
+    });
+
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/user/settings")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token_a))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(update_body.to_string()))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // 2. User A retrieves settings and verifies secrets are masked
+    let req = Request::builder()
+        .uri("/api/v1/user/settings")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token_a))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let settings_a: bingesync::api::user_settings::UserSettingsView = serde_json::from_slice(&body).unwrap();
+
+    assert_eq!(settings_a.radarr_url.as_deref(), Some("http://user-a-radarr:7878"));
+    assert!(settings_a.radarr_api_key_configured);
+    assert!(settings_a.radarr_api_key_masked.as_deref().unwrap().starts_with("us"));
+    assert!(settings_a.radarr_api_key_masked.as_deref().unwrap().contains('•'));
+    assert_eq!(settings_a.radarr_api_key.as_deref(), Some("user_a_radarr_secret_key"));
+
+    assert_eq!(settings_a.sonarr_url.as_deref(), Some("http://user-a-sonarr:8989"));
+    assert!(settings_a.sonarr_api_key_configured);
+
+    assert_eq!(settings_a.tautulli_url.as_deref(), Some("http://user-a-tautulli:8181/api/v2"));
+    assert!(settings_a.tautulli_api_key_configured);
+
+    // 3. User B retrieves settings - should be completely empty (Multi-user isolation!)
+    let req = Request::builder()
+        .uri("/api/v1/user/settings")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token_b))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let settings_b: bingesync::api::user_settings::UserSettingsView = serde_json::from_slice(&body).unwrap();
+
+    assert!(settings_b.radarr_url.is_none());
+    assert!(!settings_b.radarr_api_key_configured);
+    assert!(settings_b.sonarr_url.is_none());
+    assert!(!settings_b.sonarr_api_key_configured);
+    assert!(settings_b.tautulli_url.is_none());
+    assert!(!settings_b.tautulli_api_key_configured);
+
+    // 4. Integrations status endpoint reflects User A's settings
+    let req = Request::builder()
+        .uri("/api/v1/integrations/status")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token_a))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let status_a: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(status_a["radarr_configured"], true);
+    assert_eq!(status_a["sonarr_configured"], true);
+
+    // User B's integrations status reflects that User B has not configured them
+    let req = Request::builder()
+        .uri("/api/v1/integrations/status")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token_b))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let status_b: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(status_b["radarr_configured"], false);
+    assert_eq!(status_b["sonarr_configured"], false);
+}

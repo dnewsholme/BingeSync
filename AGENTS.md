@@ -214,9 +214,7 @@ docker run -p 8080:8080 -v bingesync_data:/data bingesync:latest
 | `OIDC_CLIENT_SECRET` | *(none)* | OIDC client secret |
 | `OIDC_REDIRECT_URL` | `${APP_URL}/api/v1/auth/callback` | Callback URL |
 | `DEV_LOGIN_ENABLED` | `true` | Allows local email/username login |
-| `RADARR_URL` | *(none)* | Base URL to Radarr instance (e.g. `http://localhost:7878`) |
-| `RADARR_API_KEY` | *(none)* | API key for Radarr |
-| `SONARR_URL` | *(none)* | Base URL to Sonarr instance (e.g. `http://localhost:8989`) |
-| `SONARR_API_KEY` | *(none)* | API key for Sonarr |
 | `TVDB_API_KEY` | *(none)* | TheTVDB v4 API key for background metadata enrichment |
 | `TVDB_PIN` | *(none)* | Optional subscriber PIN for user-subscription TheTVDB keys |
+
+*Note: Radarr, Sonarr, and Tautulli integrations are configured per-user on the User Settings page, not via environment variables.*

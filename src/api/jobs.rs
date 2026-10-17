@@ -94,14 +94,14 @@ impl BackgroundTaskTracker {
 
     pub async fn get_tasks_summary(&self, pool: &SqlitePool, tvdb_configured: bool) -> Vec<BackgroundTaskInfo> {
         let pending_images: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM scrobbles WHERE thumb_url IS NULL OR thumb_url = ''"
+            "SELECT COUNT(*) FROM scrobbles WHERE thumb_url IS NULL OR thumb_url = '' OR thumb_url LIKE '/library/%' OR thumb_url LIKE '/photo/%'"
         )
         .fetch_one(pool)
         .await
         .unwrap_or(0);
 
         let pending_metadata: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM scrobbles WHERE genres IS NULL OR overview IS NULL"
+            "SELECT COUNT(*) FROM scrobbles WHERE metadata_updated_at IS NULL AND ((genres IS NULL OR genres = '') OR (overview IS NULL OR overview = ''))"
         )
         .fetch_one(pool)
         .await
@@ -170,6 +170,8 @@ pub async fn trigger_admin_task_handler(
 
     match task_id.as_str() {
         "image_cache" | "images" => {
+            state.task_tracker.set_image_running("Manual run triggered...").await;
+            state.image_notify.notify_waiters();
             state.image_notify.notify_one();
             state.log_buffer.push("INFO", "bingesync::tasks", "Manual run triggered for Image Caching worker");
             Ok(Json(serde_json::json!({
@@ -179,6 +181,8 @@ pub async fn trigger_admin_task_handler(
             })))
         }
         "tvdb_metadata" | "tvdb" => {
+            state.task_tracker.set_tvdb_running("Manual run triggered...").await;
+            state.metadata_notify.notify_waiters();
             state.metadata_notify.notify_one();
             state.log_buffer.push("INFO", "bingesync::tasks", "Manual run triggered for TheTVDB Metadata worker");
             Ok(Json(serde_json::json!({

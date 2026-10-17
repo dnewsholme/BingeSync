@@ -43,6 +43,7 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
             watch_status TEXT NOT NULL DEFAULT 'completed',
             progress_percent INTEGER DEFAULT NULL,
             view_offset_ms INTEGER DEFAULT NULL,
+            metadata_updated_at TEXT DEFAULT NULL,
             watched_at TEXT NOT NULL DEFAULT (datetime('now')),
             created_at TEXT NOT NULL DEFAULT (datetime('now'))
         );
@@ -127,6 +128,22 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
     let _ = sqlx::query("ALTER TABLE scrobbles ADD COLUMN view_offset_ms INTEGER DEFAULT NULL")
         .execute(pool)
         .await;
+    let _ = sqlx::query("ALTER TABLE scrobbles ADD COLUMN metadata_updated_at TEXT DEFAULT NULL")
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_scrobbles_metadata_updated ON scrobbles(metadata_updated_at)")
+        .execute(pool)
+        .await;
+
+    // Clean up any internal Plex relative thumb paths (e.g. /library/metadata/...) so background workers can fetch real posters
+    let _ = sqlx::query("UPDATE scrobbles SET thumb_url = NULL WHERE thumb_url LIKE '/library/%' OR thumb_url LIKE '/photo/%'")
+        .execute(pool)
+        .await;
+
+    // Mark existing scrobbles that already have overview and genres as having metadata obtained
+    let _ = sqlx::query("UPDATE scrobbles SET metadata_updated_at = datetime('now') WHERE metadata_updated_at IS NULL AND overview IS NOT NULL AND overview != '' AND genres IS NOT NULL AND genres != ''")
+        .execute(pool)
+        .await;
 
     // System Settings table for runtime admin configuration
     let _ = sqlx::query(
@@ -135,6 +152,21 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
             key TEXT PRIMARY KEY NOT NULL,
             value TEXT NOT NULL,
             updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        "#,
+    )
+    .execute(pool)
+    .await;
+
+    // User Settings table for per-user integrations (Radarr, Sonarr, Tautulli)
+    let _ = sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS user_settings (
+            user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            key TEXT NOT NULL,
+            value TEXT NOT NULL,
+            updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+            PRIMARY KEY (user_id, key)
         )
         "#,
     )

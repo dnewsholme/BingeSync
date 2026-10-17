@@ -11,26 +11,11 @@ use crate::{api::AppState, auth::AuthUser};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SystemSettingsView {
-    pub radarr_url: Option<String>,
-    pub radarr_api_key_configured: bool,
-    pub radarr_api_key_masked: Option<String>,
-    pub radarr_api_key: Option<String>,
-
-    pub sonarr_url: Option<String>,
-    pub sonarr_api_key_configured: bool,
-    pub sonarr_api_key_masked: Option<String>,
-    pub sonarr_api_key: Option<String>,
-
     pub tvdb_api_key_configured: bool,
     pub tvdb_api_key_masked: Option<String>,
     pub tvdb_api_key: Option<String>,
     pub tvdb_pin: Option<String>,
     pub tvdb_base_url: Option<String>,
-
-    pub tautulli_url: Option<String>,
-    pub tautulli_api_key_configured: bool,
-    pub tautulli_api_key_masked: Option<String>,
-    pub tautulli_api_key: Option<String>,
 
     pub oidc_enabled: bool,
     pub oidc_issuer_url: Option<String>,
@@ -44,18 +29,9 @@ pub struct SystemSettingsView {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateSettingsRequest {
-    pub radarr_url: Option<String>,
-    pub radarr_api_key: Option<String>,
-
-    pub sonarr_url: Option<String>,
-    pub sonarr_api_key: Option<String>,
-
     pub tvdb_api_key: Option<String>,
     pub tvdb_pin: Option<String>,
     pub tvdb_base_url: Option<String>,
-
-    pub tautulli_url: Option<String>,
-    pub tautulli_api_key: Option<String>,
 
     pub oidc_enabled: Option<bool>,
     pub oidc_issuer_url: Option<String>,
@@ -89,6 +65,17 @@ pub async fn set_db_setting(pool: &SqlitePool, key: &str, value: &str) -> Result
     Ok(())
 }
 
+fn mask_api_key(key: &str) -> String {
+    let chars: Vec<char> = key.chars().collect();
+    if chars.is_empty() {
+        return String::new();
+    }
+    let visible_count = if chars.len() <= 2 { chars.len() } else { 2 };
+    let prefix: String = chars[..visible_count].iter().collect();
+    let bullets = "•".repeat(chars.len() - visible_count);
+    format!("{}{}", prefix, bullets)
+}
+
 pub async fn get_admin_settings_handler(
     State(state): State<AppState>,
     auth: AuthUser,
@@ -99,25 +86,6 @@ pub async fn get_admin_settings_handler(
             Json(serde_json::json!({ "error": "Admin privileges required to view system settings" })),
         ));
     }
-
-    // Check database settings first, then fall back to config
-    let radarr_url = match get_db_setting(&state.pool, "radarr_url").await {
-        Some(v) if !v.trim().is_empty() => Some(v),
-        _ => state.config.radarr_url.clone(),
-    };
-    let radarr_api_key = match get_db_setting(&state.pool, "radarr_api_key").await {
-        Some(v) if !v.trim().is_empty() => Some(v),
-        _ => state.config.radarr_api_key.clone(),
-    };
-
-    let sonarr_url = match get_db_setting(&state.pool, "sonarr_url").await {
-        Some(v) if !v.trim().is_empty() => Some(v),
-        _ => state.config.sonarr_url.clone(),
-    };
-    let sonarr_api_key = match get_db_setting(&state.pool, "sonarr_api_key").await {
-        Some(v) if !v.trim().is_empty() => Some(v),
-        _ => state.config.sonarr_api_key.clone(),
-    };
 
     let tvdb_api_key = match get_db_setting(&state.pool, "tvdb_api_key").await {
         Some(v) if !v.trim().is_empty() => Some(v),
@@ -153,47 +121,12 @@ pub async fn get_admin_settings_handler(
         _ => state.config.oidc_redirect_url.clone(),
     };
 
-    let tautulli_url = match get_db_setting(&state.pool, "tautulli_url").await {
-        Some(v) if !v.trim().is_empty() => Some(v),
-        _ => state.config.tautulli_url.clone(),
-    };
-    let tautulli_api_key = match get_db_setting(&state.pool, "tautulli_api_key").await {
-        Some(v) if !v.trim().is_empty() => Some(v),
-        _ => state.config.tautulli_api_key.clone(),
-    };
-
-fn mask_api_key(key: &str) -> String {
-    let chars: Vec<char> = key.chars().collect();
-    if chars.is_empty() {
-        return String::new();
-    }
-    let visible_count = if chars.len() <= 2 { chars.len() } else { 2 };
-    let prefix: String = chars[..visible_count].iter().collect();
-    let bullets = "•".repeat(chars.len() - visible_count);
-    format!("{}{}", prefix, bullets)
-}
-
     let view = SystemSettingsView {
-        radarr_url,
-        radarr_api_key_configured: radarr_api_key.is_some() && !radarr_api_key.as_deref().unwrap_or("").is_empty(),
-        radarr_api_key_masked: radarr_api_key.as_deref().map(mask_api_key),
-        radarr_api_key: radarr_api_key.clone(),
-
-        sonarr_url,
-        sonarr_api_key_configured: sonarr_api_key.is_some() && !sonarr_api_key.as_deref().unwrap_or("").is_empty(),
-        sonarr_api_key_masked: sonarr_api_key.as_deref().map(mask_api_key),
-        sonarr_api_key: sonarr_api_key.clone(),
-
         tvdb_api_key_configured: tvdb_api_key.is_some() && !tvdb_api_key.as_deref().unwrap_or("").is_empty(),
         tvdb_api_key_masked: tvdb_api_key.as_deref().map(mask_api_key),
         tvdb_api_key: tvdb_api_key.clone(),
         tvdb_pin,
         tvdb_base_url,
-
-        tautulli_url,
-        tautulli_api_key_configured: tautulli_api_key.is_some() && !tautulli_api_key.as_deref().unwrap_or("").is_empty(),
-        tautulli_api_key_masked: tautulli_api_key.as_deref().map(mask_api_key),
-        tautulli_api_key: tautulli_api_key.clone(),
 
         oidc_enabled,
         oidc_issuer_url,
@@ -220,25 +153,6 @@ pub async fn update_admin_settings_handler(
         ));
     }
 
-    // Persist non-empty values or updates (ignoring masked strings containing bullets)
-    if let Some(ref val) = payload.radarr_url {
-        let _ = set_db_setting(&state.pool, "radarr_url", val.trim()).await;
-    }
-    if let Some(ref val) = payload.radarr_api_key {
-        if !val.trim().is_empty() && !val.contains('•') {
-            let _ = set_db_setting(&state.pool, "radarr_api_key", val.trim()).await;
-        }
-    }
-
-    if let Some(ref val) = payload.sonarr_url {
-        let _ = set_db_setting(&state.pool, "sonarr_url", val.trim()).await;
-    }
-    if let Some(ref val) = payload.sonarr_api_key {
-        if !val.trim().is_empty() && !val.contains('•') {
-            let _ = set_db_setting(&state.pool, "sonarr_api_key", val.trim()).await;
-        }
-    }
-
     let mut tvdb_updated = false;
     if let Some(ref val) = payload.tvdb_api_key {
         if !val.trim().is_empty() && !val.contains('•') {
@@ -253,15 +167,6 @@ pub async fn update_admin_settings_handler(
     if let Some(ref val) = payload.tvdb_base_url {
         let _ = set_db_setting(&state.pool, "tvdb_base_url", val.trim()).await;
         tvdb_updated = true;
-    }
-
-    if let Some(ref val) = payload.tautulli_url {
-        let _ = set_db_setting(&state.pool, "tautulli_url", val.trim()).await;
-    }
-    if let Some(ref val) = payload.tautulli_api_key {
-        if !val.trim().is_empty() && !val.contains('•') {
-            let _ = set_db_setting(&state.pool, "tautulli_api_key", val.trim()).await;
-        }
     }
 
     if let Some(enabled) = payload.oidc_enabled {
@@ -287,14 +192,15 @@ pub async fn update_admin_settings_handler(
         let _ = set_db_setting(&state.pool, "scrobble_threshold_percent", &clamped.to_string()).await;
     }
 
-    state.log_buffer.push("INFO", "bingesync::settings", &format!("System settings updated by admin ({})", auth.email));
+    state.log_buffer.push("INFO", "bingesync::settings", "System settings updated by admin");
 
     if tvdb_updated {
+        state.metadata_notify.notify_waiters();
         state.metadata_notify.notify_one();
     }
 
     Ok(Json(serde_json::json!({
         "status": "success",
-        "message": "System settings successfully updated"
+        "message": "System settings saved successfully"
     })))
 }

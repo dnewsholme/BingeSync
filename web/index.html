@@ -51,8 +51,8 @@
             Stats
           </button>
           <button class="nav-tab" id="tab-settings" data-target="view-settings">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-            Webhook
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+            Settings
           </button>
           <button class="nav-tab" id="tab-admin" data-target="view-admin" style="display: none;">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
@@ -365,13 +365,94 @@
           </div>
         </section>
 
-        <!-- 4. WEBHOOK & SETTINGS VIEW -->
+        <!-- 4. SETTINGS VIEW -->
         <section id="view-settings" class="app-view" style="display: none;">
           <div class="view-header">
             <div>
-              <h1 class="view-title">Plex Webhook Setup</h1>
-              <p class="view-subtitle">Configure per-user Plex scrobbling to your BingeSync account</p>
+              <h1 class="view-title">Settings & Integrations</h1>
+              <p class="view-subtitle">Configure your personal Plex webhook, Radarr, Sonarr, and Tautulli integrations</p>
             </div>
+          </div>
+
+          <!-- Connected Services (Per-User Settings) -->
+          <div class="card settings-card" id="card-user-services">
+            <h2 class="card-title">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
+              Connected Services
+            </h2>
+            <p class="card-desc">
+              Configure your personal Radarr, Sonarr, and Tautulli credentials. These settings are specific to your user account.
+            </p>
+
+            <form id="form-user-settings" style="margin-top: 18px;">
+              <!-- Radarr -->
+              <div class="settings-group-header">
+                <span class="arr-badge arr-badge-radarr">Radarr</span>
+                <strong>Movie Library & Cleanup</strong>
+              </div>
+              <div class="form-row">
+                <div class="form-group col-half">
+                  <label for="user-setting-radarr-url">Radarr Base URL</label>
+                  <input type="url" id="user-setting-radarr-url" class="form-control" placeholder="http://192.168.1.100:7878" />
+                </div>
+                <div class="form-group col-half">
+                  <label for="user-setting-radarr-api-key">Radarr API Key</label>
+                  <div class="input-secret-wrapper">
+                    <input type="text" id="user-setting-radarr-api-key" class="form-control font-mono" placeholder="API Key" autocomplete="off" spellcheck="false" />
+                    <button type="button" class="btn-toggle-secret" data-target="user-setting-radarr-api-key" title="Unhide / Show full key">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Sonarr -->
+              <div class="settings-group-header" style="margin-top: 16px;">
+                <span class="arr-badge arr-badge-sonarr">Sonarr</span>
+                <strong>TV Series Library & Cleanup</strong>
+              </div>
+              <div class="form-row">
+                <div class="form-group col-half">
+                  <label for="user-setting-sonarr-url">Sonarr Base URL</label>
+                  <input type="url" id="user-setting-sonarr-url" class="form-control" placeholder="http://192.168.1.100:8989" />
+                </div>
+                <div class="form-group col-half">
+                  <label for="user-setting-sonarr-api-key">Sonarr API Key</label>
+                  <div class="input-secret-wrapper">
+                    <input type="text" id="user-setting-sonarr-api-key" class="form-control font-mono" placeholder="API Key" autocomplete="off" spellcheck="false" />
+                    <button type="button" class="btn-toggle-secret" data-target="user-setting-sonarr-api-key" title="Unhide / Show full key">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Tautulli -->
+              <div class="settings-group-header" style="margin-top: 16px;">
+                <span class="badge-pill" style="background: rgba(234, 88, 12, 0.15); color: #fb923c; border: 1px solid rgba(234, 88, 12, 0.3);">Tautulli</span>
+                <strong>Plex Watch History & Statistics</strong>
+              </div>
+              <div class="form-row">
+                <div class="form-group col-half">
+                  <label for="user-setting-tautulli-url">Tautulli Base URL</label>
+                  <input type="url" id="user-setting-tautulli-url" class="form-control" placeholder="http://192.168.1.100:8181" />
+                </div>
+                <div class="form-group col-half">
+                  <label for="user-setting-tautulli-api-key">Tautulli API Key</label>
+                  <div class="input-secret-wrapper">
+                    <input type="text" id="user-setting-tautulli-api-key" class="form-control font-mono" placeholder="API Key" autocomplete="off" spellcheck="false" />
+                    <button type="button" class="btn-toggle-secret" data-target="user-setting-tautulli-api-key" title="Unhide / Show full key">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div style="display:flex;align-items:center;gap:12px;margin-top:20px;">
+                <button type="submit" class="btn btn-primary" id="btn-save-user-settings">Save Settings</button>
+                <span id="user-settings-status" style="font-size:0.85rem;"></span>
+              </div>
+            </form>
           </div>
 
           <div class="card settings-card">
@@ -525,50 +606,8 @@
               </p>
 
               <form id="form-admin-settings" style="margin-top: 18px;">
-                <!-- Radarr -->
-                <div class="settings-group-header">
-                  <span class="arr-badge arr-badge-radarr">Radarr</span>
-                  <strong>Movie Library & Cleanup</strong>
-                </div>
-                <div class="form-row">
-                  <div class="form-group col-half">
-                    <label for="setting-radarr-url">Radarr Base URL</label>
-                    <input type="url" id="setting-radarr-url" class="form-control" placeholder="http://192.168.1.100:7878" />
-                  </div>
-                  <div class="form-group col-half">
-                    <label for="setting-radarr-api-key">Radarr API Key</label>
-                    <div class="input-secret-wrapper">
-                      <input type="text" id="setting-radarr-api-key" class="form-control font-mono" placeholder="API Key" autocomplete="off" spellcheck="false" />
-                      <button type="button" class="btn-toggle-secret" data-target="setting-radarr-api-key" title="Unhide / Show full key">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Sonarr -->
-                <div class="settings-group-header" style="margin-top: 16px;">
-                  <span class="arr-badge arr-badge-sonarr">Sonarr</span>
-                  <strong>TV Series Library & Cleanup</strong>
-                </div>
-                <div class="form-row">
-                  <div class="form-group col-half">
-                    <label for="setting-sonarr-url">Sonarr Base URL</label>
-                    <input type="url" id="setting-sonarr-url" class="form-control" placeholder="http://192.168.1.100:8989" />
-                  </div>
-                  <div class="form-group col-half">
-                    <label for="setting-sonarr-api-key">Sonarr API Key</label>
-                    <div class="input-secret-wrapper">
-                      <input type="text" id="setting-sonarr-api-key" class="form-control font-mono" placeholder="API Key" autocomplete="off" spellcheck="false" />
-                      <button type="button" class="btn-toggle-secret" data-target="setting-sonarr-api-key" title="Unhide / Show full key">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
                 <!-- TheTVDB -->
-                <div class="settings-group-header" style="margin-top: 16px;">
+                <div class="settings-group-header">
                   <span class="badge-pill" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3);">TheTVDB v4</span>
                   <strong>Metadata & Cast Enrichment</strong>
                 </div>
@@ -590,27 +629,6 @@
                 <div class="form-group">
                   <label for="setting-tvdb-base-url">TheTVDB API Base URL</label>
                   <input type="url" id="setting-tvdb-base-url" class="form-control" placeholder="https://api4.thetvdb.com/v4" />
-                </div>
-
-                <!-- Tautulli -->
-                <div class="settings-group-header" style="margin-top: 16px;">
-                  <span class="badge-pill" style="background: rgba(234, 88, 12, 0.15); color: #fb923c; border: 1px solid rgba(234, 88, 12, 0.3);">Tautulli</span>
-                  <strong>Plex Watch History & Statistics</strong>
-                </div>
-                <div class="form-row">
-                  <div class="form-group col-half">
-                    <label for="setting-tautulli-url">Tautulli Base URL</label>
-                    <input type="url" id="setting-tautulli-url" class="form-control" placeholder="http://192.168.1.100:8181" />
-                  </div>
-                  <div class="form-group col-half">
-                    <label for="setting-tautulli-api-key">Tautulli API Key</label>
-                    <div class="input-secret-wrapper">
-                      <input type="text" id="setting-tautulli-api-key" class="form-control font-mono" placeholder="API Key" autocomplete="off" spellcheck="false" />
-                      <button type="button" class="btn-toggle-secret" data-target="setting-tautulli-api-key" title="Unhide / Show full key">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                      </button>
-                    </div>
-                  </div>
                 </div>
 
                 <!-- OpenID Connect -->
@@ -877,15 +895,8 @@
                 </select>
               </div>
 
-              <div class="form-row">
-                <div class="form-group col-half">
-                  <label for="tautulli-import-url">Tautulli URL (Optional if set in Admin)</label>
-                  <input type="url" id="tautulli-import-url" class="form-control" placeholder="http://192.168.1.100:8181" />
-                </div>
-                <div class="form-group col-half">
-                  <label for="tautulli-import-api-key">Tautulli API Key (Optional)</label>
-                  <input type="password" id="tautulli-import-api-key" class="form-control" placeholder="API Key" />
-                </div>
+              <div class="form-group" style="margin-top:6px;">
+                <small style="display:block;font-size:0.78rem;color:var(--text-dim);">Connecting to Tautulli uses the server URL and API key configured in your <a href="#" id="link-goto-user-settings" style="color:var(--accent-primary);text-decoration:underline;">Settings</a>.</small>
               </div>
 
               <div class="form-group" style="margin-top:8px;">
@@ -930,6 +941,9 @@
               <span class="tvdb-badge-icon">TheTVDB</span>
               View on TheTVDB
             </a>
+            <button class="btn btn-outline btn-sm" id="btn-refresh-detail-metadata" title="Refresh metadata and artwork from TheTVDB">
+              Refresh Metadata
+            </button>
             <button class="btn btn-outline btn-sm text-danger" id="btn-delete-show-scrobbles" style="display:none;">
               Delete Show Scrobbles
             </button>

@@ -109,6 +109,11 @@ test.describe('BingeSync Web UI & Webhooks', () => {
     await expect(page.locator('#detail-title')).toHaveText('Oppenheimer');
     await expect(page.locator('#detail-body')).toContainText('Manhattan Project');
 
+    // Test Refresh Metadata button
+    await expect(page.locator('#btn-refresh-detail-metadata')).toBeVisible();
+    await page.click('#btn-refresh-detail-metadata');
+    await expect(page.locator('#modal-item-detail')).toBeVisible();
+
     // Delete item
     page.once('dialog', dialog => dialog.accept());
     await page.click('#btn-delete-detail-item');
@@ -766,30 +771,29 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     await page.waitForTimeout(100);
 
     // Fill settings form and save
-    await page.fill('#setting-radarr-url', 'http://10.0.0.50:7878');
-    await page.fill('#setting-radarr-api-key', 'radarr_secret_key_123');
     await page.fill('#setting-tvdb-api-key', 'tvdb_test_api_key_456');
+    await page.fill('#setting-tvdb-pin', '1234');
     await page.click('#btn-save-admin-settings');
 
     // Verify success feedback
     await expect(page.locator('#admin-settings-status')).toContainText('Settings saved successfully!');
 
-    // Verify API key redaction: starts with 'ra' and contains bullet '•'
-    await expect(page.locator('#setting-radarr-api-key')).toHaveValue(/^ra.*•/);
-    const maskedVal = await page.locator('#setting-radarr-api-key').inputValue();
-    expect(maskedVal.startsWith('ra')).toBeTruthy();
+    // Verify API key redaction: starts with 'tv' and contains bullet '•'
+    await expect(page.locator('#setting-tvdb-api-key')).toHaveValue(/^tv.*•/);
+    const maskedVal = await page.locator('#setting-tvdb-api-key').inputValue();
+    expect(maskedVal.startsWith('tv')).toBeTruthy();
     expect(maskedVal.includes('•')).toBeTruthy();
 
     // Toggle reveal button to view full key
-    const toggleBtn = page.locator('#setting-radarr-api-key + .btn-toggle-secret');
+    const toggleBtn = page.locator('#setting-tvdb-api-key + .btn-toggle-secret');
     await toggleBtn.click();
-    await expect(page.locator('#setting-radarr-api-key')).toHaveValue('radarr_secret_key_123');
+    await expect(page.locator('#setting-tvdb-api-key')).toHaveValue('tvdb_test_api_key_456');
 
     // Toggle again to re-mask
     await toggleBtn.click();
-    await expect(page.locator('#setting-radarr-api-key')).toHaveValue(/^ra.*•/);
-    const remaskedVal = await page.locator('#setting-radarr-api-key').inputValue();
-    expect(remaskedVal.startsWith('ra')).toBeTruthy();
+    await expect(page.locator('#setting-tvdb-api-key')).toHaveValue(/^tv.*•/);
+    const remaskedVal = await page.locator('#setting-tvdb-api-key').inputValue();
+    expect(remaskedVal.startsWith('tv')).toBeTruthy();
     expect(remaskedVal.includes('•')).toBeTruthy();
 
     // 2. Test Subview: Background Tasks
@@ -886,7 +890,12 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     await page.click('#btn-import-tab-tautulli');
     await expect(page.locator('#import-pane-tautulli')).toBeVisible();
 
-    // 2. Verify username defaults to current user username
+    // 2. Verify API URL and API Key are NOT in the import modal (only in Settings)
+    await expect(page.locator('#tautulli-import-url')).toHaveCount(0);
+    await expect(page.locator('#tautulli-import-api-key')).toHaveCount(0);
+    await expect(page.locator('#link-goto-user-settings')).toBeVisible();
+
+    // Verify username defaults to current user username
     const usernameVal = await page.locator('#tautulli-import-username').inputValue();
     expect(usernameVal.length).toBeGreaterThan(0);
 
@@ -1046,6 +1055,41 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     await expect(page.locator('.bingesync-brand-title')).toContainText('API Docs');
     await expect(page.locator('#swagger-ui')).toBeVisible();
     await expect(page.locator('a[href*="openapi.json"]').first()).toBeVisible();
+  });
+
+  test('user settings: configure personal radarr, sonarr, and tautulli with secret redaction', async ({ page }) => {
+    const userEmail = `user_settings_${Date.now()}@bingesync.local`;
+    await page.goto('/');
+    await page.fill('#dev-email', userEmail);
+    await page.fill('#dev-name', 'Settings User');
+    await page.click('#btn-dev-submit');
+
+    // Navigate to Settings
+    await page.click('#tab-settings');
+    await expect(page.locator('#view-settings')).toBeVisible();
+    await expect(page.locator('#card-user-services')).toBeVisible();
+
+    // Fill in personal service settings
+    await page.fill('#user-setting-radarr-url', 'http://10.0.0.100:7878');
+    await page.fill('#user-setting-radarr-api-key', 'my_radarr_key_abc');
+    await page.fill('#user-setting-sonarr-url', 'http://10.0.0.100:8989');
+    await page.fill('#user-setting-sonarr-api-key', 'my_sonarr_key_xyz');
+    await page.fill('#user-setting-tautulli-url', 'http://10.0.0.100:8181');
+    await page.fill('#user-setting-tautulli-api-key', 'my_tautulli_key_123');
+
+    await page.click('#btn-save-user-settings');
+    await expect(page.locator('#user-settings-status')).toContainText('Settings saved successfully!');
+
+    // Verify redaction on user settings
+    await expect(page.locator('#user-setting-radarr-api-key')).toHaveValue(/^my.*•/);
+    await expect(page.locator('#user-setting-tautulli-api-key')).toHaveValue(/^my.*•/);
+
+    // Toggle reveal for Tautulli key
+    const toggleTautulli = page.locator('#user-setting-tautulli-api-key + .btn-toggle-secret');
+    await toggleTautulli.click();
+    await expect(page.locator('#user-setting-tautulli-api-key')).toHaveValue('my_tautulli_key_123');
+    await toggleTautulli.click();
+    await expect(page.locator('#user-setting-tautulli-api-key')).toHaveValue(/^my.*•/);
   });
 });
 

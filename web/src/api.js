@@ -90,12 +90,22 @@ export const api = {
       body: JSON.stringify({ rating }),
     }),
   getItemWatches: (id) => request(`/history/${id}/watches`),
+  refreshScrobbleMetadata: (id) =>
+    request(`/history/${id}/refresh-metadata`, {
+      method: 'POST',
+    }),
   getStats: () => request('/stats'),
   getNowPlaying: () => request('/now-playing'),
   getWebhookInfo: () => request('/user/webhook'),
   regenerateWebhookToken: () =>
     request('/user/regenerate-token', {
       method: 'POST',
+    }),
+  getUserSettings: () => request('/user/settings'),
+  updateUserSettings: (data) =>
+    request('/user/settings', {
+      method: 'POST',
+      body: JSON.stringify(data),
     }),
   importTrakt: (payload, isZip = false) => {
     if (isZip || payload instanceof ArrayBuffer || payload instanceof Uint8Array || payload instanceof Blob) {

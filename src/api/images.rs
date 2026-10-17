@@ -54,7 +54,7 @@ pub fn start_image_cache_worker(state: AppState) -> tokio::task::JoinHandle<()> 
         let _ = tokio::fs::create_dir_all(&state.config.image_cache_dir).await;
 
         let client = Client::builder()
-            .timeout(Duration::from_secs(12))
+            .timeout(Duration::from_secs(5))
             .build()
             .unwrap_or_default();
 
@@ -71,17 +71,16 @@ pub fn start_image_cache_worker(state: AppState) -> tokio::task::JoinHandle<()> 
                 continue;
             }
 
-            // If nothing was processed (either queue is empty or all failed), wait for notification or timeout
+            // If nothing was processed (either queue is empty or all failed), wait for notification or 4-hour timer
             tokio::select! {
                 _ = state.image_notify.notified() => {
+                    failed_lookups.clear();
                     // Small debounce to let bulk transactions settle
-                    tokio::time::sleep(Duration::from_millis(500)).await;
+                    tokio::time::sleep(Duration::from_millis(100)).await;
                 }
-                _ = tokio::time::sleep(Duration::from_secs(300)) => {
-                    // Periodic poll: occasionally clear some failed lookups in case network had temporary glitches
-                    if failed_lookups.len() > 500 {
-                        failed_lookups.clear();
-                    }
+                _ = tokio::time::sleep(Duration::from_secs(4 * 3600)) => {
+                    // Periodic run every 4 hours: clear failed lookups to re-verify any missing artwork
+                    failed_lookups.clear();
                 }
             }
         }
@@ -116,7 +115,7 @@ async fn process_missing_images_batch(
         r#"
         SELECT media_type, title, grandparent_title, year, guid
         FROM scrobbles
-        WHERE thumb_url IS NULL OR thumb_url = ''
+        WHERE thumb_url IS NULL OR thumb_url = '' OR thumb_url LIKE '/library/%' OR thumb_url LIKE '/photo/%'
         ORDER BY watched_at DESC
         LIMIT 25
         "#,
@@ -238,7 +237,7 @@ async fn update_scrobbles_thumb(
             UPDATE scrobbles
             SET thumb_url = ?
             WHERE (grandparent_title = ? OR (media_type = 'episode' AND title = ?))
-              AND (thumb_url IS NULL OR thumb_url = '')
+              AND (thumb_url IS NULL OR thumb_url = '' OR thumb_url LIKE '/library/%' OR thumb_url LIKE '/photo/%')
             "#,
         )
         .bind(served_url)
@@ -252,7 +251,7 @@ async fn update_scrobbles_thumb(
             UPDATE scrobbles
             SET thumb_url = ?
             WHERE media_type = 'movie' AND title = ?
-              AND (thumb_url IS NULL OR thumb_url = '')
+              AND (thumb_url IS NULL OR thumb_url = '' OR thumb_url LIKE '/library/%' OR thumb_url LIKE '/photo/%')
             "#,
         )
         .bind(served_url)

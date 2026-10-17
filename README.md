@@ -128,10 +128,6 @@ All configuration options can be passed via environment variables:
 | `OIDC_CLIENT_SECRET` | *(none)* | OIDC Client Secret (optional for public clients) |
 | `OIDC_REDIRECT_URL` | `${APP_URL}/api/v1/auth/callback` | Callback redirect URL |
 | `DEV_LOGIN_ENABLED` | `true` | Allows local email/username sign-in |
-| `RADARR_URL` | *(none)* | Base URL of Radarr instance |
-| `RADARR_API_KEY` | *(none)* | Radarr API key |
-| `SONARR_URL` | *(none)* | Base URL of Sonarr instance |
-| `SONARR_API_KEY` | *(none)* | Sonarr API key |
 | `TVDB_API_KEY` | *(none)* | TheTVDB v4 API key for background metadata enrichment |
 | `TVDB_PIN` | *(none)* | Optional subscriber PIN for user-subscription TheTVDB API keys |
 | `IMAGE_CACHE_DIR` | `./data/images` | Directory path on disk where media poster images are cached |

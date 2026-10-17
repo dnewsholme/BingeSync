@@ -33,14 +33,14 @@ pub struct SonarrDeleteRequest {
 
 pub async fn get_integrations_status(
     State(state): State<AppState>,
-    _auth: AuthUser,
+    auth: AuthUser,
 ) -> impl IntoResponse {
-    let radarr_url = state.get_effective_radarr_url().await;
-    let radarr_key = state.get_effective_radarr_api_key().await;
+    let radarr_url = crate::api::user_settings::get_user_setting(&state.pool, &auth.user_id, "radarr_url").await;
+    let radarr_key = crate::api::user_settings::get_user_setting(&state.pool, &auth.user_id, "radarr_api_key").await;
     let radarr_configured = radarr_url.is_some() && radarr_key.is_some();
 
-    let sonarr_url = state.get_effective_sonarr_url().await;
-    let sonarr_key = state.get_effective_sonarr_api_key().await;
+    let sonarr_url = crate::api::user_settings::get_user_setting(&state.pool, &auth.user_id, "sonarr_url").await;
+    let sonarr_key = crate::api::user_settings::get_user_setting(&state.pool, &auth.user_id, "sonarr_api_key").await;
     let sonarr_configured = sonarr_url.is_some() && sonarr_key.is_some();
 
     let tvdb_key = state.get_effective_tvdb_api_key().await;
@@ -55,13 +55,15 @@ pub async fn get_integrations_status(
 
 pub async fn check_media_in_library(
     State(state): State<AppState>,
-    _auth: AuthUser,
+    auth: AuthUser,
     Query(query): Query<IntegrationCheckQuery>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
     let client = Client::builder().timeout(std::time::Duration::from_secs(5)).build().unwrap_or_default();
 
     if query.media_type == "movie" {
-        if let (Some(ref radarr_url), Some(ref api_key)) = (state.get_effective_radarr_url().await, state.get_effective_radarr_api_key().await) {
+        let user_radarr_url = crate::api::user_settings::get_user_setting(&state.pool, &auth.user_id, "radarr_url").await;
+        let user_radarr_key = crate::api::user_settings::get_user_setting(&state.pool, &auth.user_id, "radarr_api_key").await;
+        if let (Some(ref radarr_url), Some(ref api_key)) = (user_radarr_url, user_radarr_key) {
             let lookup_url = format!("{}/api/v3/movie/lookup", radarr_url.trim_end_matches('/'));
             let res = client
                 .get(&lookup_url)
@@ -102,7 +104,9 @@ pub async fn check_media_in_library(
         return Ok(Json(serde_json::json!({ "found": false, "service": "radarr" })));
     } else {
         // Episode / TV Series -> check Sonarr
-        if let (Some(ref sonarr_url), Some(ref api_key)) = (state.get_effective_sonarr_url().await, state.get_effective_sonarr_api_key().await) {
+        let user_sonarr_url = crate::api::user_settings::get_user_setting(&state.pool, &auth.user_id, "sonarr_url").await;
+        let user_sonarr_key = crate::api::user_settings::get_user_setting(&state.pool, &auth.user_id, "sonarr_api_key").await;
+        if let (Some(ref sonarr_url), Some(ref api_key)) = (user_sonarr_url, user_sonarr_key) {
             let search_term = query.grandparent_title.as_deref().unwrap_or(&query.title);
             let lookup_url = format!("{}/api/v3/series/lookup", sonarr_url.trim_end_matches('/'));
             let res = client
@@ -137,15 +141,17 @@ pub async fn check_media_in_library(
 
 pub async fn delete_from_radarr(
     State(state): State<AppState>,
-    _auth: AuthUser,
+    auth: AuthUser,
     Json(payload): Json<RadarrDeleteRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
-    let (radarr_url, api_key_val) = match (state.get_effective_radarr_url().await, state.get_effective_radarr_api_key().await) {
+    let user_radarr_url = crate::api::user_settings::get_user_setting(&state.pool, &auth.user_id, "radarr_url").await;
+    let user_radarr_key = crate::api::user_settings::get_user_setting(&state.pool, &auth.user_id, "radarr_api_key").await;
+    let (radarr_url, api_key_val) = match (user_radarr_url, user_radarr_key) {
         (Some(u), Some(k)) => (u, k),
         _ => {
             return Err((
                 StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({ "error": "Radarr is not configured on this instance" })),
+                Json(serde_json::json!({ "error": "Radarr is not configured in your settings" })),
             ));
         }
     };
@@ -189,15 +195,17 @@ pub async fn delete_from_radarr(
 
 pub async fn delete_from_sonarr(
     State(state): State<AppState>,
-    _auth: AuthUser,
+    auth: AuthUser,
     Json(payload): Json<SonarrDeleteRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
-    let (sonarr_url, api_key_val) = match (state.get_effective_sonarr_url().await, state.get_effective_sonarr_api_key().await) {
+    let user_sonarr_url = crate::api::user_settings::get_user_setting(&state.pool, &auth.user_id, "sonarr_url").await;
+    let user_sonarr_key = crate::api::user_settings::get_user_setting(&state.pool, &auth.user_id, "sonarr_api_key").await;
+    let (sonarr_url, api_key_val) = match (user_sonarr_url, user_sonarr_key) {
         (Some(u), Some(k)) => (u, k),
         _ => {
             return Err((
                 StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({ "error": "Sonarr is not configured on this instance" })),
+                Json(serde_json::json!({ "error": "Sonarr is not configured in your settings" })),
             ));
         }
     };

@@ -616,3 +616,149 @@ pub async fn delete_by_date(
         "deleted_count": res.rows_affected()
     })))
 }
+
+/// Refresh metadata and poster artwork for a specific scrobble on user request
+pub async fn refresh_scrobble_metadata(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path(id): Path<String>,
+) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
+    let scrobble: Scrobble = match sqlx::query_as::<_, Scrobble>(
+        "SELECT * FROM scrobbles WHERE id = ? AND (user_id = ? OR ? = 'admin')"
+    )
+    .bind(&id)
+    .bind(&auth.user_id)
+    .bind(&auth.role)
+    .fetch_optional(&state.pool)
+    .await
+    {
+        Ok(Some(s)) => s,
+        Ok(None) => {
+            return Err((
+                StatusCode::NOT_FOUND,
+                Json(serde_json::json!({ "error": "Scrobble not found or unauthorized" })),
+            ));
+        }
+        Err(e) => {
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": format!("Database query error: {}", e) })),
+            ));
+        }
+    };
+
+    let is_episode = scrobble.media_type == "episode";
+    let search_title = if is_episode {
+        scrobble.grandparent_title.as_deref().unwrap_or(&scrobble.title)
+    } else {
+        &scrobble.title
+    };
+
+    // 1. Fetch metadata from TheTVDB if configured
+    let tvdb_key = state.get_effective_tvdb_api_key().await;
+    if let Some(ref key) = tvdb_key {
+        if !key.trim().is_empty() {
+            let base_url = state.get_effective_tvdb_base_url().await;
+            let pin = state.get_effective_tvdb_pin().await;
+            let client = crate::api::tvdb::TvdbClient::new(base_url, key.clone(), pin);
+
+            if let Ok(Some(search_match)) = client.search(search_title, if is_episode { "series" } else { "movie" }, scrobble.year).await {
+                let meta = if is_episode {
+                    client.get_series_extended(&search_match.id).await.unwrap_or_else(|_| crate::api::tvdb::TvdbMetadata {
+                        overview: search_match.overview,
+                        image_url: search_match.image_url,
+                        ..Default::default()
+                    })
+                } else {
+                    client.get_movie_extended(&search_match.id).await.unwrap_or_else(|_| crate::api::tvdb::TvdbMetadata {
+                        overview: search_match.overview,
+                        image_url: search_match.image_url,
+                        ..Default::default()
+                    })
+                };
+
+                let now_str = Utc::now().to_rfc3339();
+                if is_episode {
+                    let show_name = scrobble.grandparent_title.as_deref().unwrap_or(&scrobble.title);
+                    let _ = sqlx::query(
+                        r#"
+                        UPDATE scrobbles
+                        SET genres = COALESCE(?, genres),
+                            actors = COALESCE(?, actors),
+                            directors = COALESCE(?, directors),
+                            overview = COALESCE(?, overview),
+                            metadata_updated_at = ?
+                        WHERE grandparent_title = ? OR (media_type = 'episode' AND title = ?)
+                        "#,
+                    )
+                    .bind(&meta.genres)
+                    .bind(&meta.actors)
+                    .bind(&meta.directors)
+                    .bind(&meta.overview)
+                    .bind(&now_str)
+                    .bind(show_name)
+                    .bind(show_name)
+                    .execute(&state.pool)
+                    .await;
+                } else {
+                    let _ = sqlx::query(
+                        r#"
+                        UPDATE scrobbles
+                        SET genres = COALESCE(?, genres),
+                            actors = COALESCE(?, actors),
+                            directors = COALESCE(?, directors),
+                            overview = COALESCE(?, overview),
+                            metadata_updated_at = ?
+                        WHERE id = ?
+                        "#,
+                    )
+                    .bind(&meta.genres)
+                    .bind(&meta.actors)
+                    .bind(&meta.directors)
+                    .bind(&meta.overview)
+                    .bind(&now_str)
+                    .bind(&scrobble.id)
+                    .execute(&state.pool)
+                    .await;
+                }
+            }
+        }
+    }
+
+    // 2. Fetch/update poster if missing or Plex relative path
+    let needs_poster = scrobble.thumb_url.as_deref()
+        .map(|u| u.is_empty() || u.starts_with("/library/") || u.starts_with("/photo/"))
+        .unwrap_or(true);
+
+    if needs_poster {
+        let _ = sqlx::query("UPDATE scrobbles SET thumb_url = NULL WHERE id = ? AND (thumb_url LIKE '/library/%' OR thumb_url LIKE '/photo/%')")
+            .bind(&scrobble.id)
+            .execute(&state.pool)
+            .await;
+        crate::api::images::process_missing_images_once(&state).await;
+    }
+
+    // 3. Mark metadata_updated_at
+    let _ = sqlx::query("UPDATE scrobbles SET metadata_updated_at = datetime('now') WHERE id = ?")
+        .bind(&scrobble.id)
+        .execute(&state.pool)
+        .await;
+
+    // Fetch and return the updated scrobble
+    let refreshed = sqlx::query_as::<_, Scrobble>("SELECT * FROM scrobbles WHERE id = ?")
+        .bind(&scrobble.id)
+        .fetch_one(&state.pool)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": format!("Failed to retrieve refreshed scrobble: {}", e) })),
+            )
+        })?;
+
+    Ok(Json(serde_json::json!({
+        "status": "refreshed",
+        "scrobble": refreshed,
+        "message": "Metadata and artwork refreshed successfully"
+    })))
+}

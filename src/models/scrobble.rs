@@ -24,6 +24,8 @@ pub struct Scrobble {
     pub watch_status: Option<String>,
     pub progress_percent: Option<i64>,
     pub view_offset_ms: Option<i64>,
+    #[serde(default)]
+    pub metadata_updated_at: Option<String>,
     pub watched_at: String,
     pub created_at: String,
 }

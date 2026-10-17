@@ -14,6 +14,7 @@ pub mod tautulli_import;
 pub mod openapi;
 pub mod tvdb;
 pub mod user;
+pub mod user_settings;
 pub mod webhooks;
 
 use axum::{
@@ -65,60 +66,6 @@ impl AppState {
         self.config.tvdb_base_url.clone()
     }
 
-    pub async fn get_effective_radarr_url(&self) -> Option<String> {
-        if let Some(url) = settings::get_db_setting(&self.pool, "radarr_url").await {
-            if !url.trim().is_empty() {
-                return Some(url);
-            }
-        }
-        self.config.radarr_url.clone()
-    }
-
-    pub async fn get_effective_radarr_api_key(&self) -> Option<String> {
-        if let Some(key) = settings::get_db_setting(&self.pool, "radarr_api_key").await {
-            if !key.trim().is_empty() {
-                return Some(key);
-            }
-        }
-        self.config.radarr_api_key.clone()
-    }
-
-    pub async fn get_effective_sonarr_url(&self) -> Option<String> {
-        if let Some(url) = settings::get_db_setting(&self.pool, "sonarr_url").await {
-            if !url.trim().is_empty() {
-                return Some(url);
-            }
-        }
-        self.config.sonarr_url.clone()
-    }
-
-    pub async fn get_effective_sonarr_api_key(&self) -> Option<String> {
-        if let Some(key) = settings::get_db_setting(&self.pool, "sonarr_api_key").await {
-            if !key.trim().is_empty() {
-                return Some(key);
-            }
-        }
-        self.config.sonarr_api_key.clone()
-    }
-
-    pub async fn get_effective_tautulli_url(&self) -> Option<String> {
-        if let Some(url) = settings::get_db_setting(&self.pool, "tautulli_url").await {
-            if !url.trim().is_empty() {
-                return Some(url);
-            }
-        }
-        self.config.tautulli_url.clone()
-    }
-
-    pub async fn get_effective_tautulli_api_key(&self) -> Option<String> {
-        if let Some(key) = settings::get_db_setting(&self.pool, "tautulli_api_key").await {
-            if !key.trim().is_empty() {
-                return Some(key);
-            }
-        }
-        self.config.tautulli_api_key.clone()
-    }
-
     pub async fn get_effective_scrobble_threshold(&self) -> i64 {
         if let Some(val) = settings::get_db_setting(&self.pool, "scrobble_threshold_percent").await {
             if let Ok(pct) = val.trim().parse::<i64>() {
@@ -157,6 +104,7 @@ pub fn create_api_router(state: AppState) -> Router {
         .route("/api/v1/history/by-date", delete(history::delete_by_date))
         .route("/api/v1/history/{id}/watches", get(history::get_item_watches))
         .route("/api/v1/history/{id}/rate", post(history::rate_scrobble).put(history::rate_scrobble))
+        .route("/api/v1/history/{id}/refresh-metadata", post(history::refresh_scrobble_metadata))
         .route("/api/v1/history/{id}", delete(history::delete_scrobble))
         // Timeline & Stats
         .route("/api/v1/timeline", get(timeline::get_timeline))
@@ -166,6 +114,7 @@ pub fn create_api_router(state: AppState) -> Router {
         // User settings
         .route("/api/v1/user/webhook", get(user::get_webhook_info))
         .route("/api/v1/user/regenerate-token", post(user::regenerate_webhook_token))
+        .route("/api/v1/user/settings", get(user_settings::get_user_settings_handler).post(user_settings::update_user_settings_handler).put(user_settings::update_user_settings_handler))
         // Trakt import (supports up to 100MB zip exports)
         .route(
             "/api/v1/import/trakt",

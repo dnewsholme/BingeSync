@@ -86,6 +86,9 @@ function getTvdbUrl(item) {
 // Helper: Resolve image URL (resolves relative cached image paths to active API_BASE)
 function resolveImageUrl(url) {
   if (!url) return null;
+  if (url.startsWith('/library/') || url.startsWith('/photo/')) {
+    return null;
+  }
   if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:')) {
     return url;
   }
@@ -221,17 +224,28 @@ const el = {
   tautulliImportUsername: document.getElementById('tautulli-import-username'),
   btnFetchTautulliUsers: document.getElementById('btn-fetch-tautulli-users'),
   tautulliUsersSelect: document.getElementById('tautulli-users-select'),
-  tautulliImportUrl: document.getElementById('tautulli-import-url'),
-  tautulliImportApiKey: document.getElementById('tautulli-import-api-key'),
   tautulliFileInput: document.getElementById('tautulli-file-input'),
   tautulliPasteInput: document.getElementById('tautulli-paste-input'),
   tautulliImportStatus: document.getElementById('tautulli-import-status'),
   btnSubmitTautulliImport: document.getElementById('btn-submit-tautulli-import'),
+  linkGotoUserSettings: document.getElementById('link-goto-user-settings'),
+
+  // User Settings
+  formUserSettings: document.getElementById('form-user-settings'),
+  btnSaveUserSettings: document.getElementById('btn-save-user-settings'),
+  userSettingsStatus: document.getElementById('user-settings-status'),
+  userSettingRadarrUrl: document.getElementById('user-setting-radarr-url'),
+  userSettingRadarrApiKey: document.getElementById('user-setting-radarr-api-key'),
+  userSettingSonarrUrl: document.getElementById('user-setting-sonarr-url'),
+  userSettingSonarrApiKey: document.getElementById('user-setting-sonarr-api-key'),
+  userSettingTautulliUrl: document.getElementById('user-setting-tautulli-url'),
+  userSettingTautulliApiKey: document.getElementById('user-setting-tautulli-api-key'),
 
   modalItemDetail: document.getElementById('modal-item-detail'),
   btnCloseDetailModal: document.getElementById('btn-close-detail-modal'),
   btnDismissDetailModal: document.getElementById('btn-dismiss-detail-modal'),
   btnDeleteDetailItem: document.getElementById('btn-delete-detail-item'),
+  btnRefreshDetailMetadata: document.getElementById('btn-refresh-detail-metadata'),
   detailTitle: document.getElementById('detail-title'),
   detailBody: document.getElementById('detail-body'),
   detailImdbLink: document.getElementById('detail-imdb-link'),
@@ -250,15 +264,9 @@ const el = {
   formAdminSettings: document.getElementById('form-admin-settings'),
   btnSaveAdminSettings: document.getElementById('btn-save-admin-settings'),
   adminSettingsStatus: document.getElementById('admin-settings-status'),
-  settingRadarrUrl: document.getElementById('setting-radarr-url'),
-  settingRadarrApiKey: document.getElementById('setting-radarr-api-key'),
-  settingSonarrUrl: document.getElementById('setting-sonarr-url'),
-  settingSonarrApiKey: document.getElementById('setting-sonarr-api-key'),
   settingTvdbApiKey: document.getElementById('setting-tvdb-api-key'),
   settingTvdbPin: document.getElementById('setting-tvdb-pin'),
   settingTvdbBaseUrl: document.getElementById('setting-tvdb-base-url'),
-  settingTautulliUrl: document.getElementById('setting-tautulli-url'),
-  settingTautulliApiKey: document.getElementById('setting-tautulli-api-key'),
   settingOidcEnabled: document.getElementById('setting-oidc-enabled'),
   settingOidcIssuerUrl: document.getElementById('setting-oidc-issuer-url'),
   settingOidcClientId: document.getElementById('setting-oidc-client-id'),
@@ -382,7 +390,10 @@ function switchTab(targetViewId) {
   if (targetViewId === 'view-timeline') loadTimeline();
   if (targetViewId === 'view-history') loadHistory();
   if (targetViewId === 'view-stats') loadStats();
-  if (targetViewId === 'view-settings') loadWebhookInfo();
+  if (targetViewId === 'view-settings') {
+    loadWebhookInfo();
+    loadUserSettings();
+  }
   if (targetViewId === 'view-admin') {
     switchAdminSubview(state.admin.activeSubview || 'admin-sub-users');
   } else {
@@ -1679,6 +1690,80 @@ el.btnRegenToken.addEventListener('click', async () => {
   }
 });
 
+// User Settings (Connected Services: Radarr, Sonarr, Tautulli)
+async function loadUserSettings() {
+  if (!el.formUserSettings) return;
+  try {
+    const s = await api.getUserSettings();
+    if (el.userSettingRadarrUrl) el.userSettingRadarrUrl.value = s.radarr_url || '';
+    applySecretField(el.userSettingRadarrApiKey, s.radarr_api_key, s.radarr_api_key_masked);
+
+    if (el.userSettingSonarrUrl) el.userSettingSonarrUrl.value = s.sonarr_url || '';
+    applySecretField(el.userSettingSonarrApiKey, s.sonarr_api_key, s.sonarr_api_key_masked);
+
+    if (el.userSettingTautulliUrl) el.userSettingTautulliUrl.value = s.tautulli_url || '';
+    applySecretField(el.userSettingTautulliApiKey, s.tautulli_api_key, s.tautulli_api_key_masked);
+  } catch (err) {
+    console.error('Failed to load user settings:', err);
+    if (el.userSettingsStatus) {
+      el.userSettingsStatus.style.color = 'var(--accent-red)';
+      el.userSettingsStatus.textContent = 'Failed to load settings: ' + err.message;
+    }
+  }
+}
+
+if (el.formUserSettings) {
+  el.formUserSettings.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (el.btnSaveUserSettings) {
+      el.btnSaveUserSettings.disabled = true;
+      el.btnSaveUserSettings.textContent = 'Saving...';
+    }
+    if (el.userSettingsStatus) el.userSettingsStatus.textContent = '';
+
+    try {
+      const payload = {
+        radarr_url: el.userSettingRadarrUrl ? el.userSettingRadarrUrl.value.trim() : null,
+        radarr_api_key: getSecretValue(el.userSettingRadarrApiKey),
+        sonarr_url: el.userSettingSonarrUrl ? el.userSettingSonarrUrl.value.trim() : null,
+        sonarr_api_key: getSecretValue(el.userSettingSonarrApiKey),
+        tautulli_url: el.userSettingTautulliUrl ? el.userSettingTautulliUrl.value.trim() : null,
+        tautulli_api_key: getSecretValue(el.userSettingTautulliApiKey),
+      };
+
+      await api.updateUserSettings(payload);
+      await loadUserSettings();
+      if (el.userSettingsStatus) {
+        el.userSettingsStatus.style.color = '#34d399';
+        el.userSettingsStatus.textContent = 'Settings saved successfully!';
+        setTimeout(() => {
+          if (el.userSettingsStatus) el.userSettingsStatus.textContent = '';
+        }, 4000);
+      }
+    } catch (err) {
+      console.error('Failed to save user settings:', err);
+      if (el.userSettingsStatus) {
+        el.userSettingsStatus.style.color = 'var(--accent-red)';
+        el.userSettingsStatus.textContent = 'Error: ' + err.message;
+      }
+    } finally {
+      if (el.btnSaveUserSettings) {
+        el.btnSaveUserSettings.disabled = false;
+        el.btnSaveUserSettings.textContent = 'Save Settings';
+      }
+    }
+  });
+}
+
+if (el.linkGotoUserSettings) {
+  el.linkGotoUserSettings.addEventListener('click', (e) => {
+    e.preventDefault();
+    const modalImport = document.getElementById('modal-import-history');
+    if (modalImport) modalImport.style.display = 'none';
+    switchTab('view-settings');
+  });
+}
+
 // Dev Login Submission
 el.formDevLogin.addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -1889,13 +1974,11 @@ if (el.formImportTrakt) {
 // Fetch users from Tautulli API
 if (el.btnFetchTautulliUsers) {
   el.btnFetchTautulliUsers.addEventListener('click', async () => {
-    const url = el.tautulliImportUrl ? el.tautulliImportUrl.value.trim() : '';
-    const apiKey = el.tautulliImportApiKey ? el.tautulliImportApiKey.value.trim() : '';
     el.btnFetchTautulliUsers.disabled = true;
     el.btnFetchTautulliUsers.textContent = 'Fetching...';
 
     try {
-      const res = await api.getTautulliUsers(url, apiKey);
+      const res = await api.getTautulliUsers();
       if (res && res.users && res.users.length > 0) {
         el.tautulliUsersSelect.innerHTML = '<option value="">-- Select a Tautulli user --</option>';
         const currentTarget = (el.tautulliImportUsername.value || '').toLowerCase();
@@ -1949,8 +2032,6 @@ if (el.formImportTautulli) {
     if (el.btnSubmitTautulliImport) el.btnSubmitTautulliImport.disabled = true;
 
     const username = el.tautulliImportUsername ? el.tautulliImportUsername.value.trim() : '';
-    const url = el.tautulliImportUrl ? el.tautulliImportUrl.value.trim() : null;
-    const apiKey = el.tautulliImportApiKey ? el.tautulliImportApiKey.value.trim() : null;
     const file = el.tautulliFileInput && el.tautulliFileInput.files && el.tautulliFileInput.files[0];
     let content = el.tautulliPasteInput ? el.tautulliPasteInput.value.trim() : '';
 
@@ -1961,8 +2042,6 @@ if (el.formImportTautulli) {
 
       const payload = {
         username: username || null,
-        url: url || null,
-        api_key: apiKey || null,
         content: content || null,
       };
 
@@ -2448,6 +2527,29 @@ el.btnDeleteDetailItem.addEventListener('click', async () => {
   }
 });
 
+if (el.btnRefreshDetailMetadata) {
+  el.btnRefreshDetailMetadata.addEventListener('click', async () => {
+    if (!state.selectedItem) return;
+    const originalText = el.btnRefreshDetailMetadata.innerHTML;
+    el.btnRefreshDetailMetadata.disabled = true;
+    el.btnRefreshDetailMetadata.textContent = 'Refreshing...';
+    try {
+      const res = await api.refreshScrobbleMetadata(state.selectedItem.id);
+      if (res && res.scrobble) {
+        state.selectedItem = res.scrobble;
+        await openDetailModal(res.scrobble);
+      }
+      loadTimeline();
+      loadHistory();
+    } catch (err) {
+      alert(`Failed to refresh metadata: ${err.message}`);
+    } finally {
+      el.btnRefreshDetailMetadata.disabled = false;
+      el.btnRefreshDetailMetadata.innerHTML = originalText;
+    }
+  });
+}
+
 // Formatters
 function formatDisplayDate(dateStr) {
   const parts = dateStr.split('-');
@@ -2686,18 +2788,9 @@ async function loadAdminSettings() {
   if (!el.formAdminSettings) return;
   try {
     const s = await api.getAdminSettings();
-    if (el.settingRadarrUrl) el.settingRadarrUrl.value = s.radarr_url || '';
-    applySecretField(el.settingRadarrApiKey, s.radarr_api_key, s.radarr_api_key_masked);
-
-    if (el.settingSonarrUrl) el.settingSonarrUrl.value = s.sonarr_url || '';
-    applySecretField(el.settingSonarrApiKey, s.sonarr_api_key, s.sonarr_api_key_masked);
-
     applySecretField(el.settingTvdbApiKey, s.tvdb_api_key, s.tvdb_api_key_masked);
     if (el.settingTvdbPin) el.settingTvdbPin.value = s.tvdb_pin || '';
     if (el.settingTvdbBaseUrl) el.settingTvdbBaseUrl.value = s.tvdb_base_url || '';
-
-    if (el.settingTautulliUrl) el.settingTautulliUrl.value = s.tautulli_url || '';
-    applySecretField(el.settingTautulliApiKey, s.tautulli_api_key, s.tautulli_api_key_masked);
 
     if (el.settingOidcEnabled) el.settingOidcEnabled.checked = Boolean(s.oidc_enabled);
     if (el.settingOidcIssuerUrl) el.settingOidcIssuerUrl.value = s.oidc_issuer_url || '';
@@ -2725,15 +2818,9 @@ if (el.formAdminSettings) {
 
     try {
       const payload = {
-        radarr_url: el.settingRadarrUrl ? el.settingRadarrUrl.value.trim() : null,
-        radarr_api_key: getSecretValue(el.settingRadarrApiKey),
-        sonarr_url: el.settingSonarrUrl ? el.settingSonarrUrl.value.trim() : null,
-        sonarr_api_key: getSecretValue(el.settingSonarrApiKey),
         tvdb_api_key: getSecretValue(el.settingTvdbApiKey),
         tvdb_pin: el.settingTvdbPin ? el.settingTvdbPin.value.trim() : null,
         tvdb_base_url: el.settingTvdbBaseUrl ? el.settingTvdbBaseUrl.value.trim() : null,
-        tautulli_url: el.settingTautulliUrl ? el.settingTautulliUrl.value.trim() : null,
-        tautulli_api_key: getSecretValue(el.settingTautulliApiKey),
         oidc_enabled: el.settingOidcEnabled ? el.settingOidcEnabled.checked : null,
         oidc_issuer_url: el.settingOidcIssuerUrl ? el.settingOidcIssuerUrl.value.trim() : null,
         oidc_client_id: el.settingOidcClientId ? el.settingOidcClientId.value.trim() : null,
@@ -2829,8 +2916,8 @@ function renderAdminTasks(tasks) {
         </div>
 
         <div style="margin-top: 8px;">
-          <button class="btn btn-outline btn-sm btn-trigger-task" data-task-id="${t.id}" ${isRunning ? 'disabled' : ''}>
-            ${isRunning ? 'Running...' : 'Run Now'}
+          <button class="btn btn-outline btn-sm btn-trigger-task" data-task-id="${t.id}">
+            ${isRunning ? 'Running... (Run Again)' : 'Run Now'}
           </button>
         </div>
       </div>
@@ -2845,6 +2932,8 @@ function renderAdminTasks(tasks) {
       try {
         await api.triggerAdminTask(taskId);
         setTimeout(() => loadAdminTasks(), 500);
+        setTimeout(() => loadAdminTasks(), 1500);
+        setTimeout(() => loadAdminTasks(), 3000);
       } catch (err) {
         alert('Failed to trigger task: ' + err.message);
         btn.disabled = false;
