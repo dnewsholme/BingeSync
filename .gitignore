@@ -9,3 +9,5 @@ web/playwright-report/
 tasks
 kubernetes.yaml
 bingesync.yaml
+*.zip
+trakt-export-*.zip

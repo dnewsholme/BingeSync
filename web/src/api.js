@@ -90,11 +90,21 @@ export const api = {
     request('/user/regenerate-token', {
       method: 'POST',
     }),
-  importTrakt: (payload) =>
-    request('/import/trakt', {
+  importTrakt: (payload, isZip = false) => {
+    if (isZip || payload instanceof ArrayBuffer || payload instanceof Uint8Array || payload instanceof Blob) {
+      return request('/import/trakt', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/zip',
+        },
+        body: payload,
+      });
+    }
+    return request('/import/trakt', {
       method: 'POST',
       body: typeof payload === 'string' ? payload : JSON.stringify(payload),
-    }),
+    });
+  },
   deleteByShow: (showTitle) =>
     request(`/history/by-show?show=${encodeURIComponent(showTitle)}`, {
       method: 'DELETE',

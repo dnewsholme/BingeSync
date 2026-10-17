@@ -139,7 +139,7 @@ Tests in `tests/api_tests.rs` cover:
 - Multipart `form-data` Plex webhook parsing
 - Subpath routing and embedded static asset delivery
 - Timeline and history rich filters (genre, director, actor, rating, watch status)
-- Trakt history and ratings import from JSON and CSV
+- Trakt history and ratings import from multi-file ZIP archives, JSON, and CSV (with automatic chronological sorting)
 - Delete by show, batch delete, and delete by date
 - Admin user management, list users, and cascading data deletion
 - OpenID Connect Back-Channel Logout token validation, session termination, and token invalidation
@@ -153,7 +153,8 @@ npx playwright test
 Playwright tests in `web/tests/e2e.spec.js` cover:
 - User sign-in flow, "+ Log Watch" modal, and timeline rendering
 - Multi-user separation in the web UI
-- Trakt history and rating import flow in the web UI
+- Trakt history and rating import flow in the web UI (pasted JSON)
+- Trakt multi-file ZIP archive import flow in the web UI (file upload, multi-file merge, and sorting)
 - Timeline search, filtering, and delete by date
 - Show detail modal IMDb link and delete all scrobbles for show
 - Multi-select batch delete in History view

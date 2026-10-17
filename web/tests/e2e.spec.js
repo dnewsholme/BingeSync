@@ -1,4 +1,7 @@
 import { test, expect } from '@playwright/test';
+import { execSync } from 'child_process';
+import path from 'path';
+import fs from 'fs';
 
 test.describe('BingeSync Web UI & Webhooks', () => {
   test('complete flow: sign-in, manual scrobble, search, stats, webhook URL, and deletion', async ({ page, request }) => {
@@ -203,6 +206,52 @@ test.describe('BingeSync Web UI & Webhooks', () => {
     await expect(page.locator('#modal-item-detail')).toBeVisible();
     await expect(page.locator('#detail-body')).toContainText('★ 10/10');
     await expect(page.locator('#detail-body')).toContainText('2021');
+  });
+
+  test('Trakt multi-file ZIP archive import flow in Web UI', async ({ page }) => {
+    const user = `trakt_zip_${Date.now()}@bingesync.local`;
+
+    await page.goto('/');
+    await page.fill('#dev-email', user);
+    await page.fill('#dev-name', 'ZIP Importer');
+    await page.click('#btn-dev-submit');
+
+    // Create a temporary zip with multi-file history and ratings
+    const tempZipPath = path.resolve('test-trakt-temp.zip');
+    execSync(`python3 -c "
+import zipfile, json
+with zipfile.ZipFile('${tempZipPath}', 'w') as z:
+    z.writestr('ratings-movies-1.json', json.dumps([{'rated_at':'2024-01-01T00:00:00Z','rating':9,'type':'movie','movie':{'title':'Dune: Part Two','year':2024,'ids':{'imdb':'tt15239678'}}}]))
+    z.writestr('watched-history-1.json', json.dumps([{'id':1,'watched_at':'2024-03-01T20:00:00Z','type':'movie','movie':{'title':'Dune: Part Two','year':2024,'ids':{'imdb':'tt15239678'}}}]))
+    z.writestr('watched-history-2.json', json.dumps([{'id':2,'watched_at':'2023-01-01T15:00:00Z','type':'movie','movie':{'title':'Avatar 2','year':2022}}]))
+"`);
+
+    try {
+      // 1. Open Import Trakt modal
+      await page.click('#btn-open-import-modal');
+      await expect(page.locator('#modal-import-trakt')).toBeVisible();
+
+      // 2. Upload zip file
+      await page.setInputFiles('#import-file-input', tempZipPath);
+      await page.click('#btn-submit-import');
+
+      // 3. Verify status message
+      await expect(page.locator('#import-status-box')).toContainText('Import Complete');
+      await expect(page.locator('#import-status-box')).toContainText('2 scrobbles');
+
+      // Close modal
+      await page.click('#btn-cancel-import-modal');
+      await expect(page.locator('#modal-import-trakt')).toBeHidden();
+
+      // 4. Verify items and ratings appear on timeline sorted chronologically
+      await expect(page.locator('.timeline-container')).toContainText('Dune: Part Two');
+      await expect(page.locator('.timeline-container')).toContainText('★ 9/10');
+      await expect(page.locator('.timeline-container')).toContainText('Avatar 2');
+    } finally {
+      if (fs.existsSync(tempZipPath)) {
+        fs.unlinkSync(tempZipPath);
+      }
+    }
   });
 
   test('timeline search, filtering, and delete by date', async ({ page }) => {

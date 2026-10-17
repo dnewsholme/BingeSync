@@ -752,6 +752,244 @@ async fn test_trakt_import_json_and_csv_preserves_timestamp_and_rating() {
 }
 
 #[tokio::test]
+async fn test_trakt_import_zip_multi_file_and_automatic_sorting() {
+    let (app, pool, config) = setup_test_app().await;
+
+    let user = bingesync::api::auth::get_or_create_user(
+        &pool,
+        "zipuser@test.local",
+        "Zip User",
+        None,
+        None,
+        false,
+    )
+    .await
+    .unwrap();
+
+    let auth_token = create_jwt(&user.id, &user.email, &config.jwt_secret).unwrap();
+
+    // 1. Build an in-memory ZIP archive mimicking Trakt's export structure:
+    // - ratings-movies-1.json (ratings for movies)
+    // - ratings-episodes-1.json (ratings for episodes)
+    // - watched-history-1.json (scrobbles: 2024 and 2022)
+    // - watched-history-2.json (scrobbles: 2023 and 2020)
+    let ratings_movies = json!([
+        {
+            "rated_at": "2024-01-01T00:00:00.000Z",
+            "rating": 9,
+            "type": "movie",
+            "movie": {
+                "title": "Dune: Part Two",
+                "year": 2024,
+                "ids": { "imdb": "tt15239678", "tmdb": 693134 }
+            }
+        }
+    ]);
+
+    let ratings_episodes = json!([
+        {
+            "rated_at": "2024-01-02T00:00:00.000Z",
+            "rating": 10,
+            "type": "episode",
+            "episode": {
+                "title": "Ozymandias",
+                "season": 5,
+                "number": 14,
+                "ids": { "imdb": "tt2301451", "tmdb": 63098 }
+            },
+            "show": {
+                "title": "Breaking Bad",
+                "year": 2008,
+                "ids": { "imdb": "tt0903747" }
+            }
+        }
+    ]);
+
+    let history_1 = json!([
+        {
+            "id": 2001,
+            "watched_at": "2024-03-15T21:00:00.000Z",
+            "action": "watch",
+            "type": "movie",
+            "movie": {
+                "title": "Dune: Part Two",
+                "year": 2024,
+                "ids": { "imdb": "tt15239678", "tmdb": 693134 }
+            }
+        },
+        {
+            "id": 2002,
+            "watched_at": "2022-06-10T19:30:00.000Z",
+            "action": "watch",
+            "type": "movie",
+            "movie": {
+                "title": "Top Gun: Maverick",
+                "year": 2022,
+                "ids": { "imdb": "tt1745960" }
+            }
+        }
+    ]);
+
+    let history_2 = json!([
+        {
+            "id": 2003,
+            "watched_at": "2023-11-05T20:15:00.000Z",
+            "action": "scrobble",
+            "type": "episode",
+            "episode": {
+                "title": "Ozymandias",
+                "season": 5,
+                "number": 14,
+                "ids": { "imdb": "tt2301451" }
+            },
+            "show": {
+                "title": "Breaking Bad",
+                "year": 2008,
+                "ids": { "imdb": "tt0903747" }
+            }
+        },
+        {
+            "id": 2004,
+            "watched_at": "2020-01-01T12:00:00.000Z",
+            "action": "watch",
+            "type": "movie",
+            "movie": {
+                "title": "Parasite",
+                "year": 2019,
+                "ids": { "imdb": "tt6751668" }
+            }
+        }
+    ]);
+
+    use std::io::Write;
+    let mut zip_bytes = Vec::new();
+    {
+        let cursor = std::io::Cursor::new(&mut zip_bytes);
+        let mut zip_writer = zip::ZipWriter::new(cursor);
+        let options = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated);
+
+        zip_writer.start_file("ratings-movies-1.json", options).unwrap();
+        zip_writer.write_all(ratings_movies.to_string().as_bytes()).unwrap();
+
+        zip_writer.start_file("ratings-episodes-1.json", options).unwrap();
+        zip_writer.write_all(ratings_episodes.to_string().as_bytes()).unwrap();
+
+        zip_writer.start_file("watched-history-1.json", options).unwrap();
+        zip_writer.write_all(history_1.to_string().as_bytes()).unwrap();
+
+        zip_writer.start_file("watched-history-2.json", options).unwrap();
+        zip_writer.write_all(history_2.to_string().as_bytes()).unwrap();
+
+        zip_writer.finish().unwrap();
+    }
+
+    // 2. Upload zip binary to /api/v1/import/trakt
+    let req_zip = Request::builder()
+        .method("POST")
+        .uri("/api/v1/import/trakt")
+        .header(header::AUTHORIZATION, format!("Bearer {}", auth_token))
+        .header(header::CONTENT_TYPE, "application/zip")
+        .body(Body::from(zip_bytes.clone()))
+        .unwrap();
+
+    let res_zip = app.clone().oneshot(req_zip).await.unwrap();
+    assert_eq!(res_zip.status(), StatusCode::OK);
+
+    let body_res = axum::body::to_bytes(res_zip.into_body(), usize::MAX).await.unwrap();
+    let import_summary: serde_json::Value = serde_json::from_slice(&body_res).unwrap();
+    assert_eq!(import_summary["imported"], 4);
+    assert_eq!(import_summary["skipped"], 0);
+
+    // 3. Verify history entries, sorting, and rating propagation
+    let list_req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/history?limit=10")
+        .header(header::AUTHORIZATION, format!("Bearer {}", auth_token))
+        .body(Body::empty())
+        .unwrap();
+
+    let res_l = app.clone().oneshot(list_req).await.unwrap();
+    let body_l = axum::body::to_bytes(res_l.into_body(), usize::MAX).await.unwrap();
+    let history: HistoryResponse = serde_json::from_slice(&body_l).unwrap();
+
+    assert_eq!(history.total, 4);
+    // History should be returned sorted DESC: 2024, 2023, 2022, 2020
+    assert_eq!(history.items[0].title, "Dune: Part Two");
+    assert_eq!(history.items[0].user_rating, Some(9));
+    assert_eq!(history.items[0].guid.as_deref(), Some("imdb://tt15239678"));
+
+    assert_eq!(history.items[1].title, "Ozymandias");
+    assert_eq!(history.items[1].user_rating, Some(10));
+    assert_eq!(history.items[1].grandparent_title.as_deref(), Some("Breaking Bad"));
+
+    assert_eq!(history.items[2].title, "Top Gun: Maverick");
+    assert_eq!(history.items[2].user_rating, None);
+
+    assert_eq!(history.items[3].title, "Parasite");
+    assert_eq!(history.items[3].user_rating, None);
+
+    // 4. Test re-import of same zip -> skips all 4
+    let req_reimport = Request::builder()
+        .method("POST")
+        .uri("/api/v1/import/trakt")
+        .header(header::AUTHORIZATION, format!("Bearer {}", auth_token))
+        .header(header::CONTENT_TYPE, "application/zip")
+        .body(Body::from(zip_bytes))
+        .unwrap();
+
+    let res_re = app.clone().oneshot(req_reimport).await.unwrap();
+    assert_eq!(res_re.status(), StatusCode::OK);
+    let body_re = axum::body::to_bytes(res_re.into_body(), usize::MAX).await.unwrap();
+    let re_summary: serde_json::Value = serde_json::from_slice(&body_re).unwrap();
+    assert_eq!(re_summary["imported"], 0);
+    assert_eq!(re_summary["skipped"], 4);
+
+    // 5. If sample trakt-export-dbizsley.zip is present locally, test real full import
+    if std::path::Path::new("trakt-export-dbizsley.zip").exists() {
+        let real_user = bingesync::api::auth::get_or_create_user(
+            &pool,
+            "realexport@test.local",
+            "Real Export User",
+            None,
+            None,
+            false,
+        )
+        .await
+        .unwrap();
+        let real_token = create_jwt(&real_user.id, &real_user.email, &config.jwt_secret).unwrap();
+
+        let real_zip_bytes = std::fs::read("trakt-export-dbizsley.zip").unwrap();
+        let real_req = Request::builder()
+            .method("POST")
+            .uri("/api/v1/import/trakt")
+            .header(header::AUTHORIZATION, format!("Bearer {}", real_token))
+            .header(header::CONTENT_TYPE, "application/zip")
+            .body(Body::from(real_zip_bytes))
+            .unwrap();
+
+        let real_res = app.clone().oneshot(real_req).await.unwrap();
+        assert_eq!(real_res.status(), StatusCode::OK);
+        let real_body = axum::body::to_bytes(real_res.into_body(), usize::MAX).await.unwrap();
+        let real_summary: serde_json::Value = serde_json::from_slice(&real_body).unwrap();
+        assert_eq!(real_summary["status"], "success");
+        assert_eq!(real_summary["imported"], 4792);
+        assert_eq!(real_summary["skipped"], 5);
+        assert_eq!(real_summary["total_processed"], 4797);
+
+        // Verify timeline works smoothly with all 4797 items
+        let timeline_req = Request::builder()
+            .method("GET")
+            .uri("/api/v1/timeline?limit=10")
+            .header(header::AUTHORIZATION, format!("Bearer {}", real_token))
+            .body(Body::empty())
+            .unwrap();
+        let timeline_res = app.clone().oneshot(timeline_req).await.unwrap();
+        assert_eq!(timeline_res.status(), StatusCode::OK);
+    }
+}
+
+#[tokio::test]
 async fn test_delete_by_show_delete_batch_and_delete_by_date() {
     let (app, pool, config) = setup_test_app().await;
 

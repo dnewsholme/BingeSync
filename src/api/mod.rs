@@ -58,8 +58,12 @@ pub fn create_api_router(state: AppState) -> Router {
         // User settings
         .route("/api/v1/user/webhook", get(user::get_webhook_info))
         .route("/api/v1/user/regenerate-token", post(user::regenerate_webhook_token))
-        // Trakt import
-        .route("/api/v1/import/trakt", post(trakt_import::import_trakt_handler))
+        // Trakt import (supports up to 100MB zip exports)
+        .route(
+            "/api/v1/import/trakt",
+            post(trakt_import::import_trakt_handler)
+                .layer(axum::extract::DefaultBodyLimit::max(100 * 1024 * 1024)),
+        )
         // Radarr / Sonarr Integrations (Cleanup after watching)
         .route("/api/v1/integrations/status", get(integrations::get_integrations_status))
         .route("/api/v1/integrations/check", get(integrations::check_media_in_library))

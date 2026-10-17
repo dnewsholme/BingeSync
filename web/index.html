@@ -534,12 +534,12 @@
         <form id="form-import-trakt">
           <div class="modal-body">
             <p style="color:var(--text-muted);font-size:0.9rem;margin-bottom:16px;">
-              Upload your Trakt.tv exported data (JSON or CSV). BingeSync will maintain the exact <strong>date and time watched</strong> and any associated <strong>ratings (1-10)</strong>.
+              Upload your Trakt.tv exported data (<strong>.zip</strong> archive, .json, or .csv). BingeSync will extract all history and rating files, automatically sort chronologically, and maintain exact timestamps and ratings (1-10).
             </p>
 
             <div class="form-group">
-              <label for="import-file-input">Select Trakt Export File (.json or .csv)</label>
-              <input type="file" id="import-file-input" class="form-control" accept=".json,.csv,text/csv,application/json" />
+              <label for="import-file-input">Select Trakt Export File (.zip, .json, or .csv)</label>
+              <input type="file" id="import-file-input" class="form-control" accept=".zip,.json,.csv,application/zip,application/x-zip-compressed,text/csv,application/json" />
             </div>
 
             <div class="form-group">

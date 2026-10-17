@@ -21,13 +21,13 @@ Designed for self-hosters and families, BingeSync features **multi-user support*
 - 🌐 **IMDb Deep Links**: Direct links from scrobble cards and details modal to title pages on IMDb.
 - 🧹 **Radarr & Sonarr Library Integration**: Detects whether completed movies or series exist in your Radarr/Sonarr libraries, with an optional one-click cleanup to remove and delete media files from disk after binging.
 - 📊 **Binge Statistics & Visual Charts**: Interactive charts featuring a 14-day stacked activity bar chart, top genres distribution, TV vs Movie time split, and top TV series.
-- 📥 **Trakt.tv Import**: Import past watch history from Trakt.tv JSON and CSV exports, preserving exact dates, timestamps, and 1-10 star ratings.
+- 📥 **Trakt.tv ZIP & Export Import**: Direct import of Trakt.tv multi-file `.zip` export archives, JSON, and CSV exports. Automatically aggregates paginated history and rating files, matches ratings to scrobbles, and sorts all entries chronologically.
 - 🔀 **Configurable Subpath Support**: Seamlessly host behind reverse proxies on a subpath (e.g. `www.example.com/bingesync`).
 - 📺 **Now Playing Banner**: Live playback beacon tracking active media and playback offset in real-time.
 - 🔐 **OpenID Connect (OIDC) SSO**: Enterprise-grade authentication compatible with Authentik, Keycloak, Authelia, Okta, and Google (with PKCE RFC 7636).
 - ⚡ **Lightweight Single-Binary**: Written in Rust (`axum`, `tokio`, `sqlx`) with the web frontend embedded directly into the binary via `rust-embed`.
 - 🗄️ **Zero-Maintenance SQLite**: Fast, crash-safe embedded database running with Write-Ahead Logging (`WAL`) mode and automatic schema migrations.
-- 🧪 **Thoroughly Tested**: 13 Rust backend integration tests and 7 Playwright browser E2E tests.
+- 🧪 **Thoroughly Tested**: 14 Rust backend integration tests and 8 Playwright browser E2E tests.
 
 ---
 
@@ -186,7 +186,7 @@ BingeSync provides a comprehensive REST API:
 - `POST /api/v1/integrations/sonarr/delete-series` — Delete TV series and disk files from Sonarr.
 
 ### Trakt Import
-- `POST /api/v1/import/trakt` — Import watch history and ratings from Trakt.tv JSON or CSV export files.
+- `POST /api/v1/import/trakt` — Import watch history and ratings from Trakt.tv multi-file `.zip` export archives, JSON, or CSV export files (automatically sorted chronologically).
 
 ### User Settings
 - `GET  /api/v1/user/webhook` — Retrieve current webhook token and URL.

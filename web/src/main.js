@@ -1016,10 +1016,17 @@ if (el.formImportTrakt) {
 
     let content = el.importPasteInput ? el.importPasteInput.value.trim() : '';
     const file = el.importFileInput && el.importFileInput.files && el.importFileInput.files[0];
+    let isZip = false;
 
     if (file) {
+      const isZipFile = file.name.toLowerCase().endsWith('.zip') || file.type.includes('zip');
       try {
-        content = await file.text();
+        if (isZipFile) {
+          content = await file.arrayBuffer();
+          isZip = true;
+        } else {
+          content = await file.text();
+        }
       } catch (err) {
         el.importStatusBox.className = 'import-status-box error';
         el.importStatusBox.textContent = `Failed to read file: ${err.message}`;
@@ -1027,14 +1034,14 @@ if (el.formImportTrakt) {
       }
     }
 
-    if (!content) {
+    if (!content || (content instanceof ArrayBuffer && content.byteLength === 0)) {
       el.importStatusBox.className = 'import-status-box error';
       el.importStatusBox.textContent = 'Please choose a file or paste your Trakt data.';
       return;
     }
 
     try {
-      const res = await api.importTrakt(content);
+      const res = await api.importTrakt(content, isZip);
       el.importStatusBox.className = 'import-status-box success';
       el.importStatusBox.innerHTML = `
         <strong>Import Complete!</strong><br>
