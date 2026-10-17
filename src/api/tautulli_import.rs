@@ -390,15 +390,24 @@ pub async fn import_tautulli_handler(
         .execute(&mut *tx)
         .await;
 
-        if insert_res.is_ok() {
-            imported_count += 1;
-            exact_set.insert(exact_key);
-            day_set.insert(day_key);
-            if let Some(rk) = rk_key {
-                rating_key_day_set.insert(rk);
+        match insert_res {
+            Ok(_) => {
+                imported_count += 1;
+                exact_set.insert(exact_key);
+                day_set.insert(day_key);
+                if let Some(rk) = rk_key {
+                    rating_key_day_set.insert(rk);
+                }
             }
-        } else {
-            skipped_count += 1;
+            Err(e) => {
+                tracing::error!("Failed to insert Tautulli scrobble '{}': {:?}", item.title, e);
+                state.log_buffer.push(
+                    "ERROR",
+                    "bingesync::tautulli",
+                    &format!("Failed to insert scrobble '{}': {}", item.title, e),
+                );
+                skipped_count += 1;
+            }
         }
     }
 

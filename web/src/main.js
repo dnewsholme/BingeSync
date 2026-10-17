@@ -1769,6 +1769,7 @@ function switchImportTab(source) {
     if (el.btnImportTabTautulli) el.btnImportTabTautulli.classList.add('active');
     if (el.importPaneTrakt) el.importPaneTrakt.style.display = 'none';
     if (el.importPaneTautulli) el.importPaneTautulli.style.display = 'block';
+    if (el.tautulliImportStatus) el.tautulliImportStatus.style.display = 'none';
     if (el.tautulliImportUsername && !el.tautulliImportUsername.value) {
       el.tautulliImportUsername.value = state.user?.preferred_username || state.user?.display_name || (state.user?.email ? state.user.email.split('@')[0] : '');
     }
@@ -1777,6 +1778,7 @@ function switchImportTab(source) {
     if (el.btnImportTabTautulli) el.btnImportTabTautulli.classList.remove('active');
     if (el.importPaneTrakt) el.importPaneTrakt.style.display = 'block';
     if (el.importPaneTautulli) el.importPaneTautulli.style.display = 'none';
+    if (el.importStatusBox) el.importStatusBox.style.display = 'none';
   }
 }
 
@@ -1792,9 +1794,17 @@ if (el.btnOpenImportModal) {
   el.btnOpenImportModal.addEventListener('click', () => {
     switchImportTab('trakt');
     if (el.formImportTrakt) el.formImportTrakt.reset();
+    if (el.formImportTautulli) el.formImportTautulli.reset();
     if (el.importStatusBox) {
       el.importStatusBox.style.display = 'none';
       el.importStatusBox.className = 'import-status-box';
+    }
+    if (el.tautulliImportStatus) {
+      el.tautulliImportStatus.style.display = 'none';
+      el.tautulliImportStatus.className = 'import-status-box';
+    }
+    if (el.tautulliImportUsername) {
+      el.tautulliImportUsername.value = state.user?.preferred_username || state.user?.display_name || (state.user?.email ? state.user.email.split('@')[0] : '');
     }
     if (el.modalImportHistory) el.modalImportHistory.style.display = 'flex';
   });
@@ -1924,9 +1934,13 @@ if (el.tautulliUsersSelect) {
   });
 }
 
+let isTautulliSubmitting = false;
 if (el.formImportTautulli) {
   el.formImportTautulli.addEventListener('submit', async (e) => {
     e.preventDefault();
+    if (isTautulliSubmitting) return;
+    isTautulliSubmitting = true;
+
     if (el.tautulliImportStatus) {
       el.tautulliImportStatus.style.display = 'block';
       el.tautulliImportStatus.className = 'import-status-box';
@@ -1970,6 +1984,7 @@ if (el.formImportTautulli) {
         el.tautulliImportStatus.textContent = `Import failed: ${err.message}`;
       }
     } finally {
+      isTautulliSubmitting = false;
       if (el.btnSubmitTautulliImport) el.btnSubmitTautulliImport.disabled = false;
     }
   });
@@ -2728,6 +2743,7 @@ if (el.formAdminSettings) {
       };
 
       await api.updateAdminSettings(payload);
+      await loadAdminSettings();
       if (el.adminSettingsStatus) {
         el.adminSettingsStatus.style.color = '#34d399';
         el.adminSettingsStatus.textContent = 'Settings saved successfully!';
@@ -2735,7 +2751,6 @@ if (el.formAdminSettings) {
           if (el.adminSettingsStatus) el.adminSettingsStatus.textContent = '';
         }, 4000);
       }
-      loadAdminSettings();
     } catch (err) {
       console.error('Failed to save settings:', err);
       if (el.adminSettingsStatus) {

@@ -762,6 +762,8 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     await page.click('#admin-subnav-pills button[data-subview="admin-sub-settings"]');
     await expect(page.locator('#admin-sub-settings')).toBeVisible();
     await expect(page.locator('#admin-sub-users')).toBeHidden();
+    // Allow any initial background fetch of settings to settle
+    await page.waitForTimeout(100);
 
     // Fill settings form and save
     await page.fill('#setting-radarr-url', 'http://10.0.0.50:7878');
@@ -773,6 +775,7 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     await expect(page.locator('#admin-settings-status')).toContainText('Settings saved successfully!');
 
     // Verify API key redaction: starts with 'ra' and contains bullet '•'
+    await expect(page.locator('#setting-radarr-api-key')).toHaveValue(/^ra.*•/);
     const maskedVal = await page.locator('#setting-radarr-api-key').inputValue();
     expect(maskedVal.startsWith('ra')).toBeTruthy();
     expect(maskedVal.includes('•')).toBeTruthy();
@@ -784,6 +787,7 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
 
     // Toggle again to re-mask
     await toggleBtn.click();
+    await expect(page.locator('#setting-radarr-api-key')).toHaveValue(/^ra.*•/);
     const remaskedVal = await page.locator('#setting-radarr-api-key').inputValue();
     expect(remaskedVal.startsWith('ra')).toBeTruthy();
     expect(remaskedVal.includes('•')).toBeTruthy();
@@ -887,6 +891,7 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     expect(usernameVal.length).toBeGreaterThan(0);
 
     // 3. Paste Tautulli JSON history for this user
+    const testMovieTitle = `Tautulli Film ${Date.now()}`;
     const sampleHistory = {
       response: {
         result: 'success',
@@ -895,11 +900,11 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
             {
               user: usernameVal,
               media_type: 'movie',
-              title: 'Oppenheimer',
+              title: testMovieTitle,
               year: 2023,
               date: 1690000000,
               duration: 10800,
-              rating_key: '8888',
+              rating_key: `rk_${Date.now()}`,
               percent_complete: 100,
             }
           ]
@@ -922,7 +927,7 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
 
     // 5. Verify item appeared on timeline
     await page.click('#tab-timeline');
-    await expect(page.locator('#timeline-container .scrobble-card', { hasText: 'Oppenheimer' })).toBeVisible();
+    await expect(page.locator('#timeline-container .scrobble-card', { hasText: testMovieTitle })).toBeVisible();
 
     // 6. Test deduplication: re-open modal, submit same data again
     await page.click('#btn-open-import-modal');
