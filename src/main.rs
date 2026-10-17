@@ -68,9 +68,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         pool,
         config: config.clone(),
         oidc_client,
+        image_notify: Arc::new(tokio::sync::Notify::new()),
     };
 
-    // 6. Router assembly
+    // 6. Start background image cache worker
+    let _image_worker = bingesync::api::images::start_image_cache_worker(state.clone());
+
+    // 7. Router assembly
     let app = create_api_router(state)
         .fallback(assets::static_handler);
 

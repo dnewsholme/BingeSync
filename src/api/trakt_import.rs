@@ -255,6 +255,11 @@ pub async fn import_trakt_handler(
         )
     })?;
 
+    // Trigger background image cache worker to download posters for newly imported scrobbles
+    if imported_count > 0 {
+        state.image_notify.notify_one();
+    }
+
     Ok(Json(ImportSummary {
         status: "success".to_string(),
         imported: imported_count,

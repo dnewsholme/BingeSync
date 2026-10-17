@@ -143,6 +143,7 @@ Tests in `tests/api_tests.rs` cover:
 - Delete by show, batch delete, and delete by date
 - Admin user management, list users, and cascading data deletion
 - OpenID Connect Back-Channel Logout token validation, session termination, and token invalidation
+- Disk-based media poster caching and image serving with traversal protection
 
 ### Run Playwright E2E UI Tests
 ```bash

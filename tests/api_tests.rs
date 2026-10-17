@@ -25,6 +25,7 @@ async fn setup_test_app() -> (axum::Router, sqlx::SqlitePool, Arc<Config>) {
         pool: pool.clone(),
         config: config.clone(),
         oidc_client: None,
+        image_notify: Arc::new(tokio::sync::Notify::new()),
     };
 
     let router = create_api_router(state);
@@ -1281,6 +1282,7 @@ async fn test_subpath_routing_and_assets() {
         pool,
         config: config.clone(),
         oidc_client: None,
+        image_notify: Arc::new(tokio::sync::Notify::new()),
     };
     let app = create_api_router(state).fallback(bingesync::assets::static_handler);
     let base = config.base_path.trim_end_matches('/').to_string();
@@ -1475,6 +1477,7 @@ async fn test_oidc_backchannel_logout() {
         pool: pool.clone(),
         config: config.clone(),
         oidc_client: Some(oidc_client),
+        image_notify: Arc::new(tokio::sync::Notify::new()),
     };
 
     let app = create_api_router(state);
@@ -1634,6 +1637,141 @@ async fn test_oidc_backchannel_logout() {
         .unwrap();
     let res_sid = app.clone().oneshot(sid_req).await.unwrap();
     assert_eq!(res_sid.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn test_image_cache_serving_and_background_worker() {
+    let pool = init_db("sqlite::memory:").await.unwrap();
+    let temp_dir = tempfile::tempdir().unwrap();
+    let mut config = Config::from_env();
+    config.image_cache_dir = temp_dir.path().to_string_lossy().to_string();
+    let config = Arc::new(config);
+
+    let state = AppState {
+        pool: pool.clone(),
+        config: config.clone(),
+        oidc_client: None,
+        image_notify: Arc::new(tokio::sync::Notify::new()),
+    };
+
+    let app = create_api_router(state.clone());
+
+    // 1. Write a test image to the cache directory on disk
+    let test_img_path = temp_dir.path().join("test_poster.jpg");
+    let test_bytes = vec![0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46]; // JPEG header bytes
+    tokio::fs::write(&test_img_path, &test_bytes).await.unwrap();
+
+    // 2. Request GET /api/v1/images/test_poster.jpg
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/images/test_poster.jpg")
+        .body(Body::empty())
+        .unwrap();
+
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(
+        res.headers().get(header::CONTENT_TYPE).unwrap(),
+        "image/jpeg"
+    );
+    assert_eq!(
+        res.headers().get(header::CACHE_CONTROL).unwrap(),
+        "public, max-age=31536000, immutable"
+    );
+    let body = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    assert_eq!(body.to_vec(), test_bytes);
+
+    // 3. Test 404 on nonexistent image
+    let not_found_req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/images/nonexistent_image.jpg")
+        .body(Body::empty())
+        .unwrap();
+    let not_found_res = app.clone().oneshot(not_found_req).await.unwrap();
+    assert_eq!(not_found_res.status(), StatusCode::NOT_FOUND);
+
+    // 4. Test directory traversal security rejection
+    let traversal_req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/images/..%2F..%2Fetc%2Fpasswd")
+        .body(Body::empty())
+        .unwrap();
+    let traversal_res = app.clone().oneshot(traversal_req).await.unwrap();
+    assert!(
+        traversal_res.status() == StatusCode::BAD_REQUEST
+            || traversal_res.status() == StatusCode::NOT_FOUND
+    );
+
+    // 5. Test background image worker processing scrobbles without thumbnails
+    let user = bingesync::api::auth::get_or_create_user(
+        &pool,
+        "imgtest@test.local",
+        "Image Tester",
+        None,
+        None,
+        false,
+    )
+    .await
+    .unwrap();
+
+    // Insert scrobble with thumb_url = None
+    let scrobble_id = uuid::Uuid::new_v4().to_string();
+    sqlx::query(
+        r#"
+        INSERT INTO scrobbles (
+            id, user_id, title, media_type, grandparent_title, parent_title,
+            season_number, episode_number, year, overview, thumb_url,
+            duration_ms, user_rating, watch_status, watched_at, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        "#,
+    )
+    .bind(&scrobble_id)
+    .bind(&user.id)
+    .bind("Pilot")
+    .bind("episode")
+    .bind("Breaking Bad")
+    .bind("Season 1")
+    .bind(1)
+    .bind(1)
+    .bind(2008)
+    .bind("A high school chemistry teacher diagnosed with lung cancer turns to manufacturing methamphetamine.")
+    .bind(None::<String>) // thumb_url is initially None
+    .bind(3480000_i64)
+    .bind(10)
+    .bind("completed")
+    .bind("2024-01-01T20:00:00Z")
+    .bind("2024-01-01T20:00:00Z")
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    // Run process_missing_images_once
+    let processed = bingesync::api::images::process_missing_images_once(&state).await;
+    // If online, it will download and cache the poster to disk
+    if processed > 0 {
+        let scrobble: Scrobble = sqlx::query_as("SELECT * FROM scrobbles WHERE id = ?")
+            .bind(&scrobble_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert!(scrobble.thumb_url.is_some());
+        let thumb_url = scrobble.thumb_url.unwrap();
+        assert!(thumb_url.starts_with("/api/v1/images/show_"));
+
+        // Verify the file was written to disk
+        let filename = thumb_url.strip_prefix("/api/v1/images/").unwrap();
+        let cached_path = temp_dir.path().join(filename);
+        assert!(cached_path.exists());
+
+        // Verify requesting the cached image returns 200 OK
+        let img_req = Request::builder()
+            .method("GET")
+            .uri(&thumb_url)
+            .body(Body::empty())
+            .unwrap();
+        let img_res = app.oneshot(img_req).await.unwrap();
+        assert_eq!(img_res.status(), StatusCode::OK);
+    }
 }
 
 

@@ -11,3 +11,5 @@ kubernetes.yaml
 bingesync.yaml
 *.zip
 trakt-export-*.zip
+data/images/
+images/

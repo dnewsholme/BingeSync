@@ -46,6 +46,19 @@ function getImdbUrl(item) {
   return `https://www.imdb.com/find/?q=${encodeURIComponent(query.trim())}`;
 }
 
+// Helper: Resolve image URL (resolves relative cached image paths to active API_BASE)
+function resolveImageUrl(url) {
+  if (!url) return null;
+  if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:')) {
+    return url;
+  }
+  const cleanUrl = url.startsWith('/') ? url : `/${url}`;
+  if (cleanUrl.startsWith('/api/v1')) {
+    return cleanUrl.replace('/api/v1', API_BASE);
+  }
+  return `${API_BASE}${cleanUrl}`;
+}
+
 // DOM Elements
 const el = {
   // Navigation
@@ -448,8 +461,9 @@ function renderScrobbleCard(item, isHistory = false) {
 
   const durationMin = item.duration_ms ? `${Math.round(item.duration_ms / 60000)}m` : '';
 
-  const posterHtml = item.thumb_url
-    ? `<img src="${escapeHtml(item.thumb_url)}" alt="${escapeHtml(item.title)}" class="scrobble-poster" onerror="this.outerHTML='<div class=\\'scrobble-poster\\'>🎬</div>'"/>`
+  const resolvedThumb = resolveImageUrl(item.thumb_url);
+  const posterHtml = resolvedThumb
+    ? `<img src="${escapeHtml(resolvedThumb)}" alt="${escapeHtml(item.title)}" class="scrobble-poster" onerror="this.outerHTML='<div class=\\'scrobble-poster\\'>🎬</div>'"/>`
     : `<div class="scrobble-poster">${isEpisode ? '📺' : '🎬'}</div>`;
 
   const ratingHtml = item.user_rating
@@ -759,8 +773,8 @@ function renderStats() {
       el.topShowsList.innerHTML = s.top_shows.map(show => `
         <div class="top-show-item">
           <div class="top-show-thumb">
-            ${show.thumb_url
-              ? `<img src="${escapeHtml(show.thumb_url)}" alt="${escapeHtml(show.show_title)}" onerror="this.outerHTML='📺'"/>`
+            ${resolveImageUrl(show.thumb_url)
+              ? `<img src="${escapeHtml(resolveImageUrl(show.thumb_url))}" alt="${escapeHtml(show.show_title)}" onerror="this.outerHTML='📺'"/>`
               : '📺'}
           </div>
           <div class="top-show-info">
@@ -1086,18 +1100,28 @@ async function openDetailModal(item) {
     ? `<div style="font-size:0.85rem;color:var(--text-dim);">Cast: <strong style="color:#fff;">${escapeHtml(item.actors)}</strong></div>`
     : '';
 
+  const resolvedThumb = resolveImageUrl(item.thumb_url);
+  const posterImg = resolvedThumb
+    ? `<img src="${escapeHtml(resolvedThumb)}" alt="${escapeHtml(item.title)}" style="width:105px;height:155px;object-fit:cover;border-radius:8px;flex-shrink:0;box-shadow:0 4px 12px rgba(0,0,0,0.5);border:1px solid rgba(255,255,255,0.08);margin-bottom:12px;"/>`
+    : '';
+
   el.detailBody.innerHTML = `
-    ${sub}
-    <div style="display:flex;gap:16px;margin-bottom:16px;flex-wrap:wrap;">
-      <div style="font-size:0.85rem;color:var(--text-dim);">Release: <strong style="color:#fff;">${yearStr}</strong></div>
-      <div style="font-size:0.85rem;color:var(--text-dim);">Duration: <strong style="color:#fff;">${durationStr}</strong></div>
-      <div style="font-size:0.85rem;color:var(--text-dim);">Watched: <strong style="color:#fff;">${watchedStr}</strong></div>
-      ${ratingBadge}
-      ${genresBadge}
-      ${directorBadge}
-      ${actorsBadge}
+    <div style="display:flex;gap:18px;align-items:flex-start;margin-bottom:16px;">
+      ${posterImg}
+      <div style="flex:1;min-width:0;">
+        ${sub}
+        <div style="display:flex;gap:12px;margin-bottom:12px;flex-wrap:wrap;">
+          <div style="font-size:0.85rem;color:var(--text-dim);">Release: <strong style="color:#fff;">${yearStr}</strong></div>
+          <div style="font-size:0.85rem;color:var(--text-dim);">Duration: <strong style="color:#fff;">${durationStr}</strong></div>
+          <div style="font-size:0.85rem;color:var(--text-dim);">Watched: <strong style="color:#fff;">${watchedStr}</strong></div>
+          ${ratingBadge}
+          ${genresBadge}
+          ${directorBadge}
+          ${actorsBadge}
+        </div>
+        ${item.overview ? `<p style="font-size:0.92rem;line-height:1.6;color:var(--text-main);">${escapeHtml(item.overview)}</p>` : '<p style="color:var(--text-dim);font-style:italic;">No plot overview available.</p>'}
+      </div>
     </div>
-    ${item.overview ? `<p style="font-size:0.92rem;line-height:1.6;color:var(--text-main);margin-bottom:16px;">${escapeHtml(item.overview)}</p>` : '<p style="color:var(--text-dim);font-style:italic;">No plot overview available.</p>'}
     <div id="detail-arr-container"></div>
     <div style="font-size:0.78rem;font-family:monospace;color:var(--text-dim);background:#080c14;padding:8px 12px;border-radius:6px;margin-top:14px;">
       Scrobble ID: ${item.id}

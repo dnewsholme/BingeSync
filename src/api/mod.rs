@@ -1,6 +1,7 @@
 pub mod admin;
 pub mod auth;
 pub mod history;
+pub mod images;
 pub mod integrations;
 pub mod now_playing;
 pub mod stats;
@@ -24,6 +25,7 @@ pub struct AppState {
     pub pool: SqlitePool,
     pub config: Arc<Config>,
     pub oidc_client: Option<Arc<OidcClient>>,
+    pub image_notify: Arc<tokio::sync::Notify>,
 }
 
 pub fn create_api_router(state: AppState) -> Router {
@@ -64,6 +66,8 @@ pub fn create_api_router(state: AppState) -> Router {
             post(trakt_import::import_trakt_handler)
                 .layer(axum::extract::DefaultBodyLimit::max(100 * 1024 * 1024)),
         )
+        // Image cache (serves cached posters from disk)
+        .route("/api/v1/images/{filename}", get(images::get_image_handler))
         // Radarr / Sonarr Integrations (Cleanup after watching)
         .route("/api/v1/integrations/status", get(integrations::get_integrations_status))
         .route("/api/v1/integrations/check", get(integrations::check_media_in_library))

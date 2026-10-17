@@ -188,6 +188,10 @@ async fn process_webhook(
                 .execute(&state.pool)
                 .await;
 
+            if thumb_url.is_none() {
+                state.image_notify.notify_one();
+            }
+
             Ok((
                 StatusCode::CREATED,
                 Json(serde_json::json!({

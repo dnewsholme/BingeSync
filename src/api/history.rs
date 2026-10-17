@@ -242,6 +242,10 @@ pub async fn create_scrobble(
         )
     })?;
 
+    if scrobble.thumb_url.is_none() {
+        state.image_notify.notify_one();
+    }
+
     Ok((StatusCode::CREATED, Json(scrobble)))
 }
 

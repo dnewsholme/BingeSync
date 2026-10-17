@@ -22,12 +22,13 @@ Designed for self-hosters and families, BingeSync features **multi-user support*
 - 🧹 **Radarr & Sonarr Library Integration**: Detects whether completed movies or series exist in your Radarr/Sonarr libraries, with an optional one-click cleanup to remove and delete media files from disk after binging.
 - 📊 **Binge Statistics & Visual Charts**: Interactive charts featuring a 14-day stacked activity bar chart, top genres distribution, TV vs Movie time split, and top TV series.
 - 📥 **Trakt.tv ZIP & Export Import**: Direct import of Trakt.tv multi-file `.zip` export archives, JSON, and CSV exports. Automatically aggregates paginated history and rating files, matches ratings to scrobbles, and sorts all entries chronologically.
+- 🖼️ **Automated Disk-Based Poster Caching**: Background worker automatically searches, downloads, and caches official movie and TV posters to disk (never in SQLite) for optimal database performance and instant visual loading.
 - 🔀 **Configurable Subpath Support**: Seamlessly host behind reverse proxies on a subpath (e.g. `www.example.com/bingesync`).
 - 📺 **Now Playing Banner**: Live playback beacon tracking active media and playback offset in real-time.
 - 🔐 **OpenID Connect (OIDC) SSO**: Enterprise-grade authentication compatible with Authentik, Keycloak, Authelia, Okta, and Google (with PKCE RFC 7636).
 - ⚡ **Lightweight Single-Binary**: Written in Rust (`axum`, `tokio`, `sqlx`) with the web frontend embedded directly into the binary via `rust-embed`.
 - 🗄️ **Zero-Maintenance SQLite**: Fast, crash-safe embedded database running with Write-Ahead Logging (`WAL`) mode and automatic schema migrations.
-- 🧪 **Thoroughly Tested**: 14 Rust backend integration tests and 8 Playwright browser E2E tests.
+- 🧪 **Thoroughly Tested**: 15 Rust backend integration tests and 8 Playwright browser E2E tests.
 
 ---
 
@@ -125,6 +126,7 @@ All configuration options can be passed via environment variables:
 | `RADARR_API_KEY` | *(none)* | Radarr API key |
 | `SONARR_URL` | *(none)* | Base URL of Sonarr instance |
 | `SONARR_API_KEY` | *(none)* | Sonarr API key |
+| `IMAGE_CACHE_DIR` | `./data/images` | Directory path on disk where media poster images are cached |
 
 ---
 
@@ -187,6 +189,9 @@ BingeSync provides a comprehensive REST API:
 
 ### Trakt Import
 - `POST /api/v1/import/trakt` — Import watch history and ratings from Trakt.tv multi-file `.zip` export archives, JSON, or CSV export files (automatically sorted chronologically).
+
+### Image Cache
+- `GET  /api/v1/images/:filename` — Serves cached media poster images from disk with immutable caching headers.
 
 ### User Settings
 - `GET  /api/v1/user/webhook` — Retrieve current webhook token and URL.

@@ -18,6 +18,7 @@ pub struct Config {
     pub sonarr_url: Option<String>,
     pub sonarr_api_key: Option<String>,
     pub base_path: String,
+    pub image_cache_dir: String,
 }
 
 impl Config {
@@ -85,6 +86,21 @@ impl Config {
         let sonarr_url = env::var("SONARR_URL").ok().filter(|s| !s.trim().is_empty());
         let sonarr_api_key = env::var("SONARR_API_KEY").ok().filter(|s| !s.trim().is_empty());
 
+        let image_cache_dir = env::var("IMAGE_CACHE_DIR").unwrap_or_else(|_| {
+            if let Some(path_str) = database_url
+                .strip_prefix("sqlite://")
+                .or_else(|| database_url.strip_prefix("sqlite:"))
+            {
+                let clean_path = path_str.split('?').next().unwrap_or(path_str);
+                if let Some(parent) = std::path::Path::new(clean_path).parent() {
+                    if !parent.as_os_str().is_empty() {
+                        return parent.join("images").to_string_lossy().to_string();
+                    }
+                }
+            }
+            "./data/images".to_string()
+        });
+
         Self {
             host,
             port,
@@ -102,6 +118,7 @@ impl Config {
             sonarr_url,
             sonarr_api_key,
             base_path,
+            image_cache_dir,
         }
     }
 }
