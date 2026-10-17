@@ -2,6 +2,14 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
+  <script>
+    (function() {
+      var p = window.location.pathname;
+      if (!p.endsWith('/') && !p.includes('.')) {
+        window.location.replace(p + '/' + window.location.search + window.location.hash);
+      }
+    })();
+  </script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>BingeSync - Self-Hosted Plex Scrobbler & Timeline</title>
   <meta name="description" content="Self-hosted Trakt alternative replicating watch history and timeline using per-user Plex webhooks and SQLite." />

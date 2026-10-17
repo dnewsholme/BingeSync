@@ -1023,3 +1023,49 @@ async fn test_timeline_and_history_rich_filters() {
     assert_eq!(res.status(), StatusCode::OK);
 }
 
+#[tokio::test]
+async fn test_subpath_routing_and_assets() {
+    let pool = init_db("sqlite::memory:").await.unwrap();
+    let mut config = Config::from_env();
+    config.base_path = "/bingesync".to_string();
+    let config = Arc::new(config);
+    let state = AppState {
+        pool,
+        config: config.clone(),
+        oidc_client: None,
+    };
+    let app = create_api_router(state).fallback(bingesync::assets::static_handler);
+    let base = config.base_path.trim_end_matches('/').to_string();
+    let redirect_target = format!("{}/", base);
+    let app = axum::Router::new()
+        .route(
+            &base,
+            axum::routing::get({
+                let redirect_target = redirect_target.clone();
+                move || async move { axum::response::Redirect::permanent(&redirect_target) }
+            }),
+        )
+        .nest(&base, app.clone())
+        .merge(app);
+
+    // Request /bingesync (should redirect to /bingesync/)
+    let req = Request::builder().uri("/bingesync").body(Body::empty()).unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    println!("Status for /bingesync: {}", res.status());
+    assert_eq!(res.status(), StatusCode::PERMANENT_REDIRECT);
+    assert_eq!(res.headers().get("location").unwrap(), "/bingesync/");
+
+    // Request /bingesync/ (should serve index.html with 200 OK)
+    let req2 = Request::builder().uri("/bingesync/").body(Body::empty()).unwrap();
+    let res2 = app.clone().oneshot(req2).await.unwrap();
+    println!("Status for /bingesync/: {}", res2.status());
+    assert_eq!(res2.status(), StatusCode::OK);
+
+    // Request /bingesync/assets/index-DTQhH7_5.css
+    let req_asset = Request::builder().uri("/bingesync/assets/index-DTQhH7_5.css").body(Body::empty()).unwrap();
+    let res_asset = app.clone().oneshot(req_asset).await.unwrap();
+    println!("Status for /bingesync/assets/index-DTQhH7_5.css: {}", res_asset.status());
+    assert_eq!(res_asset.status(), StatusCode::OK);
+}
+
+

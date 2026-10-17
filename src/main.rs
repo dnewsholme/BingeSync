@@ -76,9 +76,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Support configurable reverse proxy subpath (e.g. /bingesync)
     let app = if !config.base_path.is_empty() {
-        tracing::info!(base_path = %config.base_path, "Configuring reverse proxy subpath mount");
+        let base = config.base_path.trim_end_matches('/').to_string();
+        let redirect_target = format!("{}/", base);
+        tracing::info!(base_path = %base, "Configuring reverse proxy subpath mount with trailing slash redirect");
         axum::Router::new()
-            .nest(&config.base_path, app.clone())
+            .route(
+                &base,
+                axum::routing::get({
+                    let redirect_target = redirect_target.clone();
+                    move || async move { axum::response::Redirect::permanent(&redirect_target) }
+                }),
+            )
+            .nest(&base, app.clone())
             .merge(app)
     } else {
         app
