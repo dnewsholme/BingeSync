@@ -27,6 +27,7 @@ async fn setup_test_app() -> (axum::Router, sqlx::SqlitePool, Arc<Config>) {
         oidc_client: None,
         image_notify: Arc::new(tokio::sync::Notify::new()),
         metadata_notify: Arc::new(tokio::sync::Notify::new()),
+        user_sync_notify: Arc::new(tokio::sync::Notify::new()),
         log_buffer: Arc::new(bingesync::api::logs::LogBuffer::new(500)),
         task_tracker: Arc::new(bingesync::api::jobs::BackgroundTaskTracker::new()),
     };
@@ -1289,6 +1290,7 @@ async fn test_subpath_routing_and_assets() {
         oidc_client: None,
         image_notify: Arc::new(tokio::sync::Notify::new()),
         metadata_notify: Arc::new(tokio::sync::Notify::new()),
+        user_sync_notify: Arc::new(tokio::sync::Notify::new()),
         log_buffer: Arc::new(bingesync::api::logs::LogBuffer::new(500)),
         task_tracker: Arc::new(bingesync::api::jobs::BackgroundTaskTracker::new()),
     };
@@ -1488,6 +1490,7 @@ async fn test_oidc_backchannel_logout() {
         oidc_client: Some(oidc_client),
         image_notify: Arc::new(tokio::sync::Notify::new()),
         metadata_notify: Arc::new(tokio::sync::Notify::new()),
+        user_sync_notify: Arc::new(tokio::sync::Notify::new()),
         log_buffer: Arc::new(bingesync::api::logs::LogBuffer::new(500)),
         task_tracker: Arc::new(bingesync::api::jobs::BackgroundTaskTracker::new()),
     };
@@ -1666,6 +1669,7 @@ async fn test_image_cache_serving_and_background_worker() {
         oidc_client: None,
         image_notify: Arc::new(tokio::sync::Notify::new()),
         metadata_notify: Arc::new(tokio::sync::Notify::new()),
+        user_sync_notify: Arc::new(tokio::sync::Notify::new()),
         log_buffer: Arc::new(bingesync::api::logs::LogBuffer::new(500)),
         task_tracker: Arc::new(bingesync::api::jobs::BackgroundTaskTracker::new()),
     };
@@ -1855,6 +1859,7 @@ async fn test_sonarr_delete_options() {
         oidc_client: None,
         image_notify: Arc::new(tokio::sync::Notify::new()),
         metadata_notify: Arc::new(tokio::sync::Notify::new()),
+        user_sync_notify: Arc::new(tokio::sync::Notify::new()),
         log_buffer: Arc::new(bingesync::api::logs::LogBuffer::new(500)),
         task_tracker: Arc::new(bingesync::api::jobs::BackgroundTaskTracker::new()),
     };
@@ -2054,6 +2059,7 @@ async fn test_tvdb_metadata_enrichment_worker() {
         oidc_client: None,
         image_notify: Arc::new(tokio::sync::Notify::new()),
         metadata_notify: Arc::new(tokio::sync::Notify::new()),
+        user_sync_notify: Arc::new(tokio::sync::Notify::new()),
         log_buffer: Arc::new(bingesync::api::logs::LogBuffer::new(500)),
         task_tracker: Arc::new(bingesync::api::jobs::BackgroundTaskTracker::new()),
     };
@@ -2222,6 +2228,7 @@ async fn test_movie_tvdb_metadata_fallback_and_refresh() {
         oidc_client: None,
         image_notify: Arc::new(tokio::sync::Notify::new()),
         metadata_notify: Arc::new(tokio::sync::Notify::new()),
+        user_sync_notify: Arc::new(tokio::sync::Notify::new()),
         log_buffer: Arc::new(bingesync::api::logs::LogBuffer::new(500)),
         task_tracker: Arc::new(bingesync::api::jobs::BackgroundTaskTracker::new()),
     };
@@ -2579,14 +2586,18 @@ async fn test_admin_settings_logs_and_tasks_management() {
     let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
     let tasks_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     let tasks = tasks_json["tasks"].as_array().unwrap();
-    assert_eq!(tasks.len(), 2);
+    assert_eq!(tasks.len(), 3);
     let image_task = tasks.iter().find(|t| t["id"] == "image_cache").unwrap();
     let tvdb_task = tasks.iter().find(|t| t["id"] == "tvdb_metadata").unwrap();
+    let user_sync_task = tasks.iter().find(|t| t["id"] == "user_sync").unwrap();
     assert_eq!(image_task["schedule"], "Every 4 hours");
     assert_eq!(image_task["interval_hours"], 4);
     assert!(image_task["next_run_at"].is_string());
     assert_eq!(tvdb_task["schedule"], "Every 4 hours");
     assert!(tvdb_task["next_run_at"].is_string());
+    assert_eq!(user_sync_task["interval_hours"], 4);
+    assert_eq!(user_sync_task["schedule"], "Every 4 hours");
+    assert!(user_sync_task["next_run_at"].is_string());
 
     // 7. Test configuring background task schedule
     let req = Request::builder()
@@ -2624,6 +2635,16 @@ async fn test_admin_settings_logs_and_tasks_management() {
     let req = Request::builder()
         .method("POST")
         .uri("/api/v1/admin/tasks/image_cache/run")
+        .header(header::AUTHORIZATION, format!("Bearer {}", admin_jwt))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // 9. Test triggering user_sync background task run
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/admin/tasks/user_sync/run")
         .header(header::AUTHORIZATION, format!("Bearer {}", admin_jwt))
         .body(Body::empty())
         .unwrap();
@@ -4057,3 +4078,75 @@ async fn test_jellyfin_webhook_scrobble_movie_episode_session_and_filtering() {
     assert_eq!(resp.status(), StatusCode::CREATED);
 }
 
+#[tokio::test]
+async fn test_user_cache_background_sync_and_jellyfin_id_resolution() {
+    let (app, pool, config) = setup_test_app().await;
+
+    let user_id = "jellyfin_cache_user";
+    let webhook_token = "jellyfin_sync_token_xyz";
+    sqlx::query("INSERT INTO users (id, email, display_name, webhook_token, role) VALUES (?, ?, ?, ?, 'user')")
+        .bind(user_id)
+        .bind("jellyfin_sync@test.local")
+        .bind("Jellyfin User")
+        .bind(webhook_token)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    // User configured jellyfin_username = "sarah"
+    sqlx::query("INSERT INTO user_settings (user_id, key, value) VALUES (?, 'jellyfin_username', 'sarah')")
+        .bind(user_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    // Pre-seed plex_user_cache with Jellyfin mapping: id "999888-uuid" -> "sarah"
+    sqlx::query("INSERT INTO plex_user_cache (plex_id, username, friendly_name, source) VALUES ('999888-uuid', 'sarah', 'sarah', 'jellyfin')")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    // Webhook arrives with UserId = "999888-uuid" without NotificationUsername
+    let id_only_payload = serde_json::json!({
+        "NotificationType": "PlaybackStop",
+        "UserId": "999888-uuid",
+        "ItemType": "Movie",
+        "Name": "Interstellar",
+        "Year": 2014,
+        "RunTimeTicks": 101400000000_i64,
+        "PlaybackPositionTicks": 101400000000_i64,
+        "PlayedToCompletion": true
+    });
+    let req = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/webhooks/jellyfin/{}", webhook_token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(serde_json::to_vec(&id_only_payload).unwrap()))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+
+    // Verify scrobble created
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE user_id = ? AND title = 'Interstellar'")
+        .bind(user_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(count, 1);
+
+    // Test running sync_user_cache_once
+    let state = AppState {
+        pool: pool.clone(),
+        config: config.clone(),
+        oidc_client: None,
+        image_notify: std::sync::Arc::new(tokio::sync::Notify::new()),
+        metadata_notify: std::sync::Arc::new(tokio::sync::Notify::new()),
+        user_sync_notify: std::sync::Arc::new(tokio::sync::Notify::new()),
+        log_buffer: std::sync::Arc::new(bingesync::api::logs::LogBuffer::new(100)),
+        task_tracker: std::sync::Arc::new(bingesync::api::jobs::BackgroundTaskTracker::new()),
+    };
+
+    let processed = bingesync::api::user_sync::sync_user_cache_once(&state).await;
+    // Without active external servers, it safely returns without panicking
+    assert_eq!(processed, 0);
+}

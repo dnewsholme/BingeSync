@@ -75,6 +75,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         oidc_client,
         image_notify: Arc::new(tokio::sync::Notify::new()),
         metadata_notify: Arc::new(tokio::sync::Notify::new()),
+        user_sync_notify: Arc::new(tokio::sync::Notify::new()),
         log_buffer,
         task_tracker,
     };
@@ -82,6 +83,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 6. Start background workers
     let _image_worker = bingesync::api::images::start_image_cache_worker(state.clone());
     let _metadata_worker = bingesync::api::tvdb::start_metadata_worker(state.clone());
+    let _user_sync_worker = bingesync::api::user_sync::start_user_cache_worker(state.clone());
 
     // 7. Router assembly
     let app = create_api_router(state)

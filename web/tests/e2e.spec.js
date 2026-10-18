@@ -872,12 +872,13 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     await page.click('#admin-subnav-pills button[data-subview="admin-sub-tasks"]');
     await expect(page.locator('#admin-sub-tasks')).toBeVisible();
 
-    // Verify task cards exist (poster_cache and tvdb_metadata)
+    // Verify task cards exist (poster_cache, tvdb_metadata, and user_sync)
     const taskCards = page.locator('.task-card');
-    await expect(taskCards).toHaveCount(2);
+    await expect(taskCards).toHaveCount(3);
     const posterCard = page.locator('.task-card', { hasText: 'Media Poster & Thumbnail Caching' });
     await expect(posterCard).toBeVisible();
     await expect(page.locator('.task-card', { hasText: 'TheTVDB v4 Metadata Enrichment' })).toBeVisible();
+    await expect(page.locator('.task-card', { hasText: 'Plex & Media Server User Cache Sync' })).toBeVisible();
 
     // Verify schedule selector and next run time are displayed
     await expect(posterCard.locator('.task-schedule-select')).toBeVisible();
@@ -1295,5 +1296,99 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     await expect(page.locator('#tab-timeline')).toContainText('Timeline');
     await expect(page.locator('#tab-history')).toContainText('History');
     await expect(page.locator('#view-timeline .view-title')).toContainText('Watch Timeline');
+  });
+
+  test('history items: clickable actors and directors show other history items with them in', async ({ page }) => {
+    const userEmail = `cast_director_${Date.now()}@bingesync.local`;
+    await page.goto('/');
+    await page.fill('#dev-email', userEmail);
+    await page.fill('#dev-name', 'Cinema Buff');
+    await page.click('#btn-dev-submit');
+
+    await expect(page.locator('#tab-timeline')).toBeVisible();
+
+    // 1. Log two watches featuring Christopher Nolan and Leonardo DiCaprio via page.request
+    const res1 = await page.request.post('/api/v1/history', {
+      data: {
+        title: 'Inception',
+        media_type: 'movie',
+        year: 2010,
+        directors: 'Christopher Nolan',
+        actors: 'Leonardo DiCaprio, Joseph Gordon-Levitt, Elliot Page'
+      }
+    });
+    expect(res1.ok()).toBeTruthy();
+
+    const res2 = await page.request.post('/api/v1/history', {
+      data: {
+        title: 'Shutter Island',
+        media_type: 'movie',
+        year: 2010,
+        directors: 'Martin Scorsese',
+        actors: 'Leonardo DiCaprio, Mark Ruffalo, Ben Kingsley'
+      }
+    });
+    expect(res2.ok()).toBeTruthy();
+
+    // 2. Open History tab and click "Inception"
+    await page.click('#tab-history');
+    await expect(page.locator('#view-history')).toBeVisible();
+    const inceptionCard = page.locator('#history-list .scrobble-card', { hasText: 'Inception' }).first();
+    await expect(inceptionCard).toBeVisible();
+    await inceptionCard.click();
+
+    // 3. Verify modal opened and cast/directors are clickable person tags
+    await expect(page.locator('#modal-item-detail')).toBeVisible();
+    const leoTag = page.locator('#modal-item-detail .person-tag', { hasText: 'Leonardo DiCaprio' });
+    await expect(leoTag).toBeVisible();
+
+    const nolanTag = page.locator('#modal-item-detail .person-tag', { hasText: 'Christopher Nolan' });
+    await expect(nolanTag).toBeVisible();
+
+    // 4. Click "Leonardo DiCaprio" tag -> shows other history items with them in
+    await leoTag.click();
+    const personSection = page.locator('#detail-person-watches-container');
+    await expect(personSection).toBeVisible();
+    await expect(personSection).toContainText('Leonardo DiCaprio');
+    await expect(personSection.locator('.person-history-item')).toHaveCount(2);
+
+    // 5. Click "View in History Tab" button
+    await page.click('.btn-open-history-filtered');
+    await expect(page.locator('#modal-item-detail')).toBeHidden();
+
+    // 6. Verify History view is filtered by Leonardo DiCaprio
+    await expect(page.locator('#history-person-badge')).toBeVisible();
+    await expect(page.locator('#history-person-badge')).toContainText('Leonardo DiCaprio');
+    await expect(page.locator('#history-list .scrobble-card')).toHaveCount(2);
+
+    // Clear filter
+    await page.click('#btn-clear-history-person');
+    await expect(page.locator('#history-person-badge')).toBeHidden();
+  });
+
+  test('background jobs: user cache sync displays in admin tasks and can be triggered', async ({ page }) => {
+    const adminEmail = `admin_tasks_${Date.now()}@bingesync.local`;
+    await page.goto('/');
+    await page.fill('#dev-email', adminEmail);
+    await page.fill('#dev-name', 'Admin Tester');
+    await page.click('#btn-dev-submit');
+
+    await expect(page.locator('#tab-admin')).toBeVisible();
+    await page.click('#tab-admin');
+
+    // Switch to Tasks subtab
+    await page.click('#admin-subnav-pills button[data-subview="admin-sub-tasks"]');
+    await expect(page.locator('#admin-sub-tasks')).toBeVisible();
+
+    // Verify User Cache Sync task card is present
+    const userSyncCard = page.locator('.task-card', { hasText: 'Plex & Media Server User Cache Sync' });
+    await expect(userSyncCard).toBeVisible();
+
+    // Trigger run
+    const runBtn = userSyncCard.locator('button.btn-trigger-task');
+    if (await runBtn.count() > 0) {
+      await runBtn.click();
+      await expect(userSyncCard).toBeVisible();
+    }
   });
 });

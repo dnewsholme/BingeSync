@@ -17,8 +17,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
   <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
-  <script type="module" crossorigin src="./assets/index-C2xohOeE.js"></script>
-  <link rel="stylesheet" crossorigin href="./assets/index-8fKFqb5Z.css">
+  <script type="module" crossorigin src="./assets/index-znuZVXcT.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-2MoMs1hC.css">
 </head>
 <body>
   <div id="app">
@@ -275,6 +275,9 @@
               </button>
             </div>
           </div>
+
+          <!-- Active Person Filter Badge for History -->
+          <div id="history-person-badge" class="history-person-filter-chip" style="display: none;"></div>
 
           <!-- Floating Bulk Action Bar for History Multi-Select -->
           <div id="history-bulk-bar" class="history-bulk-bar" style="display: none;">
@@ -553,6 +556,21 @@
                   <small style="color: var(--text-muted); font-size: 0.8rem; margin-top: 4px; display: block;" data-i18n="settings.jellyfin_hint">
                     Only record scrobbles matching these Jellyfin username(s) or user ID(s) (comma-separated).
                   </small>
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-group col-half">
+                  <label for="user-setting-jellyfin-url">Jellyfin Server URL (Optional for User Sync)</label>
+                  <input type="url" id="user-setting-jellyfin-url" class="form-control" placeholder="http://192.168.1.100:8096" />
+                </div>
+                <div class="form-group col-half">
+                  <label for="user-setting-jellyfin-api-key">Jellyfin API Key</label>
+                  <div class="input-secret-wrapper">
+                    <input type="text" id="user-setting-jellyfin-api-key" class="form-control font-mono" placeholder="Jellyfin API Key" autocomplete="off" spellcheck="false" />
+                    <button type="button" class="btn-toggle-secret" data-target="user-setting-jellyfin-api-key" title="Unhide / Show full key">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="7" r="3"/></svg>
+                    </button>
+                  </div>
                 </div>
               </div>
 

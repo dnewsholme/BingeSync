@@ -41,6 +41,13 @@ pub struct BackgroundTaskTracker {
     pub tvdb_last_success: RwLock<Option<String>>,
     pub tvdb_next_run: RwLock<Option<String>>,
     pub tvdb_last_message: RwLock<Option<String>>,
+
+    pub user_sync_status: RwLock<String>,
+    pub user_sync_processed: AtomicUsize,
+    pub user_sync_last_run: RwLock<Option<String>>,
+    pub user_sync_last_success: RwLock<Option<String>>,
+    pub user_sync_next_run: RwLock<Option<String>>,
+    pub user_sync_last_message: RwLock<Option<String>>,
 }
 
 impl Default for BackgroundTaskTracker {
@@ -65,8 +72,15 @@ impl BackgroundTaskTracker {
             tvdb_processed: AtomicUsize::new(0),
             tvdb_last_run: RwLock::new(None),
             tvdb_last_success: RwLock::new(None),
-            tvdb_next_run: RwLock::new(next_str),
+            tvdb_next_run: RwLock::new(next_str.clone()),
             tvdb_last_message: RwLock::new(Some("Worker initialized. Ready for scrobbles.".to_string())),
+
+            user_sync_status: RwLock::new("idle".to_string()),
+            user_sync_processed: AtomicUsize::new(0),
+            user_sync_last_run: RwLock::new(None),
+            user_sync_last_success: RwLock::new(None),
+            user_sync_next_run: RwLock::new(next_str),
+            user_sync_last_message: RwLock::new(Some("Worker initialized. Ready to sync user caches.".to_string())),
         }
     }
 
@@ -106,6 +120,25 @@ impl BackgroundTaskTracker {
 
     pub async fn set_tvdb_next_run(&self, next_run: Option<String>) {
         *self.tvdb_next_run.write().await = next_run;
+    }
+
+    pub async fn set_user_sync_running(&self, message: &str) {
+        *self.user_sync_status.write().await = "running".to_string();
+        *self.user_sync_last_run.write().await = Some(chrono::Utc::now().to_rfc3339());
+        *self.user_sync_last_message.write().await = Some(message.to_string());
+    }
+
+    pub async fn set_user_sync_idle(&self, processed: usize, message: &str) {
+        *self.user_sync_status.write().await = "idle".to_string();
+        if processed > 0 {
+            self.user_sync_processed.fetch_add(processed, Ordering::Relaxed);
+            *self.user_sync_last_success.write().await = Some(chrono::Utc::now().to_rfc3339());
+        }
+        *self.user_sync_last_message.write().await = Some(message.to_string());
+    }
+
+    pub async fn set_user_sync_next_run(&self, next_run: Option<String>) {
+        *self.user_sync_next_run.write().await = next_run;
     }
 
     pub async fn get_tasks_summary(&self, state: &AppState, tvdb_configured: bool) -> Vec<BackgroundTaskInfo> {
@@ -174,7 +207,30 @@ impl BackgroundTaskTracker {
             last_message: self.tvdb_last_message.read().await.clone(),
         };
 
-        vec![image_task, tvdb_task]
+        let user_sync_interval = state.get_task_interval_hours("user_sync").await;
+        let user_sync_sched_str = format!("Every {} hour{}", user_sync_interval, if user_sync_interval == 1 { "" } else { "s" });
+
+        let cached_users: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM plex_user_cache")
+            .fetch_one(pool)
+            .await
+            .unwrap_or(0);
+
+        let user_sync_task = BackgroundTaskInfo {
+            id: "user_sync".to_string(),
+            name: "Plex & Media Server User Cache Sync".to_string(),
+            description: "Discovers and syncs Plex and Jellyfin user IDs and usernames into local cache for reliable webhook filtering and mapping.".to_string(),
+            status: self.user_sync_status.read().await.clone(),
+            schedule: user_sync_sched_str,
+            interval_hours: user_sync_interval,
+            items_processed: (cached_users.max(0) as usize).max(self.user_sync_processed.load(Ordering::Relaxed)),
+            items_pending: 0,
+            last_run_at: self.user_sync_last_run.read().await.clone(),
+            last_success_at: self.user_sync_last_success.read().await.clone(),
+            next_run_at: self.user_sync_next_run.read().await.clone(),
+            last_message: self.user_sync_last_message.read().await.clone(),
+        };
+
+        vec![image_task, tvdb_task, user_sync_task]
     }
 }
 
@@ -241,6 +297,17 @@ pub async fn trigger_admin_task_handler(
                 "message": "TheTVDB metadata enrichment worker has been signaled to run immediately"
             })))
         }
+        "user_sync" | "users" | "plex_users" => {
+            state.task_tracker.set_user_sync_running("Manual run triggered...").await;
+            state.user_sync_notify.notify_waiters();
+            state.user_sync_notify.notify_one();
+            state.log_buffer.push("INFO", "bingesync::tasks", "Manual run triggered for User Cache Sync worker");
+            Ok(Json(serde_json::json!({
+                "status": "triggered",
+                "task_id": "user_sync",
+                "message": "User cache sync worker has been signaled to run immediately"
+            })))
+        }
         _ => Err((
             StatusCode::NOT_FOUND,
             Json(serde_json::json!({ "error": format!("Unknown background task: {}", task_id) })),
@@ -281,6 +348,9 @@ pub async fn update_admin_task_schedule_handler(
         }
         "tvdb_metadata" | "tvdb" => {
             state.task_tracker.set_tvdb_next_run(Some(next_run.clone())).await;
+        }
+        "user_sync" | "users" | "plex_users" => {
+            state.task_tracker.set_user_sync_next_run(Some(next_run.clone())).await;
         }
         _ => {}
     }

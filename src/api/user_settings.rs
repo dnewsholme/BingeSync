@@ -13,6 +13,10 @@ use crate::{api::AppState, auth::AuthUser};
 pub struct UserSettingsResponse {
     pub plex_username: Option<String>,
     pub jellyfin_username: Option<String>,
+    pub jellyfin_url: Option<String>,
+    pub jellyfin_api_key_configured: bool,
+    pub jellyfin_api_key_masked: Option<String>,
+    pub jellyfin_api_key: Option<String>,
 
     pub radarr_url: Option<String>,
     pub radarr_api_key_configured: bool,
@@ -36,6 +40,8 @@ pub type UserSettingsView = UserSettingsResponse;
 pub struct UpdateUserSettingsRequest {
     pub plex_username: Option<String>,
     pub jellyfin_username: Option<String>,
+    pub jellyfin_url: Option<String>,
+    pub jellyfin_api_key: Option<String>,
     pub radarr_url: Option<String>,
     pub radarr_api_key: Option<String>,
     pub sonarr_url: Option<String>,
@@ -88,6 +94,8 @@ pub async fn get_user_settings_handler(
 ) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
     let plex_username = get_user_setting(&state.pool, &auth.user_id, "plex_username").await;
     let jellyfin_username = get_user_setting(&state.pool, &auth.user_id, "jellyfin_username").await;
+    let jellyfin_url = get_user_setting(&state.pool, &auth.user_id, "jellyfin_url").await;
+    let jellyfin_api_key = get_user_setting(&state.pool, &auth.user_id, "jellyfin_api_key").await;
 
     let radarr_url = get_user_setting(&state.pool, &auth.user_id, "radarr_url").await;
     let radarr_api_key = get_user_setting(&state.pool, &auth.user_id, "radarr_api_key").await;
@@ -101,6 +109,10 @@ pub async fn get_user_settings_handler(
     let resp = UserSettingsResponse {
         plex_username,
         jellyfin_username,
+        jellyfin_url,
+        jellyfin_api_key_configured: jellyfin_api_key.as_ref().map(|k| !k.trim().is_empty()).unwrap_or(false),
+        jellyfin_api_key_masked: jellyfin_api_key.as_deref().map(mask_secret),
+        jellyfin_api_key: None,
 
         radarr_url,
         radarr_api_key_configured: radarr_api_key.as_ref().map(|k| !k.trim().is_empty()).unwrap_or(false),
@@ -132,6 +144,23 @@ pub async fn update_user_settings_handler(
     }
     if let Some(ref val) = payload.jellyfin_username {
         let _ = set_user_setting(&state.pool, &auth.user_id, "jellyfin_username", val.trim()).await;
+    }
+    if let Some(ref val) = payload.jellyfin_url {
+        let trimmed = val.trim();
+        if !trimmed.is_empty() {
+            crate::api::ssrf::validate_integration_url(trimmed).map_err(|e| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({ "error": format!("Invalid Jellyfin URL: {}", e) })),
+                )
+            })?;
+        }
+        let _ = set_user_setting(&state.pool, &auth.user_id, "jellyfin_url", trimmed).await;
+    }
+    if let Some(ref val) = payload.jellyfin_api_key {
+        if !val.contains('•') {
+            let _ = set_user_setting(&state.pool, &auth.user_id, "jellyfin_api_key", val.trim()).await;
+        }
     }
 
     if let Some(ref val) = payload.radarr_url {
@@ -187,6 +216,8 @@ pub async fn update_user_settings_handler(
             let _ = set_user_setting(&state.pool, &auth.user_id, "tautulli_api_key", val.trim()).await;
         }
     }
+
+    state.user_sync_notify.notify_one();
 
     Ok(Json(serde_json::json!({
         "status": "success",

@@ -15,6 +15,7 @@ pub mod openapi;
 pub mod tvdb;
 pub mod user;
 pub mod user_settings;
+pub mod user_sync;
 pub mod webhooks;
 pub mod ssrf;
 pub mod rate_limit;
@@ -36,6 +37,7 @@ pub struct AppState {
     pub oidc_client: Option<Arc<OidcClient>>,
     pub image_notify: Arc<tokio::sync::Notify>,
     pub metadata_notify: Arc<tokio::sync::Notify>,
+    pub user_sync_notify: Arc<tokio::sync::Notify>,
     pub log_buffer: Arc<logs::LogBuffer>,
     pub task_tracker: Arc<jobs::BackgroundTaskTracker>,
 }
@@ -83,6 +85,7 @@ impl AppState {
         let key = match task_id {
             "image_cache" | "images" => "task_image_cache_interval_hours",
             "tvdb_metadata" | "tvdb" => "task_tvdb_metadata_interval_hours",
+            "user_sync" | "users" | "plex_users" => "task_user_sync_interval_hours",
             _ => return 4,
         };
         if let Some(val) = settings::get_db_setting(&self.pool, key).await {
@@ -99,6 +102,7 @@ impl AppState {
         let key = match task_id {
             "image_cache" | "images" => "task_image_cache_interval_hours",
             "tvdb_metadata" | "tvdb" => "task_tvdb_metadata_interval_hours",
+            "user_sync" | "users" | "plex_users" => "task_user_sync_interval_hours",
             _ => return Ok(()),
         };
         let clamped = hours.clamp(1, 168);

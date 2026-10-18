@@ -48,6 +48,7 @@ const state = {
     limit: 12,
     mediaType: 'all',
     search: '',
+    person: '',
     allResults: false,
     totalPages: 1,
     selectMode: false,
@@ -170,6 +171,7 @@ const el = {
 
   // History View
   historySearch: document.getElementById('history-search'),
+  historyPersonBadge: document.getElementById('history-person-badge'),
   historySearchAllLabel: document.getElementById('history-search-all-label'),
   historySearchAllResults: document.getElementById('history-search-all-results'),
   historyList: document.getElementById('history-list'),
@@ -276,6 +278,8 @@ const el = {
   navLanguageSelect: document.getElementById('nav-language-select'),
   userSettingPlexUsername: document.getElementById('user-setting-plex-username'),
   userSettingJellyfinUsername: document.getElementById('user-setting-jellyfin-username'),
+  userSettingJellyfinUrl: document.getElementById('user-setting-jellyfin-url'),
+  userSettingJellyfinApiKey: document.getElementById('user-setting-jellyfin-api-key'),
   userSettingRadarrUrl: document.getElementById('user-setting-radarr-url'),
   userSettingRadarrApiKey: document.getElementById('user-setting-radarr-api-key'),
   userSettingSonarrUrl: document.getElementById('user-setting-sonarr-url'),
@@ -1367,6 +1371,7 @@ function renderScrobbleCard(item, isHistory = false) {
       </div>
       <div class="scrobble-card-title">${escapeHtml(item.title)}</div>
       ${subTitle ? `<div class="scrobble-card-sub">${escapeHtml(subTitle)}</div>` : ''}
+      ${item.directors ? `<div class="scrobble-card-director" onclick="event.stopPropagation()"><span style="font-size:0.72rem;color:var(--text-dim);">Dir:</span> <button type="button" class="person-tag-card" data-person="${escapeHtml(item.directors.split(',')[0].trim())}" title="Show history with ${escapeHtml(item.directors.split(',')[0].trim())}">${escapeHtml(item.directors.split(',')[0].trim())}</button></div>` : ''}
       <div class="scrobble-card-meta">
         <span>${formatTime(item.watched_at)}</span>
         <span>${durationMin}</span>
@@ -1379,6 +1384,15 @@ function renderScrobbleCard(item, isHistory = false) {
 function attachScrobbleCardListeners(container, items, isHistory = false) {
   const itemMap = new Map(items.map(i => [i.id, i]));
   container.querySelectorAll('.scrobble-card').forEach(card => {
+    // Click on person tag on card
+    card.querySelectorAll('.person-tag-card').forEach(pt => {
+      pt.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const p = pt.dataset.person;
+        if (p) filterHistoryByPerson(p);
+      });
+    });
+
     card.addEventListener('click', (e) => {
       // If clicking directly on checkbox, let checkbox change handler handle it
       if (e.target.classList.contains('scrobble-checkbox')) return;
@@ -1421,14 +1435,53 @@ function attachScrobbleCardListeners(container, items, isHistory = false) {
   });
 }
 
+function updateHistoryPersonBadge() {
+  if (!el.historyPersonBadge) return;
+  if (state.history.person) {
+    el.historyPersonBadge.style.display = 'inline-flex';
+    el.historyPersonBadge.innerHTML = `
+      <span>Cast / Director: <strong>${escapeHtml(state.history.person)}</strong></span>
+      <button type="button" id="btn-clear-history-person" title="Clear person filter">✕</button>
+    `;
+    const btn = el.historyPersonBadge.querySelector('#btn-clear-history-person');
+    if (btn) {
+      btn.onclick = () => {
+        state.history.person = '';
+        updateHistoryPersonBadge();
+        state.history.page = 1;
+        loadHistory();
+      };
+    }
+  } else {
+    el.historyPersonBadge.style.display = 'none';
+    el.historyPersonBadge.innerHTML = '';
+  }
+}
+
+function filterHistoryByPerson(personName) {
+  if (el.modalItemDetail) el.modalItemDetail.style.display = 'none';
+  state.history.person = personName;
+  state.history.page = 1;
+  state.history.search = '';
+  if (el.historySearch) el.historySearch.value = '';
+
+  const tabHistory = document.getElementById('tab-history');
+  if (tabHistory) tabHistory.click();
+
+  updateHistoryPersonBadge();
+  loadHistory();
+}
+
 // View 2: History
 async function loadHistory() {
   try {
+    updateHistoryPersonBadge();
     const res = await api.getHistory({
       page: state.history.page,
       limit: state.history.limit,
       media_type: state.history.mediaType,
       search: state.history.search,
+      person: state.history.person,
       all: state.history.allResults,
       all_dates: state.history.allResults,
     });
@@ -2119,6 +2172,9 @@ async function loadUserSettings() {
     if (el.userSettingPlexUsername) el.userSettingPlexUsername.value = s.plex_username || '';
     if (el.userSettingJellyfinUsername) el.userSettingJellyfinUsername.value = s.jellyfin_username || '';
 
+    if (el.userSettingJellyfinUrl) el.userSettingJellyfinUrl.value = s.jellyfin_url || '';
+    applySecretField(el.userSettingJellyfinApiKey, s.jellyfin_api_key, s.jellyfin_api_key_masked);
+
     if (el.userSettingRadarrUrl) el.userSettingRadarrUrl.value = s.radarr_url || '';
     applySecretField(el.userSettingRadarrApiKey, s.radarr_api_key, s.radarr_api_key_masked);
 
@@ -2149,6 +2205,8 @@ if (el.formUserSettings) {
       const payload = {
         plex_username: el.userSettingPlexUsername ? el.userSettingPlexUsername.value.trim() : null,
         jellyfin_username: el.userSettingJellyfinUsername ? el.userSettingJellyfinUsername.value.trim() : null,
+        jellyfin_url: el.userSettingJellyfinUrl ? el.userSettingJellyfinUrl.value.trim() : null,
+        jellyfin_api_key: getSecretValue(el.userSettingJellyfinApiKey),
         radarr_url: el.userSettingRadarrUrl ? el.userSettingRadarrUrl.value.trim() : null,
         radarr_api_key: getSecretValue(el.userSettingRadarrApiKey),
         sonarr_url: el.userSettingSonarrUrl ? el.userSettingSonarrUrl.value.trim() : null,
@@ -2496,6 +2554,141 @@ if (el.formImportTautulli) {
 }
 
 // Modal: Detail View
+function formatPersonLinks(rawString, role = 'person') {
+  if (!rawString || !rawString.trim()) return '';
+  const list = rawString
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean);
+  if (list.length === 0) return '';
+  return list
+    .map(name => `
+      <button type="button" class="person-tag" data-person="${escapeHtml(name)}" data-role="${escapeHtml(role)}" title="Show other watches featuring ${escapeHtml(name)}">
+        <span class="person-tag-name">${escapeHtml(name)}</span>
+        <span class="person-tag-icon" title="View in History tab">↗</span>
+      </button>
+    `)
+    .join(' ');
+}
+
+async function loadPersonWatches(personName, currentItemId) {
+  const container = document.getElementById('detail-person-watches-container');
+  if (!container) return;
+  container.style.display = 'block';
+  container.innerHTML = `
+    <div class="watches-section-header">
+      <div class="watches-heading">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+          <circle cx="12" cy="7" r="4"></circle>
+        </svg>
+        <span>Watches featuring "${escapeHtml(personName)}"</span>
+      </div>
+      <span class="watches-badge-loading">Searching history...</span>
+    </div>
+  `;
+  try {
+    const res = await api.getHistory({ person: personName, limit: 50, all: true, all_dates: true });
+    const items = res && res.items ? res.items : [];
+    const totalCount = items.length;
+
+    let contentHtml = '';
+    if (items.length === 0) {
+      contentHtml = `<div class="watches-empty-state"><span>No other history items found featuring "${escapeHtml(personName)}".</span></div>`;
+    } else {
+      contentHtml = `
+        <div class="watches-table-wrap">
+          <table class="watches-table">
+            <thead>
+              <tr>
+                <th>Title</th>
+                <th>Type</th>
+                <th>Watched At</th>
+                <th>Rating</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${items.map(it => {
+                const isCurrent = it.id === currentItemId;
+                const dateObj = new Date(it.watched_at);
+                const dateStr = !isNaN(dateObj) ? dateObj.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : it.watched_at;
+                const ratingStr = it.user_rating ? `<span class="watch-star">★ ${it.user_rating}/10</span>` : '&mdash;';
+                const statusStr = it.watch_status ? escapeHtml(it.watch_status) : 'completed';
+                const typeBadge = it.media_type === 'episode' ? 'badge-episode' : 'badge-movie';
+                const typeText = it.media_type === 'episode' ? (it.grandparent_title || 'Episode') : 'Movie';
+
+                return `
+                  <tr class="other-watch-row person-history-item ${isCurrent ? 'current-item' : ''}" data-id="${escapeHtml(it.id)}" style="cursor:pointer;" title="Click to view details">
+                    <td>
+                      <div style="display:flex;align-items:center;gap:8px;">
+                        <span style="font-weight:600;color:#fff;">${escapeHtml(it.title)}</span>
+                        ${isCurrent ? '<span class="status-pill status-pill-active" style="font-size:0.7rem;padding:1px 6px;">Current</span>' : ''}
+                      </div>
+                      ${it.grandparent_title ? `<div style="font-size:0.75rem;color:var(--text-dim);">${escapeHtml(it.grandparent_title)}</div>` : ''}
+                    </td>
+                    <td><span class="scrobble-badge ${typeBadge}" style="font-size:0.7rem;">${escapeHtml(typeText)}</span></td>
+                    <td><div class="other-watch-date">${escapeHtml(dateStr)}</div></td>
+                    <td>${ratingStr}</td>
+                    <td><span class="watch-status-tag ${escapeHtml(statusStr)}">${escapeHtml(statusStr)}</span></td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    container.innerHTML = `
+      <div class="watches-section-header" style="justify-content:space-between;flex-wrap:wrap;gap:8px;">
+        <div class="watches-heading">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+            <circle cx="12" cy="7" r="4"></circle>
+          </svg>
+          <span>Watches featuring "${escapeHtml(personName)}"</span>
+          <span class="watches-count-pill">${totalCount} item${totalCount === 1 ? '' : 's'}</span>
+        </div>
+        <div style="display:flex;gap:6px;">
+          <button type="button" class="btn btn-outline btn-xs btn-open-history-filtered" data-person="${escapeHtml(personName)}" title="Filter full History tab by this person">
+            View in History Tab ↗
+          </button>
+          <button type="button" class="btn btn-ghost btn-xs btn-close-person-watches" title="Close this list">✕</button>
+        </div>
+      </div>
+      ${contentHtml}
+    `;
+
+    // Click on row to open that item's detail
+    container.querySelectorAll('.person-history-item').forEach(row => {
+      row.addEventListener('click', () => {
+        const id = row.dataset.id;
+        const target = items.find(i => i.id === id);
+        if (target) {
+          openDetailModal(target);
+        }
+      });
+    });
+
+    const btnClose = container.querySelector('.btn-close-person-watches');
+    if (btnClose) {
+      btnClose.addEventListener('click', () => {
+        container.style.display = 'none';
+      });
+    }
+
+    const btnOpenHistory = container.querySelector('.btn-open-history-filtered');
+    if (btnOpenHistory) {
+      btnOpenHistory.addEventListener('click', () => {
+        filterHistoryByPerson(personName);
+      });
+    }
+  } catch (err) {
+    container.innerHTML = `<div class="watches-empty-state"><span style="color:var(--accent-red);">Error loading watches: ${escapeHtml(err.message)}</span></div>`;
+  }
+}
+
 async function openDetailModal(item) {
   state.selectedItem = item;
   el.detailTitle.textContent = item.title;
@@ -2519,10 +2712,10 @@ async function openDetailModal(item) {
     ? `<div style="font-size:0.85rem;color:var(--text-dim);">Genres: <strong style="color:#fff;">${escapeHtml(item.genres)}</strong></div>`
     : '';
   const directorBadge = item.directors
-    ? `<div style="font-size:0.85rem;color:var(--text-dim);">Director: <strong style="color:#fff;">${escapeHtml(item.directors)}</strong></div>`
+    ? `<div class="detail-person-row" style="font-size:0.85rem;color:var(--text-dim);display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-top:2px;"><span>Director:</span> <div class="person-tag-list">${formatPersonLinks(item.directors, 'director')}</div></div>`
     : '';
   const actorsBadge = item.actors
-    ? `<div style="font-size:0.85rem;color:var(--text-dim);">Cast: <strong style="color:#fff;">${escapeHtml(item.actors)}</strong></div>`
+    ? `<div class="detail-person-row" style="font-size:0.85rem;color:var(--text-dim);display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-top:2px;"><span>Cast:</span> <div class="person-tag-list">${formatPersonLinks(item.actors, 'actor')}</div></div>`
     : '';
 
   const resolvedThumb = resolveImageUrl(item.thumb_url);
@@ -2573,6 +2766,7 @@ async function openDetailModal(item) {
       <span id="detail-rating-feedback" style="font-size:0.82rem;font-weight:500;display:none;"></span>
     </div>
     <div id="detail-arr-container"></div>
+    <div id="detail-person-watches-container" class="person-watches-section" style="display:none;"></div>
     <div id="detail-watches-container" class="detail-watches-section"></div>
     <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.78rem;font-family:monospace;color:var(--text-dim);background:#080c14;padding:8px 12px;border-radius:6px;margin-top:14px;flex-wrap:wrap;gap:8px;">
       <span>Scrobble ID: ${item.id}</span>
@@ -2655,6 +2849,22 @@ async function openDetailModal(item) {
       el.btnDeleteShowScrobbles.style.display = 'none';
     }
   }
+
+  // Person tag click listeners
+  el.detailBody.querySelectorAll('.person-tag').forEach(tag => {
+    tag.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const personName = tag.dataset.person;
+      if (!personName) return;
+
+      if (e.target.closest('.person-tag-icon') || e.shiftKey) {
+        filterHistoryByPerson(personName);
+        return;
+      }
+
+      loadPersonWatches(personName, item.id);
+    });
+  });
 
   el.modalItemDetail.style.display = 'flex';
 

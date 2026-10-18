@@ -144,6 +144,21 @@ async fn process_webhook(
         .filter(|s| !s.is_empty());
 
     if account_title.is_some() || account_id.is_some() {
+        if let (Some(ref t), Some(ref aid)) = (&account_title, &account_id) {
+            let _ = sqlx::query(
+                r#"
+                INSERT INTO plex_user_cache (plex_id, username, friendly_name, source, updated_at)
+                VALUES (?, ?, ?, 'plex_webhook', datetime('now'))
+                ON CONFLICT(plex_id) DO UPDATE SET username = excluded.username, friendly_name = excluded.friendly_name, source = 'plex_webhook', updated_at = excluded.updated_at
+                "#
+            )
+            .bind(aid)
+            .bind(t)
+            .bind(t)
+            .execute(&state.pool)
+            .await;
+        }
+
         let configured_plex_user =
             crate::api::user_settings::get_user_setting(&state.pool, &user.id, "plex_username").await;
 
@@ -207,24 +222,9 @@ async fn process_webhook(
             }
         }
 
-        // If not matched yet, attempt to sync from Tautulli on-demand if configured
-        let mut matches = candidate_identifiers.iter().any(|c| expanded_allowed.contains(c));
+        let matches = candidate_identifiers.iter().any(|c| expanded_allowed.contains(c));
         if !matches && (account_id.is_some() || account_title.is_some()) {
-            let tautulli_url = crate::api::user_settings::get_user_setting(&state.pool, &user.id, "tautulli_url").await;
-            let tautulli_api_key = crate::api::user_settings::get_user_setting(&state.pool, &user.id, "tautulli_api_key").await;
-            if let (Some(url), Some(key)) = (tautulli_url, tautulli_api_key) {
-                if !url.trim().is_empty() && !key.trim().is_empty() {
-                    let mapped = crate::api::tautulli_import::sync_tautulli_users_cache(&state.pool, &url, &key).await;
-                    for (pid, puname) in mapped {
-                        let pid_low = pid.to_lowercase();
-                        let puname_low = puname.to_lowercase();
-                        if allowed_usernames.contains(&puname_low) && !expanded_allowed.contains(&pid_low) {
-                            expanded_allowed.push(pid_low);
-                        }
-                    }
-                    matches = candidate_identifiers.iter().any(|c| expanded_allowed.contains(c));
-                }
-            }
+            state.user_sync_notify.notify_one();
         }
 
         if !matches {
@@ -709,6 +709,37 @@ async fn process_jellyfin_webhook(
         .filter(|s| !s.is_empty());
 
     if notif_user.is_some() || notif_id.is_some() {
+        if let (Some(ref un), Some(ref uid)) = (&notif_user, &notif_id) {
+            let _ = sqlx::query(
+                r#"
+                INSERT INTO plex_user_cache (plex_id, username, friendly_name, source, updated_at)
+                VALUES (?, ?, ?, 'jellyfin', datetime('now'))
+                ON CONFLICT(plex_id) DO UPDATE SET username = excluded.username, friendly_name = excluded.friendly_name, source = 'jellyfin', updated_at = excluded.updated_at
+                "#
+            )
+            .bind(uid)
+            .bind(un)
+            .bind(un)
+            .execute(&state.pool)
+            .await;
+
+            let unhyphenated = uid.replace('-', "");
+            if unhyphenated != *uid {
+                let _ = sqlx::query(
+                    r#"
+                    INSERT INTO plex_user_cache (plex_id, username, friendly_name, source, updated_at)
+                    VALUES (?, ?, ?, 'jellyfin', datetime('now'))
+                    ON CONFLICT(plex_id) DO UPDATE SET username = excluded.username, friendly_name = excluded.friendly_name, source = 'jellyfin', updated_at = excluded.updated_at
+                    "#
+                )
+                .bind(&unhyphenated)
+                .bind(un)
+                .bind(un)
+                .execute(&state.pool)
+                .await;
+            }
+        }
+
         let configured_jellyfin_user =
             crate::api::user_settings::get_user_setting(&state.pool, &user.id, "jellyfin_username").await;
         let configured_user = if let Some(j_user) = configured_jellyfin_user {
@@ -732,15 +763,60 @@ async fn process_jellyfin_webhook(
             get_default_user_candidates(&user)
         };
 
+        // Expand allowed list with any mapped IDs from plex_user_cache
+        let mut expanded_allowed = allowed_usernames.clone();
+        for allowed in &allowed_usernames {
+            let cached_ids: Vec<String> = sqlx::query_scalar(
+                "SELECT plex_id FROM plex_user_cache WHERE LOWER(username) = LOWER(?) OR LOWER(friendly_name) = LOWER(?)"
+            )
+            .bind(allowed)
+            .bind(allowed)
+            .fetch_all(&state.pool)
+            .await
+            .unwrap_or_default();
+
+            for cid in cached_ids {
+                let low = cid.to_lowercase();
+                if !expanded_allowed.contains(&low) {
+                    expanded_allowed.push(low.clone());
+                    let unhyphenated = low.replace('-', "");
+                    if !expanded_allowed.contains(&unhyphenated) {
+                        expanded_allowed.push(unhyphenated);
+                    }
+                }
+            }
+        }
+
         let mut candidate_identifiers: Vec<String> = Vec::new();
         if let Some(ref un) = notif_user {
             candidate_identifiers.push(un.to_lowercase());
+            if let Ok(Some(uid)) = sqlx::query_scalar::<_, String>(
+                "SELECT plex_id FROM plex_user_cache WHERE LOWER(username) = LOWER(?) OR LOWER(friendly_name) = LOWER(?) LIMIT 1"
+            )
+            .bind(un)
+            .bind(un)
+            .fetch_optional(&state.pool)
+            .await {
+                candidate_identifiers.push(uid.to_lowercase());
+            }
         }
         if let Some(ref uid) = notif_id {
             candidate_identifiers.push(uid.to_lowercase());
+            let unhyphenated = uid.replace('-', "").to_lowercase();
+            if unhyphenated != uid.to_lowercase() {
+                candidate_identifiers.push(unhyphenated);
+            }
+            if let Ok(Some(un)) = sqlx::query_scalar::<_, String>(
+                "SELECT username FROM plex_user_cache WHERE LOWER(plex_id) = LOWER(?) LIMIT 1"
+            )
+            .bind(uid)
+            .fetch_optional(&state.pool)
+            .await {
+                candidate_identifiers.push(un.to_lowercase());
+            }
         }
 
-        let matches = candidate_identifiers.iter().any(|c| allowed_usernames.contains(c));
+        let matches = candidate_identifiers.iter().any(|c| expanded_allowed.contains(c));
         if !matches {
             tracing::info!(
                 user_id = %user.id,
