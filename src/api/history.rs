@@ -25,6 +25,10 @@ pub struct HistoryQuery {
     pub person: Option<String>,
     pub rating: Option<String>,
     pub watch_status: Option<String>,
+    #[serde(default, alias = "all_results")]
+    pub all: Option<bool>,
+    #[serde(default)]
+    pub all_dates: Option<bool>,
 }
 
 pub async fn list_history(
@@ -32,13 +36,20 @@ pub async fn list_history(
     auth: AuthUser,
     Query(query): Query<HistoryQuery>,
 ) -> Result<Json<HistoryResponse>, (StatusCode, Json<serde_json::Value>)> {
+    let all_results = query.all.unwrap_or(false);
+    let all_dates = query.all_dates.unwrap_or(false);
+
     let page = query.page.unwrap_or(1).max(1);
     let limit = query.limit.unwrap_or(20).clamp(1, 100);
     let offset = (page - 1) * limit;
 
     let media_type_filter = query.media_type.as_deref().unwrap_or("all");
     let search_filter = query.search.as_deref().unwrap_or("").trim();
-    let date_filter = query.date.as_deref().unwrap_or("").trim();
+    let date_filter = if all_dates {
+        ""
+    } else {
+        query.date.as_deref().unwrap_or("").trim()
+    };
     let genre_filter = query.genre.as_deref().unwrap_or("").trim();
     let person_filter = query.person.as_deref().unwrap_or("").trim();
     let rating_filter = query.rating.as_deref().unwrap_or("all").trim();
@@ -144,14 +155,20 @@ pub async fn list_history(
             )
         })?;
 
-    // Data query with ordering and pagination
-    data_sql.push_str(" ORDER BY watched_at DESC LIMIT ? OFFSET ?");
+    // Data query with ordering and optional pagination
+    if all_results {
+        data_sql.push_str(" ORDER BY watched_at DESC");
+    } else {
+        data_sql.push_str(" ORDER BY watched_at DESC LIMIT ? OFFSET ?");
+    }
 
     let mut fetch_query = sqlx::query_as::<_, Scrobble>(&data_sql);
     for p in &bind_params {
         fetch_query = fetch_query.bind(p);
     }
-    fetch_query = fetch_query.bind(limit).bind(offset);
+    if !all_results {
+        fetch_query = fetch_query.bind(limit).bind(offset);
+    }
 
     let items = fetch_query
         .fetch_all(&state.pool)
@@ -163,17 +180,19 @@ pub async fn list_history(
             )
         })?;
 
-    let total_pages = if total == 0 {
-        1
+    let (final_page, total_pages, final_limit) = if all_results {
+        (1, 1, total)
+    } else if total == 0 {
+        (1, 1, limit)
     } else {
-        (total + limit - 1) / limit
+        (page, (total + limit - 1) / limit, limit)
     };
 
     Ok(Json(HistoryResponse {
         items,
         total,
-        page,
-        limit,
+        page: final_page,
+        limit: final_limit,
         total_pages,
     }))
 }

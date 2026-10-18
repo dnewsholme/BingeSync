@@ -129,7 +129,7 @@ Plex webhooks send:
 ```bash
 cargo test
 ```
-Tests in `tests/api_tests.rs` cover:
+Tests in `tests/api_tests.rs` (30 integration tests) cover:
 - Dev login and `/api/v1/auth/me`
 - Plex movie and TV episode scrobbling
 - Multi-user isolation (User A cannot see User B's data)
@@ -146,12 +146,18 @@ Tests in `tests/api_tests.rs` cover:
 - Disk-based media poster caching and image serving with traversal protection
 - Sonarr delete options (delete series & files, delete season files & unmonitor season, and delete all files & unmonitor all seasons)
 - TheTVDB v4 metadata enrichment worker (genres, cast, plot overview, and directors)
+- Movie TVDB metadata fallback and manual scrobble metadata refresh
 - Item other watches query: movies and exact same TV episode matching with multi-user isolation
 - Admin settings, log buffer, and background task management endpoints
+- Stats top movies, extended metrics, and media type/time range filtering
 - Tautulli playback history import, user discovery, and 3-way deduplication
 - Scrobble progress tracking, configurable completion threshold, and same-day deduplication
 - Rating watched items (1-10) and clearing ratings with multi-user isolation
 - OpenAPI 3.0 specification and interactive Swagger UI documentation
+- Plex webhook internal thumbnail extraction and metadata refresh endpoint
+- User settings isolation and credential storage
+- Plex webhook username and ID filtering
+- Search across all history regardless of date and return all matching results
 
 ### Run Playwright E2E UI Tests
 ```bash
@@ -159,7 +165,7 @@ cd web
 npm install
 npx playwright test
 ```
-Playwright tests in `web/tests/e2e.spec.js` cover:
+Playwright tests in `web/tests/e2e.spec.js` (22 browser E2E tests) cover:
 - User sign-in flow, "+ Log Watch" modal, and timeline rendering
 - Multi-user separation in the web UI
 - Trakt history and rating import flow in the web UI (pasted JSON)
@@ -171,14 +177,17 @@ Playwright tests in `web/tests/e2e.spec.js` cover:
 - Sonarr cleanup options: delete show and files, delete & unmonitor season files, and delete all files & unmonitor all seasons
 - TheTVDB attribution: global footer, settings integration card, and scrobble detail modal footnote
 - Item other watches: other watches table in scrobble detail modal strictly matching exact same episode
-- Stats page top watched movies and type filter tabs
+- Stats page top watched movies, extended metrics, and type/range filter tabs
 - Minimised timeline search and date scrubber navigation
+- Search all history option searches across all dates and returns all results
 - Admin settings page, live log viewer, and background task execution
 - Favicon delivery and metadata link verification
 - In-progress playback badge rendering and detail modal progress display
 - Tautulli history import modal, username defaulting, and deduplication
+- Timeline hierarchical drill-down navigation: Year -> Month -> Dates
 - Rating watched items in detail modal, update, and unrating
 - Swagger UI interactive documentation at `/docs` and OpenAPI JSON endpoint
+- User settings: configure personal radarr, sonarr, and tautulli with secret redaction
 
 ### Run the App Locally
 ```bash
@@ -216,5 +225,10 @@ docker run -p 8080:8080 -v bingesync_data:/data bingesync:latest
 | `DEV_LOGIN_ENABLED` | `true` | Allows local email/username login |
 | `TVDB_API_KEY` | *(none)* | TheTVDB v4 API key for background metadata enrichment |
 | `TVDB_PIN` | *(none)* | Optional subscriber PIN for user-subscription TheTVDB keys |
+| `TVDB_BASE_URL` | `https://api4.thetvdb.com/v4` | TheTVDB v4 API base URL |
+| `SCROBBLE_THRESHOLD_PERCENT` | `80` | Percentage of media playback required to mark as watched |
+| `IMAGE_CACHE_DIR` | `/data/images` | Directory path on disk where media poster images are cached |
+| `TAUTULLI_URL` | *(none)* | Base URL of Tautulli instance for playback history import |
+| `TAUTULLI_API_KEY` | *(none)* | API key for Tautulli instance |
 
-*Note: Radarr, Sonarr, and Tautulli integrations are configured per-user on the User Settings page, not via environment variables.*
+*Note: Radarr, Sonarr, and Tautulli integrations can also be configured per-user on the User Settings page.*

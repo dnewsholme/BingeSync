@@ -99,19 +99,65 @@ pub struct GenreCountItem {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TopPersonItem {
+    pub name: String,
+    pub count: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DayOfWeekActivity {
+    pub day: String,
+    pub day_index: u32,
+    pub count: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TimeOfDayActivity {
+    pub period: String,
+    pub count: i64,
+    pub percentage: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StatsSummary {
     pub total_scrobbles: i64,
     pub movies_watched: i64,
     pub episodes_watched: i64,
+    #[serde(default)]
+    pub unique_movies: i64,
+    #[serde(default)]
+    pub unique_shows: i64,
     pub total_minutes: i64,
     pub movie_minutes: i64,
     pub episode_minutes: i64,
+    #[serde(default)]
+    pub avg_daily_minutes: i64,
     pub current_streak_days: i64,
+    #[serde(default)]
+    pub longest_streak_days: i64,
+    #[serde(default)]
+    pub average_rating: Option<f64>,
+    #[serde(default)]
+    pub total_rated: i64,
+    #[serde(default)]
+    pub completion_rate_percent: f64,
     pub top_shows: Vec<TopShowItem>,
     #[serde(default)]
     pub top_movies: Vec<TopMovieItem>,
     pub daily_activity: Vec<DailyActivityItem>,
     pub top_genres: Vec<GenreCountItem>,
+    #[serde(default)]
+    pub top_actors: Vec<TopPersonItem>,
+    #[serde(default)]
+    pub top_directors: Vec<TopPersonItem>,
+    #[serde(default)]
+    pub day_of_week_activity: Vec<DayOfWeekActivity>,
+    #[serde(default)]
+    pub time_of_day_activity: Vec<TimeOfDayActivity>,
+    #[serde(default)]
+    pub peak_day: Option<String>,
+    #[serde(default)]
+    pub peak_day_count: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]

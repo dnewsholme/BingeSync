@@ -710,6 +710,18 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
 
     await page.click('#pill-stats-movies');
     await expect(topMoviesSection).toBeVisible();
+
+    // Verify extended stats metrics cards & charts
+    await expect(page.locator('#stat-unique-movies')).toContainText('2 unique');
+    await expect(page.locator('#day-of-week-chart')).toBeVisible();
+    await expect(page.locator('#time-of-day-chart')).toBeVisible();
+
+    // Verify time range filters
+    const pill7d = page.locator('#pill-stats-range-7d');
+    await expect(pill7d).toBeVisible();
+    await pill7d.click();
+    await expect(pill7d).toHaveClass(/active/);
+    await expect(page.locator('#stat-scrobbles')).toHaveText('3');
   });
 
   test('timeline minimised search and date scrubber interaction', async ({ page }) => {
@@ -752,6 +764,61 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     // Clearing filters hides filter grid again
     await page.click('#btn-reset-timeline-filters');
     await expect(filtersGrid).toBeHidden();
+  });
+
+  test('search all history option searches across all dates and returns all results', async ({ page, request }) => {
+    const userEmail = `pw_searchall_${Date.now()}@bingesync.local`;
+
+    await page.goto('/');
+    await page.fill('#dev-email', userEmail);
+    await page.fill('#dev-name', 'Matrix Explorer');
+    await page.click('#btn-dev-submit');
+    await expect(page.locator('#user-display-name')).toHaveText('Matrix Explorer');
+
+    // 1. Log one watch of The Matrix today via UI
+    await page.click('#btn-open-log-modal');
+    await page.selectOption('#scrobble-media-type', 'movie');
+    await page.fill('#scrobble-title', 'The Matrix');
+    await page.fill('#scrobble-year', '1999');
+    await page.click('#btn-submit-scrobble');
+    await expect(page.locator('#modal-log-scrobble')).toBeHidden();
+
+    // 2. Log a second watch of The Matrix from year 2021 via API using page session
+    const res = await page.request.post('/api/v1/history', {
+      data: {
+        title: 'The Matrix Reloaded',
+        media_type: 'movie',
+        year: 2003,
+        watched_at: '2021-05-12T14:30:00Z'
+      }
+    });
+    expect(res.ok()).toBeTruthy();
+
+    // 3. In default timeline month view (current month), searching "Matrix" only shows 1 item
+    await page.click('#timeline-search-wrap');
+    await page.fill('#timeline-search', 'Matrix');
+    await expect(page.locator('#timeline-container')).toContainText('The Matrix');
+    await expect(page.locator('#timeline-container')).not.toContainText('The Matrix Reloaded');
+
+    // 4. Toggle "All History (All Dates)" option
+    const searchAllToggle = page.locator('#timeline-search-all-label');
+    await expect(searchAllToggle).toBeVisible();
+    await page.click('#timeline-search-all-label');
+    await expect(page.locator('#timeline-search-all-dates')).toBeChecked();
+
+    // 5. Both movies from 2021 and current year should now be displayed!
+    await expect(page.locator('#timeline-container')).toContainText('The Matrix');
+    await expect(page.locator('#timeline-container')).toContainText('The Matrix Reloaded');
+    await expect(page.locator('#hierarchy-breadcrumbs')).toContainText('All History Search: "Matrix"');
+
+    // 6. Test History view all results toggle
+    await page.click('#tab-history');
+    await expect(page.locator('#view-history')).toBeVisible();
+    await page.fill('#history-search', 'Matrix');
+    await expect(page.locator('#history-search-all-label')).toBeVisible();
+    await page.click('#history-search-all-label');
+    await expect(page.locator('#history-search-all-results')).toBeChecked();
+    await expect(page.locator('#pagination-info')).toContainText('Showing all 2 results across history');
   });
 
   test('admin settings, background tasks, and application logs management', async ({ page }) => {

@@ -23,6 +23,7 @@ const state = {
     limit: 60,
     offset: 0,
     search: '',
+    searchAllDates: false,
     date: '',
     genre: '',
     person: '',
@@ -39,12 +40,14 @@ const state = {
     limit: 12,
     mediaType: 'all',
     search: '',
+    allResults: false,
     totalPages: 1,
     selectMode: false,
     selectedIds: new Set(),
   },
   stats: {
     filter: 'all',
+    timeRange: 'all',
     data: null,
   },
   selectedItem: null,
@@ -143,6 +146,8 @@ const el = {
   timelineFiltersGrid: document.getElementById('timeline-filters-grid'),
   timelineSearchWrap: document.getElementById('timeline-search-wrap'),
   timelineSearch: document.getElementById('timeline-search'),
+  timelineSearchAllLabel: document.getElementById('timeline-search-all-label'),
+  timelineSearchAllDates: document.getElementById('timeline-search-all-dates'),
   timelineDateFilter: document.getElementById('timeline-date-filter'),
   timelineGenreFilter: document.getElementById('timeline-genre-filter'),
   timelinePersonFilter: document.getElementById('timeline-person-filter'),
@@ -157,6 +162,8 @@ const el = {
 
   // History View
   historySearch: document.getElementById('history-search'),
+  historySearchAllLabel: document.getElementById('history-search-all-label'),
+  historySearchAllResults: document.getElementById('history-search-all-results'),
   historyList: document.getElementById('history-list'),
   historyPagination: document.getElementById('history-pagination'),
   paginationInfo: document.getElementById('pagination-info'),
@@ -172,20 +179,40 @@ const el = {
 
   // Stats View
   statScrobbles: document.getElementById('stat-scrobbles'),
+  statScrobblesSub: document.getElementById('stat-scrobbles-sub'),
   statHours: document.getElementById('stat-hours'),
   statMinutes: document.getElementById('stat-minutes'),
   statMovies: document.getElementById('stat-movies'),
   statEpisodes: document.getElementById('stat-episodes'),
   statMovieTime: document.getElementById('stat-movie-time'),
   statEpisodeTime: document.getElementById('stat-episode-time'),
+  statUniqueMovies: document.getElementById('stat-unique-movies'),
+  statUniqueShows: document.getElementById('stat-unique-shows'),
   statStreak: document.getElementById('stat-streak'),
+  statStreakSub: document.getElementById('stat-streak-sub'),
+  statAvgDaily: document.getElementById('stat-avg-daily'),
+  statAvgRating: document.getElementById('stat-avg-rating'),
+  statTotalRated: document.getElementById('stat-total-rated'),
+  statCompletionRate: document.getElementById('stat-completion-rate'),
+  statPeakDay: document.getElementById('stat-peak-day'),
+  statPeakCount: document.getElementById('stat-peak-count'),
   topShowsList: document.getElementById('top-shows-list'),
   topShowsSection: document.getElementById('top-shows-section'),
   topMoviesList: document.getElementById('top-movies-list'),
   topMoviesSection: document.getElementById('top-movies-section'),
   statsFilterPills: document.querySelectorAll('#stats-filter-pills .pill'),
+  statsRangePills: document.querySelectorAll('#stats-range-pills .pill'),
   activityChart: document.getElementById('activity-chart'),
+  activityChartTitle: document.getElementById('activity-chart-title'),
+  activityChartSubtitle: document.getElementById('activity-chart-subtitle'),
+  activityChartLegend: document.getElementById('activity-chart-legend'),
   genresChart: document.getElementById('genres-chart'),
+  genresChartTitle: document.getElementById('genres-chart-title'),
+  genresChartSubtitle: document.getElementById('genres-chart-subtitle'),
+  dayOfWeekChart: document.getElementById('day-of-week-chart'),
+  timeOfDayChart: document.getElementById('time-of-day-chart'),
+  topActorsList: document.getElementById('top-actors-list'),
+  topDirectorsList: document.getElementById('top-directors-list'),
 
   // Webhook View
   webhookUrlInput: document.getElementById('webhook-url-input'),
@@ -434,29 +461,36 @@ async function loadTimeline(append = false) {
 
     renderTimelineHierarchyNav();
 
-    if (state.timeline.level === 'years') {
-      renderTimelineYearsView();
-      renderTimelineScrubberYears();
-      if (el.timelineLoadMoreWrap) el.timelineLoadMoreWrap.style.display = 'none';
-      return;
-    }
+    let dateParam = '';
+    if (!state.timeline.searchAllDates) {
+      if (state.timeline.level === 'years') {
+        renderTimelineYearsView();
+        renderTimelineScrubberYears();
+        if (el.timelineLoadMoreWrap) el.timelineLoadMoreWrap.style.display = 'none';
+        return;
+      }
 
-    if (state.timeline.level === 'year') {
-      renderTimelineMonthsView();
-      renderTimelineScrubberMonths();
-      if (el.timelineLoadMoreWrap) el.timelineLoadMoreWrap.style.display = 'none';
-      return;
-    }
+      if (state.timeline.level === 'year') {
+        renderTimelineMonthsView();
+        renderTimelineScrubberMonths();
+        if (el.timelineLoadMoreWrap) el.timelineLoadMoreWrap.style.display = 'none';
+        return;
+      }
 
-    // Level === 'month': "the time line ui should only show dates for the currently selected month"
-    const monthFilter = `${state.timeline.selectedYear}-${state.timeline.selectedMonth}`;
-    const dateParam = state.timeline.date || monthFilter;
+      // Level === 'month': "the time line ui should only show dates for the currently selected month"
+      const monthFilter = `${state.timeline.selectedYear}-${state.timeline.selectedMonth}`;
+      dateParam = state.timeline.date || monthFilter;
+    } else {
+      dateParam = state.timeline.date || '';
+    }
 
     const days = await api.getTimeline({
       limit: state.timeline.limit,
       offset: state.timeline.offset,
       search: state.timeline.search,
       date: dateParam,
+      all: state.timeline.searchAllDates,
+      all_dates: state.timeline.searchAllDates,
       genre: state.timeline.genre,
       person: state.timeline.person,
       rating: state.timeline.rating,
@@ -475,13 +509,13 @@ async function loadTimeline(append = false) {
             state.timeline.days.push(newDay);
           }
         });
-        state.timeline.hasMore = days.length >= state.timeline.limit;
+        state.timeline.hasMore = state.timeline.searchAllDates ? false : (days.length >= state.timeline.limit);
       } else {
         state.timeline.hasMore = false;
       }
     } else {
       state.timeline.days = days || [];
-      state.timeline.hasMore = Boolean(days && days.length >= state.timeline.limit);
+      state.timeline.hasMore = state.timeline.searchAllDates ? false : Boolean(days && days.length >= state.timeline.limit);
     }
 
     renderTimeline(state.timeline.days);
@@ -497,6 +531,32 @@ async function loadTimeline(append = false) {
 
 function renderTimelineHierarchyNav() {
   if (!el.hierarchyBreadcrumbs || !el.hierarchyControls) return;
+
+  if (state.timeline.searchAllDates) {
+    const totalItems = state.timeline.days.reduce((acc, d) => acc + (d.items?.length || 0), 0);
+    const searchLabel = state.timeline.search ? `"${state.timeline.search}"` : 'All Dates';
+    el.hierarchyBreadcrumbs.innerHTML = `
+      <span class="crumb-current">All History Search: ${escapeHtml(searchLabel)}</span>
+      <span class="crumb-separator">·</span>
+      <span style="font-size:0.8rem;color:var(--text-dim);">${totalItems} ${totalItems === 1 ? 'watch' : 'watches'} across ${state.timeline.days.length} days</span>
+    `;
+    el.hierarchyControls.innerHTML = `
+      <button class="btn btn-outline btn-xs" id="btn-exit-search-all-dates" title="Exit all-history search and return to monthly timeline">
+        Exit All-History View
+      </button>
+    `;
+    const btnExit = document.getElementById('btn-exit-search-all-dates');
+    if (btnExit) {
+      btnExit.addEventListener('click', () => {
+        state.timeline.searchAllDates = false;
+        if (el.timelineSearchAllDates) el.timelineSearchAllDates.checked = false;
+        if (el.timelineSearchAllLabel) el.timelineSearchAllLabel.classList.remove('active');
+        loadTimeline();
+      });
+    }
+    if (el.timelineMonthChips) el.timelineMonthChips.innerHTML = '';
+    return;
+  }
 
   const level = state.timeline.level;
   const year = state.timeline.selectedYear;
@@ -887,7 +947,10 @@ function renderTimeline(days) {
 
     let msg = '';
     let actionBtn = '';
-    if (hasFilters) {
+    if (state.timeline.search && !state.timeline.searchAllDates) {
+      msg = `No watch history matches "${state.timeline.search}" in ${monthName} ${state.timeline.selectedYear}.`;
+      actionBtn = `<button class="btn btn-primary btn-sm" id="btn-empty-search-all" style="margin-top:12px;">Search Across All History (All Dates)</button>`;
+    } else if (hasFilters) {
       msg = 'No watch history matches your timeline filters.';
     } else if (totalLifetimeWatches === 0) {
       msg = 'No watch history yet. Connect your Plex Webhook or log a scrobble to see your timeline!';
@@ -908,6 +971,15 @@ function renderTimeline(days) {
       emptyBtn.addEventListener('click', () => {
         state.timeline.level = 'year';
         state.timeline.userManuallySelected = true;
+        loadTimeline();
+      });
+    }
+    const searchAllBtn = el.timelineContainer.querySelector('#btn-empty-search-all');
+    if (searchAllBtn) {
+      searchAllBtn.addEventListener('click', () => {
+        state.timeline.searchAllDates = true;
+        if (el.timelineSearchAllDates) el.timelineSearchAllDates.checked = true;
+        if (el.timelineSearchAllLabel) el.timelineSearchAllLabel.classList.add('active');
         loadTimeline();
       });
     }
@@ -968,7 +1040,11 @@ function renderTimelineScrubber(days) {
   el.timelineScrubber.style.display = 'block';
   const header = el.timelineScrubber.querySelector('.scrubber-header');
   const monthIdx = parseInt(state.timeline.selectedMonth, 10) - 1;
-  if (header) header.textContent = `${MONTH_SHORT_NAMES[monthIdx] || 'Month'} Dates`;
+  if (header) {
+    header.textContent = state.timeline.searchAllDates
+      ? 'All Dates'
+      : `${MONTH_SHORT_NAMES[monthIdx] || 'Month'} Dates`;
+  }
 
   const dateMap = new Map();
   days.forEach(d => {
@@ -1136,9 +1212,20 @@ if (el.timelineStatusFilter) {
   });
 }
 
+if (el.timelineSearchAllDates) {
+  el.timelineSearchAllDates.addEventListener('change', (e) => {
+    state.timeline.searchAllDates = e.target.checked;
+    if (el.timelineSearchAllLabel) {
+      el.timelineSearchAllLabel.classList.toggle('active', e.target.checked);
+    }
+    loadTimeline();
+  });
+}
+
 if (el.btnResetTimelineFilters) {
   el.btnResetTimelineFilters.addEventListener('click', () => {
     state.timeline.search = '';
+    state.timeline.searchAllDates = false;
     state.timeline.date = '';
     state.timeline.genre = '';
     state.timeline.person = '';
@@ -1152,6 +1239,8 @@ if (el.btnResetTimelineFilters) {
       el.timelineSearchWrap.classList.remove('expanded');
       el.timelineSearchWrap.classList.remove('has-value');
     }
+    if (el.timelineSearchAllDates) el.timelineSearchAllDates.checked = false;
+    if (el.timelineSearchAllLabel) el.timelineSearchAllLabel.classList.remove('active');
     if (el.timelineDateFilter) el.timelineDateFilter.value = '';
     if (el.timelineGenreFilter) el.timelineGenreFilter.value = '';
     if (el.timelinePersonFilter) el.timelinePersonFilter.value = '';
@@ -1283,6 +1372,8 @@ async function loadHistory() {
       limit: state.history.limit,
       media_type: state.history.mediaType,
       search: state.history.search,
+      all: state.history.allResults,
+      all_dates: state.history.allResults,
     });
 
     state.history.totalPages = res.total_pages || 1;
@@ -1316,9 +1407,15 @@ function renderHistory(res) {
 
   // Pagination bar
   el.historyPagination.style.display = 'flex';
-  el.paginationInfo.textContent = `Page ${res.page} of ${res.total_pages} (${res.total} total)`;
-  el.btnPagePrev.disabled = res.page <= 1;
-  el.btnPageNext.disabled = res.page >= res.total_pages;
+  if (state.history.allResults) {
+    el.paginationInfo.textContent = `Showing all ${res.total} results across history`;
+    el.btnPagePrev.disabled = true;
+    el.btnPageNext.disabled = true;
+  } else {
+    el.paginationInfo.textContent = `Page ${res.page} of ${res.total_pages} (${res.total} total)`;
+    el.btnPagePrev.disabled = res.page <= 1;
+    el.btnPageNext.disabled = res.page >= res.total_pages;
+  }
 }
 
 // Multi-Select Handlers
@@ -1412,6 +1509,17 @@ el.historySearch.addEventListener('input', (e) => {
   }, 300);
 });
 
+if (el.historySearchAllResults) {
+  el.historySearchAllResults.addEventListener('change', (e) => {
+    state.history.allResults = e.target.checked;
+    if (el.historySearchAllLabel) {
+      el.historySearchAllLabel.classList.toggle('active', e.target.checked);
+    }
+    state.history.page = 1;
+    loadHistory();
+  });
+}
+
 el.pills.forEach(pill => {
   pill.addEventListener('click', () => {
     el.pills.forEach(p => p.classList.remove('active'));
@@ -1439,7 +1547,11 @@ el.btnPageNext.addEventListener('click', () => {
 // View 3: Stats
 async function loadStats() {
   try {
-    const s = await api.getStats();
+    const params = {
+      media_type: state.stats.filter || 'all',
+      time_range: state.stats.timeRange || 'all',
+    };
+    const s = await api.getStats(params);
     state.stats.data = s;
     renderStats();
   } catch (err) {
@@ -1451,43 +1563,99 @@ function renderStats() {
   const s = state.stats.data;
   if (!s) return;
 
-  const filter = state.stats.filter;
+  const filter = state.stats.filter || 'all';
+  const timeRange = state.stats.timeRange || 'all';
   const isAll = filter === 'all';
   const isMovie = filter === 'movie';
   const isTv = filter === 'episode';
 
-  // Total counts based on filter
+  // 1. Total Scrobbles Card
   if (isMovie) {
-    el.statScrobbles.textContent = s.movies_watched;
-    const mHours = Math.floor((s.movie_minutes || 0) / 60);
-    const mMins = (s.movie_minutes || 0) % 60;
-    el.statHours.textContent = mMins > 0 ? `${mHours}h ${mMins}m` : `${mHours}h`;
-    el.statMinutes.textContent = `${s.movie_minutes || 0} minutes of films watched`;
+    el.statScrobbles.textContent = (s.movies_watched || 0).toLocaleString();
+    if (el.statScrobblesSub) el.statScrobblesSub.textContent = 'total movie watches';
   } else if (isTv) {
-    el.statScrobbles.textContent = s.episodes_watched;
-    const eHours = Math.floor((s.episode_minutes || 0) / 60);
-    const eMins = (s.episode_minutes || 0) % 60;
-    el.statHours.textContent = eMins > 0 ? `${eHours}h ${eMins}m` : `${eHours}h`;
-    el.statMinutes.textContent = `${s.episode_minutes || 0} minutes of series watched`;
+    el.statScrobbles.textContent = (s.episodes_watched || 0).toLocaleString();
+    if (el.statScrobblesSub) el.statScrobblesSub.textContent = 'total episode watches';
   } else {
-    el.statScrobbles.textContent = s.total_scrobbles;
-    const hours = Math.floor(s.total_minutes / 60);
-    const mins = s.total_minutes % 60;
-    el.statHours.textContent = mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
-    el.statMinutes.textContent = `${s.total_minutes} total minutes watched`;
+    el.statScrobbles.textContent = (s.total_scrobbles || 0).toLocaleString();
+    if (el.statScrobblesSub) {
+      el.statScrobblesSub.textContent = `${(s.movies_watched || 0).toLocaleString()} movies · ${(s.episodes_watched || 0).toLocaleString()} episodes`;
+    }
   }
 
-  el.statMovies.textContent = s.movies_watched;
-  el.statEpisodes.textContent = s.episodes_watched;
-  el.statStreak.textContent = `${s.current_streak_days} 🔥`;
+  // 2. Time Watched Card
+  const totalMins = isMovie
+    ? (s.movie_minutes || 0)
+    : isTv
+    ? (s.episode_minutes || 0)
+    : (s.total_minutes || 0);
 
+  const days = Math.floor(totalMins / 1440);
+  const remainingAfterDays = totalMins % 1440;
+  const hours = Math.floor(remainingAfterDays / 60);
+  const mins = remainingAfterDays % 60;
+
+  if (days > 0) {
+    el.statHours.textContent = mins > 0 ? `${days}d ${hours}h ${mins}m` : `${days}d ${hours}h`;
+  } else {
+    el.statHours.textContent = mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+  }
+  el.statMinutes.textContent = `${totalMins.toLocaleString()} total minutes watched`;
+
+  // 3. Movies Card
+  el.statMovies.textContent = (s.movies_watched || 0).toLocaleString();
+  if (el.statUniqueMovies) {
+    el.statUniqueMovies.textContent = `${(s.unique_movies || 0).toLocaleString()} unique`;
+  }
   if (el.statMovieTime) {
     const mH = Math.floor((s.movie_minutes || 0) / 60);
-    el.statMovieTime.textContent = `${mH}h in films`;
+    el.statMovieTime.textContent = `${mH.toLocaleString()}h total runtime`;
+  }
+
+  // 4. TV Episodes Card
+  el.statEpisodes.textContent = (s.episodes_watched || 0).toLocaleString();
+  if (el.statUniqueShows) {
+    el.statUniqueShows.textContent = `${(s.unique_shows || 0).toLocaleString()} shows`;
   }
   if (el.statEpisodeTime) {
     const eH = Math.floor((s.episode_minutes || 0) / 60);
-    el.statEpisodeTime.textContent = `${eH}h in TV series`;
+    el.statEpisodeTime.textContent = `${eH.toLocaleString()}h total runtime`;
+  }
+
+  // 5. Watching Streak Card
+  el.statStreak.textContent = `${s.current_streak_days || 0}d 🔥`;
+  if (el.statStreakSub) {
+    el.statStreakSub.textContent = `Longest streak: ${s.longest_streak_days || 0} days`;
+  }
+
+  // 6. Daily Pace Card
+  if (el.statAvgDaily) {
+    el.statAvgDaily.textContent = `${s.avg_daily_minutes || 0}m`;
+  }
+
+  // 7. Average Rating Card
+  const avgRating = s.average_rating ?? s.avg_rating;
+  if (el.statAvgRating) {
+    el.statAvgRating.textContent = avgRating ? `${avgRating.toFixed(1)} ★` : '—';
+  }
+  if (el.statTotalRated) {
+    el.statTotalRated.textContent = s.total_rated
+      ? `${s.total_rated.toLocaleString()} items rated`
+      : 'No ratings yet';
+  }
+
+  // 8. Completion Rate Card
+  const compRate = s.completion_rate_percent ?? s.completion_rate ?? 0;
+  if (el.statCompletionRate) {
+    el.statCompletionRate.textContent = `${Math.round(compRate)}%`;
+  }
+
+  // 9. Peak Binge Day Card
+  if (el.statPeakCount) {
+    el.statPeakCount.textContent = (s.peak_day_count || 0) > 0 ? `${s.peak_day_count} items` : '—';
+  }
+  if (el.statPeakDay) {
+    el.statPeakDay.textContent = s.peak_day ? `on ${s.peak_day}` : 'No activity yet';
   }
 
   // Toggle Top Shows section
@@ -1496,7 +1664,7 @@ function renderStats() {
   }
 
   // Render Top Shows
-  if (!isMovie) {
+  if (!isMovie && el.topShowsList) {
     if (!s.top_shows || s.top_shows.length === 0) {
       el.topShowsList.innerHTML = `<div class="empty-state"><p>No TV show history recorded yet.</p></div>`;
     } else {
@@ -1542,24 +1710,70 @@ function renderStats() {
     }
   }
 
-  // Render Daily Activity Chart (Past 14 Days)
+  // Render Daily Activity Chart
   if (el.activityChart) {
+    if (el.activityChartTitle) {
+      el.activityChartTitle.textContent = isMovie
+        ? 'Daily Movie Activity'
+        : isTv
+        ? 'Daily TV Episode Activity'
+        : 'Daily Watch Activity';
+    }
+    if (el.activityChartSubtitle) {
+      const rangeMap = {
+        all: 'Recent activity (14 days)',
+        '7d': 'Past 7 days',
+        '30d': 'Past 30 days',
+        '90d': 'Past 90 days',
+        year: 'Past 12 months',
+      };
+      el.activityChartSubtitle.textContent = rangeMap[timeRange] || 'Activity breakdown';
+    }
+    if (el.activityChartLegend) {
+      if (isMovie) {
+        el.activityChartLegend.innerHTML = `<span class="legend-item"><span class="legend-dot dot-movie"></span>Movies</span>`;
+      } else if (isTv) {
+        el.activityChartLegend.innerHTML = `<span class="legend-item"><span class="legend-dot dot-episode"></span>TV Episodes</span>`;
+      } else {
+        el.activityChartLegend.innerHTML = `
+          <span class="legend-item"><span class="legend-dot dot-movie"></span>Movies</span>
+          <span class="legend-item"><span class="legend-dot dot-episode"></span>TV Episodes</span>
+        `;
+      }
+    }
+
     if (!s.daily_activity || s.daily_activity.length === 0) {
       el.activityChart.innerHTML = `<div class="empty-state" style="padding:20px;width:100%;"><p>No recent activity data.</p></div>`;
     } else {
       const maxTotal = Math.max(...s.daily_activity.map(a => a.total), 1);
       el.activityChart.innerHTML = s.daily_activity.map(item => {
-        const moviePct = (item.movies / maxTotal) * 100;
-        const episodePct = (item.episodes / maxTotal) * 100;
         const totalPct = (item.total / maxTotal) * 100;
         const dateParts = item.date.split('-');
         const shortDate = dateParts.length === 3 ? `${dateParts[1]}/${dateParts[2]}` : item.date;
+        const barHeight = Math.max(totalPct, 6);
+
+        let barInner = '';
+        if (isMovie) {
+          barInner = `<div class="bar-segment-movie" style="height: 100%; border-radius: 4px 4px 0 0;"></div>`;
+        } else if (isTv) {
+          barInner = `<div class="bar-segment-episode" style="height: 100%; border-radius: 4px 4px 0 0;"></div>`;
+        } else {
+          barInner = `
+            <div class="bar-segment-movie" style="height: ${item.total > 0 ? (item.movies / item.total) * 100 : 0}%;"></div>
+            <div class="bar-segment-episode" style="height: ${item.total > 0 ? (item.episodes / item.total) * 100 : 0}%;"></div>
+          `;
+        }
+
+        const tooltip = isMovie
+          ? `${item.date}: ${item.movies} ${item.movies === 1 ? 'movie' : 'movies'}`
+          : isTv
+          ? `${item.date}: ${item.episodes} ${item.episodes === 1 ? 'episode' : 'episodes'}`
+          : `${item.date}: ${item.movies} movies, ${item.episodes} episodes (${item.total} total)`;
 
         return `
-          <div class="activity-bar-group" title="${item.date}: ${item.movies} movies, ${item.episodes} episodes (${item.total} total)">
-            <div class="activity-bar-stacked" style="height: ${Math.max(totalPct, 8)}%;">
-              <div class="bar-segment-movie" style="height: ${item.total > 0 ? (item.movies / item.total) * 100 : 0}%;"></div>
-              <div class="bar-segment-episode" style="height: ${item.total > 0 ? (item.episodes / item.total) * 100 : 0}%;"></div>
+          <div class="activity-bar-group" title="${tooltip}">
+            <div class="activity-bar-stacked" style="height: ${item.total > 0 ? barHeight : 4}%;">
+              ${item.total > 0 ? barInner : ''}
             </div>
             <span class="activity-bar-label">${shortDate}</span>
           </div>
@@ -1568,8 +1782,78 @@ function renderStats() {
     }
   }
 
+  // Render Day of Week Chart
+  if (el.dayOfWeekChart) {
+    const dowData = s.day_of_week_activity || s.day_of_week || [];
+    if (!dowData || dowData.length === 0) {
+      el.dayOfWeekChart.innerHTML = `<div class="empty-state" style="padding:15px;width:100%;"><p>No activity data.</p></div>`;
+    } else {
+      const maxDow = Math.max(...dowData.map(d => d.count), 1);
+      el.dayOfWeekChart.innerHTML = dowData.map(d => {
+        const pct = Math.max(Math.round((d.count / maxDow) * 100), d.count > 0 ? 8 : 2);
+        const isPeak = d.count === maxDow && maxDow > 0;
+        return `
+          <div class="dow-bar-group" title="${d.day}: ${d.count} ${d.count === 1 ? 'watch' : 'watches'}">
+            <div class="dow-bar-wrap">
+              <div class="dow-bar-fill ${isPeak ? 'peak' : ''}" style="height: ${pct}%;"></div>
+            </div>
+            <span class="dow-bar-label">${d.day}</span>
+          </div>
+        `;
+      }).join('');
+    }
+  }
+
+  // Render Time of Day Chart
+  if (el.timeOfDayChart) {
+    const todData = s.time_of_day_activity || s.time_of_day || [];
+    if (!todData || todData.length === 0) {
+      el.timeOfDayChart.innerHTML = `<div class="empty-state" style="padding:15px;"><p>No activity data.</p></div>`;
+    } else {
+      const icons = {
+        Morning: '🌅',
+        Afternoon: '☀️',
+        Evening: '🌆',
+        Night: '🌙',
+      };
+      el.timeOfDayChart.innerHTML = todData.map(t => {
+        const icon = icons[t.period] || '🕒';
+        const label = t.label || t.period;
+        return `
+          <div class="tod-item">
+            <div class="tod-header">
+              <div class="tod-period-name">
+                <span>${icon}</span>
+                <span>${escapeHtml(label)}</span>
+              </div>
+              <div class="tod-period-stat">${t.count} watches (${t.percentage}%)</div>
+            </div>
+            <div class="tod-track">
+              <div class="tod-fill ${t.period.toLowerCase()}" style="width: ${t.percentage}%;"></div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+  }
+
   // Render Top Genres Breakdown
   if (el.genresChart) {
+    if (el.genresChartTitle) {
+      el.genresChartTitle.textContent = isMovie
+        ? 'Top Movie Genres'
+        : isTv
+        ? 'Top TV Genres'
+        : 'Top Genres';
+    }
+    if (el.genresChartSubtitle) {
+      el.genresChartSubtitle.textContent = isMovie
+        ? 'Most watched film categories'
+        : isTv
+        ? 'Most watched television categories'
+        : 'Most watched media categories';
+    }
+
     if (!s.top_genres || s.top_genres.length === 0) {
       el.genresChart.innerHTML = `<div class="empty-state" style="padding:20px;"><p>No genre data available yet.</p></div>`;
     } else {
@@ -1590,16 +1874,62 @@ function renderStats() {
       }).join('');
     }
   }
+
+  // Render Top Actors
+  if (el.topActorsList) {
+    if (!s.top_actors || s.top_actors.length === 0) {
+      el.topActorsList.innerHTML = `<div class="empty-state" style="padding:15px;"><p>No actor data recorded yet.</p></div>`;
+    } else {
+      el.topActorsList.innerHTML = s.top_actors.map((actor, idx) => `
+        <div class="top-person-row">
+          <div class="top-person-left">
+            <span class="top-person-rank">#${idx + 1}</span>
+            <span class="top-person-name">${escapeHtml(actor.name)}</span>
+          </div>
+          <span class="top-person-count">${actor.count} ${actor.count === 1 ? 'watch' : 'watches'}</span>
+        </div>
+      `).join('');
+    }
+  }
+
+  // Render Top Directors
+  if (el.topDirectorsList) {
+    if (!s.top_directors || s.top_directors.length === 0) {
+      el.topDirectorsList.innerHTML = `<div class="empty-state" style="padding:15px;"><p>No director data recorded yet.</p></div>`;
+    } else {
+      el.topDirectorsList.innerHTML = s.top_directors.map((director, idx) => `
+        <div class="top-person-row">
+          <div class="top-person-left">
+            <span class="top-person-rank">#${idx + 1}</span>
+            <span class="top-person-name">${escapeHtml(director.name)}</span>
+          </div>
+          <span class="top-person-count">${director.count} ${director.count === 1 ? 'watch' : 'watches'}</span>
+        </div>
+      `).join('');
+    }
+  }
 }
 
-// Stats filter pills event listeners
+// Stats media type filter pills event listeners (All, Movies, TV Shows)
 if (el.statsFilterPills) {
   el.statsFilterPills.forEach(pill => {
     pill.addEventListener('click', () => {
       el.statsFilterPills.forEach(p => p.classList.remove('active'));
       pill.classList.add('active');
       state.stats.filter = pill.dataset.type;
-      renderStats();
+      loadStats();
+    });
+  });
+}
+
+// Stats time range pills event listeners (All Time, 7d, 30d, 90d, Year)
+if (el.statsRangePills) {
+  el.statsRangePills.forEach(pill => {
+    pill.addEventListener('click', () => {
+      el.statsRangePills.forEach(p => p.classList.remove('active'));
+      pill.classList.add('active');
+      state.stats.timeRange = pill.dataset.range;
+      loadStats();
     });
   });
 }

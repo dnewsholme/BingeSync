@@ -2686,6 +2686,119 @@ async fn test_stats_top_movies() {
 }
 
 #[tokio::test]
+async fn test_stats_filters_and_extended_metrics() {
+    let (app, pool, config) = setup_test_app().await;
+
+    let user_id = "test_user_stats_ext";
+    let webhook_token = "stats_ext_token_123";
+    sqlx::query("INSERT INTO users (id, email, display_name, webhook_token, role) VALUES (?, ?, ?, ?, 'user')")
+        .bind(user_id)
+        .bind("stats_ext@test.local")
+        .bind("Stats Ext Tester")
+        .bind(webhook_token)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let token = bingesync::auth::jwt::create_jwt(user_id, "stats_ext@test.local", &config.jwt_secret).unwrap();
+
+    let now_utc = chrono::Utc::now();
+    let d0 = now_utc.to_rfc3339();
+    let d1 = (now_utc - chrono::Duration::days(1)).to_rfc3339();
+    let d2 = (now_utc - chrono::Duration::days(2)).to_rfc3339();
+    let d10 = (now_utc - chrono::Duration::days(10)).to_rfc3339();
+
+    // Insert scrobble 1: Movie, watched today, rated 10, Christopher Nolan, Leonardo DiCaprio, Sci-Fi
+    sqlx::query(
+        "INSERT INTO scrobbles (id, user_id, media_type, title, duration_ms, view_offset_ms, watched_at, created_at, user_rating, directors, actors, genres) \
+         VALUES ('s1', ?, 'movie', 'Inception', 7200000, 7200000, ?, ?, 10, 'Christopher Nolan', 'Leonardo DiCaprio, Joseph Gordon-Levitt', 'Sci-Fi, Action')"
+    )
+    .bind(user_id).bind(&d0).bind(&d0)
+    .execute(&pool).await.unwrap();
+
+    // Insert scrobble 2: Movie, watched yesterday, rated 8, Christopher Nolan, Matthew McConaughey, Sci-Fi
+    sqlx::query(
+        "INSERT INTO scrobbles (id, user_id, media_type, title, duration_ms, view_offset_ms, watched_at, created_at, user_rating, directors, actors, genres) \
+         VALUES ('s2', ?, 'movie', 'Interstellar', 10800000, 10800000, ?, ?, 8, 'Christopher Nolan', 'Matthew McConaughey, Anne Hathaway', 'Sci-Fi, Drama')"
+    )
+    .bind(user_id).bind(&d1).bind(&d1)
+    .execute(&pool).await.unwrap();
+
+    // Insert scrobble 3: Episode, watched 2 days ago, unrated, Breaking Bad
+    sqlx::query(
+        "INSERT INTO scrobbles (id, user_id, media_type, title, grandparent_title, duration_ms, view_offset_ms, watched_at, created_at, directors, actors, genres) \
+         VALUES ('s3', ?, 'episode', 'Ozymandias', 'Breaking Bad', 3600000, 3600000, ?, ?, 'Rian Johnson', 'Bryan Cranston, Aaron Paul', 'Drama, Crime')"
+    )
+    .bind(user_id).bind(&d2).bind(&d2)
+    .execute(&pool).await.unwrap();
+
+    // Insert scrobble 4: Episode, watched 10 days ago (outside 7d range), Breaking Bad
+    sqlx::query(
+        "INSERT INTO scrobbles (id, user_id, media_type, title, grandparent_title, duration_ms, view_offset_ms, watched_at, created_at, directors, actors, genres) \
+         VALUES ('s4', ?, 'episode', 'Pilot', 'Breaking Bad', 3600000, 3600000, ?, ?, 'Vince Gilligan', 'Bryan Cranston', 'Drama, Crime')"
+    )
+    .bind(user_id).bind(&d10).bind(&d10)
+    .execute(&pool).await.unwrap();
+
+    // Test 1: All stats
+    let req = Request::builder()
+        .uri("/api/v1/stats")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let stats: StatsSummary = serde_json::from_slice(&body).unwrap();
+
+    assert_eq!(stats.total_scrobbles, 4);
+    assert_eq!(stats.movies_watched, 2);
+    assert_eq!(stats.unique_movies, 2);
+    assert_eq!(stats.episodes_watched, 2);
+    assert_eq!(stats.unique_shows, 1);
+    assert_eq!(stats.total_rated, 2);
+    assert_eq!(stats.average_rating, Some(9.0)); // (10 + 8) / 2
+    assert_eq!(stats.completion_rate_percent, 100.0);
+    assert_eq!(stats.day_of_week_activity.len(), 7);
+    assert_eq!(stats.time_of_day_activity.len(), 4);
+    assert!(!stats.top_directors.is_empty());
+    assert_eq!(stats.top_directors[0].name, "Christopher Nolan");
+    assert_eq!(stats.top_directors[0].count, 2);
+
+    // Test 2: Filter by media_type=movie
+    let req = Request::builder()
+        .uri("/api/v1/stats?media_type=movie")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let stats_movies: StatsSummary = serde_json::from_slice(&body).unwrap();
+
+    assert_eq!(stats_movies.total_scrobbles, 2);
+    assert_eq!(stats_movies.movies_watched, 2);
+    assert_eq!(stats_movies.episodes_watched, 0);
+    assert_eq!(stats_movies.top_shows.len(), 0);
+    assert_eq!(stats_movies.top_movies.len(), 2);
+
+    // Test 3: Filter by time_range=7d (excludes the 10-day-old episode)
+    let req = Request::builder()
+        .uri("/api/v1/stats?time_range=7d")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let stats_7d: StatsSummary = serde_json::from_slice(&body).unwrap();
+
+    assert_eq!(stats_7d.total_scrobbles, 3);
+    assert_eq!(stats_7d.movies_watched, 2);
+    assert_eq!(stats_7d.episodes_watched, 1);
+}
+
+#[tokio::test]
 async fn test_scrobble_progress_threshold_and_deduplication() {
     let (app, pool, config) = setup_test_app().await;
 
@@ -3685,4 +3798,77 @@ async fn test_plex_webhook_username_filtering() {
         .await
         .unwrap();
     assert_eq!(post_cache_count, 4);
+}
+
+#[tokio::test]
+async fn test_search_all_history_regardless_of_date_and_return_all_results() {
+    let (app, pool, config) = setup_test_app().await;
+
+    let user_id = "test_user_search_all";
+    sqlx::query("INSERT INTO users (id, email, display_name, webhook_token, role) VALUES (?, ?, ?, ?, 'user')")
+        .bind(user_id)
+        .bind("search_all@test.local")
+        .bind("Search All Tester")
+        .bind("token_search_all_123")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let token = bingesync::auth::jwt::create_jwt(user_id, "search_all@test.local", &config.jwt_secret).unwrap();
+
+    // Insert Matrix movies in three different years/months
+    // 1. The Matrix in 2021-06-15
+    sqlx::query("INSERT INTO scrobbles (id, user_id, media_type, title, watched_at, created_at) VALUES ('m1', ?, 'movie', 'The Matrix', '2021-06-15T20:00:00Z', '2021-06-15T20:00:00Z')")
+        .bind(user_id).execute(&pool).await.unwrap();
+    // 2. The Matrix Reloaded in 2022-09-10
+    sqlx::query("INSERT INTO scrobbles (id, user_id, media_type, title, watched_at, created_at) VALUES ('m2', ?, 'movie', 'The Matrix Reloaded', '2022-09-10T20:00:00Z', '2022-09-10T20:00:00Z')")
+        .bind(user_id).execute(&pool).await.unwrap();
+    // 3. The Matrix Revolutions in 2024-01-20
+    sqlx::query("INSERT INTO scrobbles (id, user_id, media_type, title, watched_at, created_at) VALUES ('m3', ?, 'movie', 'The Matrix Revolutions', '2024-01-20T20:00:00Z', '2024-01-20T20:00:00Z')")
+        .bind(user_id).execute(&pool).await.unwrap();
+    // 4. Non-matching film in 2024-01-21
+    sqlx::query("INSERT INTO scrobbles (id, user_id, media_type, title, watched_at, created_at) VALUES ('m4', ?, 'movie', 'Avatar', '2024-01-21T20:00:00Z', '2024-01-21T20:00:00Z')")
+        .bind(user_id).execute(&pool).await.unwrap();
+
+    // 1. Regular search with date filter for 2024-01 only returns 1 result
+    let req = Request::builder()
+        .uri("/api/v1/timeline?search=Matrix&date=2024-01")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let days: Vec<bingesync::models::scrobble::TimelineDay> = serde_json::from_slice(&body).unwrap();
+    assert_eq!(days.len(), 1);
+    assert_eq!(days[0].items.len(), 1);
+    assert_eq!(days[0].items[0].title, "The Matrix Revolutions");
+
+    // 2. Search across ALL history regardless of date (all=true & all_dates=true, even with date=2024-01 provided)
+    let req = Request::builder()
+        .uri("/api/v1/timeline?search=Matrix&date=2024-01&all=true&all_dates=true")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let all_days: Vec<bingesync::models::scrobble::TimelineDay> = serde_json::from_slice(&body).unwrap();
+    assert_eq!(all_days.len(), 3);
+    let all_titles: Vec<String> = all_days.into_iter().flat_map(|d| d.items).map(|i| i.title).collect();
+    assert_eq!(all_titles, vec!["The Matrix Revolutions", "The Matrix Reloaded", "The Matrix"]);
+
+    // 3. History endpoint with all=true returns all results without page clamping
+    let req = Request::builder()
+        .uri("/api/v1/history?search=Matrix&all=true")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let history: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(history["total"], 3);
+    assert_eq!(history["items"].as_array().unwrap().len(), 3);
+    assert_eq!(history["total_pages"], 1);
 }

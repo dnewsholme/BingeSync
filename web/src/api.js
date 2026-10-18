@@ -51,8 +51,10 @@ export const api = {
   logout: () => request('/auth/logout', { method: 'POST' }),
   getTimeline: (params = {}) => {
     let url = `/timeline?limit=${params.limit || 50}&offset=${params.offset || 0}`;
+    if (params.all || params.all_results) url += `&all=true`;
+    if (params.all_dates) url += `&all_dates=true`;
     if (params.search) url += `&search=${encodeURIComponent(params.search)}`;
-    if (params.date) url += `&date=${encodeURIComponent(params.date)}`;
+    if (params.date && !params.all_dates) url += `&date=${encodeURIComponent(params.date)}`;
     if (params.genre) url += `&genre=${encodeURIComponent(params.genre)}`;
     if (params.person) url += `&person=${encodeURIComponent(params.person)}`;
     if (params.rating && params.rating !== 'all') url += `&rating=${encodeURIComponent(params.rating)}`;
@@ -66,9 +68,11 @@ export const api = {
       ? { page: arg1, limit: limitArg || 20, media_type: mediaTypeArg || 'all', search: searchArg || '' }
       : arg1;
     let url = `/history?page=${params.page || 1}&limit=${params.limit || 20}`;
+    if (params.all || params.all_results) url += `&all=true`;
+    if (params.all_dates) url += `&all_dates=true`;
     if (params.media_type && params.media_type !== 'all') url += `&media_type=${encodeURIComponent(params.media_type)}`;
     if (params.search) url += `&search=${encodeURIComponent(params.search)}`;
-    if (params.date) url += `&date=${encodeURIComponent(params.date)}`;
+    if (params.date && !params.all_dates) url += `&date=${encodeURIComponent(params.date)}`;
     if (params.genre) url += `&genre=${encodeURIComponent(params.genre)}`;
     if (params.person) url += `&person=${encodeURIComponent(params.person)}`;
     if (params.rating && params.rating !== 'all') url += `&rating=${encodeURIComponent(params.rating)}`;
@@ -94,7 +98,23 @@ export const api = {
     request(`/history/${id}/refresh-metadata`, {
       method: 'POST',
     }),
-  getStats: () => request('/stats'),
+  getStats: (params = {}) => {
+    const query = new URLSearchParams();
+    if (params.media_type && params.media_type !== 'all') {
+      query.append('media_type', params.media_type);
+    }
+    if (params.time_range && params.time_range !== 'all') {
+      query.append('time_range', params.time_range);
+    }
+    if (params.start_date) {
+      query.append('start_date', params.start_date);
+    }
+    if (params.end_date) {
+      query.append('end_date', params.end_date);
+    }
+    const qStr = query.toString();
+    return request(qStr ? `/stats?${qStr}` : '/stats');
+  },
   getNowPlaying: () => request('/now-playing'),
   getWebhookInfo: () => request('/user/webhook'),
   regenerateWebhookToken: () =>

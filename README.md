@@ -16,11 +16,11 @@ Designed for self-hosters and families, BingeSync features **multi-user support*
 - 🔄 **Real-Time Plex Scrobbling**: Supports standard Plex `multipart/form-data` and JSON webhook payloads. Automatically captures `media.scrobble`, `media.play`, `media.pause`, `media.resume`, and `media.stop` events.
 - 👥 **Multi-User Isolation**: Every user receives their own isolated watch history and a unique Plex Webhook URL.
 - 📅 **Interactive Watch Timeline**: Grouped daily records with date filtering, genre filtering, director/actor search, star rating filter, and one-click daily watch history deletion.
-- 🔍 **Search & Filters**: Instant full-text search across movie and TV show titles, with multi-select batch deletion.
+- 🔍 **Search & Filters**: Instant full-text search across movie and TV show titles with an option to search across all history regardless of date, plus multi-select batch deletion.
 - 📺 **Show-Wide Deletion**: One-click action on show detail pages to purge all logged scrobbles for that series.
 - 🌐 **IMDb Deep Links**: Direct links from scrobble cards and details modal to title pages on IMDb.
 - 🧹 **Radarr & Sonarr Library Integration**: Detects whether completed movies or series exist in your Radarr/Sonarr libraries, with an optional one-click cleanup to remove and delete media files from disk after binging.
-- 📊 **Binge Statistics & Visual Charts**: Interactive charts featuring a 14-day stacked activity bar chart, top genres distribution, TV vs Movie time split, top TV series, and top watched movies.
+- 📊 **Binge Statistics & Visual Charts**: Comprehensive interactive charts featuring a 14-day stacked activity bar chart, top genres distribution, TV vs Movie split, top TV series, top watched movies, watch streaks, weekly pace, rating averages, peak viewing day, time-of-day/day-of-week breakdown, and dynamic media type and time range filters (7D, 30D, 90D, 1Y, All Time, Custom).
 - ⭐ **Star Ratings & Reviews**: Rate movies and episodes from 1 to 10 directly in the detail modal or during manual logging, with star filters and instant unrating.
 - 📥 **Trakt.tv ZIP & Export Import**: Direct import of Trakt.tv multi-file `.zip` export archives, JSON, and CSV exports. Automatically aggregates paginated history and rating files, matches ratings to scrobbles, and sorts all entries chronologically.
 - 📜 **Tautulli Playback Import**: Connect directly to your Tautulli instance or paste/upload JSON/CSV exports. Choose from discovered users (defaulting to your OIDC `preferred_username`) with robust 3-way deduplication against existing records.
@@ -34,7 +34,7 @@ Designed for self-hosters and families, BingeSync features **multi-user support*
 - 🔐 **OpenID Connect (OIDC) SSO**: Enterprise-grade authentication compatible with Authentik, Keycloak, Authelia, Okta, and Google (with PKCE RFC 7636).
 - ⚡ **Lightweight Single-Binary**: Written in Rust (`axum`, `tokio`, `sqlx`) with the web frontend embedded directly into the binary via `rust-embed`.
 - 🗄️ **Zero-Maintenance SQLite**: Fast, crash-safe embedded database running with Write-Ahead Logging (`WAL`) mode and automatic schema migrations.
-- 🧪 **Thoroughly Tested**: 24 Rust backend integration tests and 19 Playwright browser E2E tests.
+- 🧪 **Thoroughly Tested**: 30 Rust backend integration tests and 22 Playwright browser E2E tests.
 
 ---
 
@@ -130,7 +130,11 @@ All configuration options can be passed via environment variables:
 | `DEV_LOGIN_ENABLED` | `true` | Allows local email/username sign-in |
 | `TVDB_API_KEY` | *(none)* | TheTVDB v4 API key for background metadata enrichment |
 | `TVDB_PIN` | *(none)* | Optional subscriber PIN for user-subscription TheTVDB API keys |
-| `IMAGE_CACHE_DIR` | `./data/images` | Directory path on disk where media poster images are cached |
+| `TVDB_BASE_URL` | `https://api4.thetvdb.com/v4` | TheTVDB v4 API base URL |
+| `SCROBBLE_THRESHOLD_PERCENT` | `80` | Percentage of media playback required to mark as watched |
+| `IMAGE_CACHE_DIR` | `/data/images` | Directory path on disk where media poster images are cached |
+| `TAUTULLI_URL` | *(none)* | Base URL of Tautulli instance for playback history import |
+| `TAUTULLI_API_KEY` | *(none)* | API key for Tautulli instance |
 
 ---
 
@@ -164,25 +168,33 @@ BingeSync provides a comprehensive REST API:
 - `POST /api/v1/auth/logout` — Clears authentication cookie.
 - `POST /api/v1/auth/backchannel-logout` — OpenID Connect Back-Channel Logout 1.0 endpoint. Receives `logout_token` when user access is revoked, terminated, or group membership is removed by the IdP.
 
-### Administration
+### Administration & System Control
 - `GET    /api/v1/admin/users` — Lists all registered users with scrobble counts and roles (requires admin role).
 - `DELETE /api/v1/admin/users/:id` — Cascading delete for a user account, including all their scrobbles and active sessions (requires admin role).
+- `GET    /api/v1/admin/settings` — Get system-wide administration configuration and defaults (requires admin role).
+- `POST   /api/v1/admin/settings` — Update system-wide configuration keys (requires admin role).
+- `GET    /api/v1/admin/logs` — View real-time in-memory application log buffer (requires admin role).
+- `GET    /api/v1/admin/tasks` — List background workers, status, last run, and next scheduled execution (requires admin role).
+- `POST   /api/v1/admin/tasks/:name/run` — Trigger background worker on demand (requires admin role).
 
 ### Webhooks
 - `POST /api/v1/webhooks/plex/:token` — Handles Plex webhook events (multipart or JSON).
 - `POST /api/v1/webhooks/plex?token=:token` — Query-parameter alternative.
 
 ### History & Deletion
-- `GET    /api/v1/history` — Paginated scrobble history with query parameters for `page`, `limit`, `media_type`, `search`, `date`, `genre`, `person`, `rating`, `watch_status`.
+- `GET    /api/v1/history` — Paginated scrobble history with query parameters for `page`, `limit`, `media_type`, `search`, `date`, `genre`, `person`, `rating`, `watch_status`, and `all` (search across all history regardless of date and return all matching results).
 - `POST   /api/v1/history` — Manually record a scrobble.
 - `DELETE /api/v1/history/:id` — Delete a single scrobble.
 - `DELETE /api/v1/history/by-show?show=:title` — Delete all scrobbles for a TV show.
 - `POST   /api/v1/history/delete-batch` — Batch delete multiple scrobbles with `{ "ids": [...] }`.
 - `DELETE /api/v1/history/by-date?date=:yyyy-mm-dd` — Delete all scrobbles for a specific day.
+- `POST   /api/v1/history/rate` — Rate a watched item (1-10) or unrate with `{ "scrobble_id": 123, "rating": 8 }`.
+- `POST   /api/v1/history/refresh-metadata` — Re-fetch and enrich metadata for a specific scrobble from TheTVDB.
+- `GET    /api/v1/history/other-watches?scrobble_id=...` — Retrieve other watches for the exact same movie or TV episode.
 
 ### Timeline & Stats
-- `GET /api/v1/timeline` — Grouped daily timeline entries with filters (`search`, `date`, `genre`, `person`, `rating`, `watch_status`).
-- `GET /api/v1/stats` — Overall watch metrics, TV vs movie breakdown, 14-day activity, top genres, and top TV shows.
+- `GET /api/v1/timeline` — Grouped daily timeline entries with filters (`search`, `date`, `genre`, `person`, `rating`, `watch_status`, and `all_dates`).
+- `GET /api/v1/stats` — Overall watch metrics, TV vs movie breakdown, watch streaks, weekly pace, rating averages, peak viewing day, 14-day activity, top genres, top TV shows, top watched movies, and filterable by `media_type` and `time_range`.
 - `GET /api/v1/now-playing` — Active playback state and progress offset.
 
 ### Radarr & Sonarr Integrations
@@ -194,11 +206,15 @@ BingeSync provides a comprehensive REST API:
   - `"delete_season"`: Delete episode files for a specific season and unmonitor the season (`{ "series_id": 123, "action": "delete_season", "season_number": 2 }`).
   - `"delete_all_files_unmonitor"`: Delete all episode files across all seasons and unmonitor all seasons (`{ "series_id": 123, "action": "delete_all_files_unmonitor" }`).
 
-### Trakt Import
+### Trakt & Tautulli Import
 - `POST /api/v1/import/trakt` — Import watch history and ratings from Trakt.tv multi-file `.zip` export archives, JSON, or CSV export files (automatically sorted chronologically).
+- `GET  /api/v1/import/tautulli/users` — Discover and list users from connected Tautulli instance.
+- `POST /api/v1/import/tautulli` — Import watch history from Tautulli API, JSON, or CSV with 3-way deduplication.
 
-### Image Cache
+### Image Cache & API Documentation
 - `GET  /api/v1/images/:filename` — Serves cached media poster images from disk with immutable caching headers.
+- `GET  /docs` or `/swagger` — Interactive Swagger UI documentation.
+- `GET  /api/v1/openapi.json` — Full OpenAPI 3.0 specification.
 
 ### User Settings & Connected Services
 - `GET  /api/v1/user/settings` — Retrieve personal settings (Plex username filter, Radarr, Sonarr, Tautulli credentials with secrets masked).

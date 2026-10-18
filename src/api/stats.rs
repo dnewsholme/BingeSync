@@ -1,148 +1,277 @@
 use axum::{
-    extract::State,
+    extract::{Query, State},
     http::StatusCode,
     Json,
 };
 use chrono::{Duration, NaiveDate, Utc};
-use std::collections::HashSet;
+use serde::Deserialize;
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use crate::{
     api::AppState,
     auth::AuthUser,
-    models::{StatsSummary, TopMovieItem, TopShowItem},
+    models::{
+        DailyActivityItem, DayOfWeekActivity, GenreCountItem, StatsSummary, TimeOfDayActivity,
+        TopMovieItem, TopPersonItem, TopShowItem,
+    },
 };
+
+#[derive(Debug, Deserialize, Default)]
+pub struct StatsQuery {
+    pub media_type: Option<String>,
+    pub time_range: Option<String>,
+    pub start_date: Option<String>,
+    pub end_date: Option<String>,
+}
 
 pub async fn get_user_stats(
     State(state): State<AppState>,
     auth: AuthUser,
+    Query(query): Query<StatsQuery>,
 ) -> Result<Json<StatsSummary>, (StatusCode, Json<serde_json::Value>)> {
-    // 1. Total counts
-    let total_scrobbles: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM scrobbles WHERE user_id = ?"
-    )
-    .bind(&auth.user_id)
-    .fetch_one(&state.pool)
-    .await
-    .unwrap_or(0);
+    let media_type_param = query.media_type.as_deref().unwrap_or("all").to_lowercase();
+    let is_movie_filter = media_type_param == "movie";
+    let is_tv_filter = media_type_param == "episode" || media_type_param == "tv";
 
-    let movies_watched: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM scrobbles WHERE user_id = ? AND media_type = 'movie'"
-    )
-    .bind(&auth.user_id)
-    .fetch_one(&state.pool)
-    .await
-    .unwrap_or(0);
+    // Build time range filter clause
+    let (time_clause, time_start, time_end) = match query.time_range.as_deref().map(|s| s.to_lowercase()) {
+        Some(ref r) if r == "7d" => (Some("watched_at >= datetime('now', '-7 days')".to_string()), None, None),
+        Some(ref r) if r == "30d" => (Some("watched_at >= datetime('now', '-30 days')".to_string()), None, None),
+        Some(ref r) if r == "90d" => (Some("watched_at >= datetime('now', '-90 days')".to_string()), None, None),
+        Some(ref r) if r == "year" || r == "365d" => (Some("watched_at >= datetime('now', '-365 days')".to_string()), None, None),
+        _ => {
+            if let (Some(ref s), Some(ref e)) = (&query.start_date, &query.end_date) {
+                (Some("watched_at >= ? AND watched_at <= ?".to_string()), Some(s.clone()), Some(e.clone()))
+            } else if let Some(ref s) = query.start_date {
+                (Some("watched_at >= ?".to_string()), Some(s.clone()), None)
+            } else if let Some(ref e) = query.end_date {
+                (Some("watched_at <= ?".to_string()), None, Some(e.clone()))
+            } else {
+                (None, None, None)
+            }
+        }
+    };
 
-    let episodes_watched: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM scrobbles WHERE user_id = ? AND media_type = 'episode'"
-    )
-    .bind(&auth.user_id)
-    .fetch_one(&state.pool)
-    .await
-    .unwrap_or(0);
+    let time_clause_str = match &time_clause {
+        Some(clause) => format!(" AND {}", clause),
+        None => "".to_string(),
+    };
 
-    let total_duration_ms: Option<i64> = sqlx::query_scalar(
-        "SELECT SUM(duration_ms) FROM scrobbles WHERE user_id = ?"
-    )
-    .bind(&auth.user_id)
-    .fetch_one(&state.pool)
-    .await
-    .unwrap_or(None);
+    let media_clause = if is_movie_filter {
+        " AND media_type = 'movie'"
+    } else if is_tv_filter {
+        " AND media_type = 'episode'"
+    } else {
+        ""
+    };
 
-    let total_minutes = total_duration_ms.unwrap_or(0) / 60_000;
+    // 1. Movie metrics
+    let (movies_watched, unique_movies, movie_minutes) = if is_tv_filter {
+        (0, 0, 0)
+    } else {
+        let movies_sql = format!(
+            "SELECT COUNT(*) FROM scrobbles WHERE user_id = ? AND media_type = 'movie'{}",
+            time_clause_str
+        );
+        let mut q = sqlx::query_scalar::<_, i64>(&movies_sql).bind(&auth.user_id);
+        if let Some(ref s) = time_start { q = q.bind(s); }
+        if let Some(ref e) = time_end { q = q.bind(e); }
+        let mw = q.fetch_one(&state.pool).await.unwrap_or(0);
 
-    let movie_duration_ms: Option<i64> = sqlx::query_scalar(
-        "SELECT SUM(duration_ms) FROM scrobbles WHERE user_id = ? AND media_type = 'movie'"
-    )
-    .bind(&auth.user_id)
-    .fetch_one(&state.pool)
-    .await
-    .unwrap_or(None);
-    let movie_minutes = movie_duration_ms.unwrap_or(0) / 60_000;
+        let unique_movies_sql = format!(
+            "SELECT COUNT(DISTINCT title) FROM scrobbles WHERE user_id = ? AND media_type = 'movie'{}",
+            time_clause_str
+        );
+        let mut q = sqlx::query_scalar::<_, i64>(&unique_movies_sql).bind(&auth.user_id);
+        if let Some(ref s) = time_start { q = q.bind(s); }
+        if let Some(ref e) = time_end { q = q.bind(e); }
+        let um = q.fetch_one(&state.pool).await.unwrap_or(0);
 
-    let ep_duration_ms: Option<i64> = sqlx::query_scalar(
-        "SELECT SUM(duration_ms) FROM scrobbles WHERE user_id = ? AND media_type = 'episode'"
-    )
-    .bind(&auth.user_id)
-    .fetch_one(&state.pool)
-    .await
-    .unwrap_or(None);
-    let episode_minutes = ep_duration_ms.unwrap_or(0) / 60_000;
+        let movie_dur_sql = format!(
+            "SELECT SUM(duration_ms) FROM scrobbles WHERE user_id = ? AND media_type = 'movie'{}",
+            time_clause_str
+        );
+        let mut q = sqlx::query_scalar::<_, Option<i64>>(&movie_dur_sql).bind(&auth.user_id);
+        if let Some(ref s) = time_start { q = q.bind(s); }
+        if let Some(ref e) = time_end { q = q.bind(e); }
+        let mm = q.fetch_one(&state.pool).await.unwrap_or(None).unwrap_or(0) / 60_000;
 
-    // 2. Top TV shows
-    let top_shows_rows: Vec<(String, i64, Option<String>)> = sqlx::query_as(
-        r#"
-        SELECT grandparent_title, COUNT(*) as cnt, MAX(thumb_url) as thumb
-        FROM scrobbles
-        WHERE user_id = ? AND media_type = 'episode' AND grandparent_title IS NOT NULL
-        GROUP BY grandparent_title
-        ORDER BY cnt DESC
-        LIMIT 5
-        "#,
-    )
-    .bind(&auth.user_id)
-    .fetch_all(&state.pool)
-    .await
-    .unwrap_or_default();
+        (mw, um, mm)
+    };
 
-    let top_shows = top_shows_rows
-        .into_iter()
-        .map(|(show_title, count, thumb_url)| TopShowItem {
-            show_title,
-            count,
-            thumb_url,
-        })
-        .collect();
+    // 2. TV episode metrics
+    let (episodes_watched, unique_shows, episode_minutes) = if is_movie_filter {
+        (0, 0, 0)
+    } else {
+        let episodes_sql = format!(
+            "SELECT COUNT(*) FROM scrobbles WHERE user_id = ? AND media_type = 'episode'{}",
+            time_clause_str
+        );
+        let mut q = sqlx::query_scalar::<_, i64>(&episodes_sql).bind(&auth.user_id);
+        if let Some(ref s) = time_start { q = q.bind(s); }
+        if let Some(ref e) = time_end { q = q.bind(e); }
+        let ew = q.fetch_one(&state.pool).await.unwrap_or(0);
 
-    // 2b. Top Movies
-    let top_movies_rows: Vec<(String, i64, Option<String>, Option<i32>)> = sqlx::query_as(
-        r#"
-        SELECT title, COUNT(*) as cnt, MAX(thumb_url) as thumb, MAX(year) as yr
-        FROM scrobbles
-        WHERE user_id = ? AND media_type = 'movie'
-        GROUP BY title
-        ORDER BY cnt DESC
-        LIMIT 5
-        "#,
-    )
-    .bind(&auth.user_id)
-    .fetch_all(&state.pool)
-    .await
-    .unwrap_or_default();
+        let unique_shows_sql = format!(
+            "SELECT COUNT(DISTINCT grandparent_title) FROM scrobbles WHERE user_id = ? AND media_type = 'episode' AND grandparent_title IS NOT NULL{}",
+            time_clause_str
+        );
+        let mut q = sqlx::query_scalar::<_, i64>(&unique_shows_sql).bind(&auth.user_id);
+        if let Some(ref s) = time_start { q = q.bind(s); }
+        if let Some(ref e) = time_end { q = q.bind(e); }
+        let us = q.fetch_one(&state.pool).await.unwrap_or(0);
 
-    let top_movies = top_movies_rows
-        .into_iter()
-        .map(|(title, count, thumb_url, year)| TopMovieItem {
-            title,
-            count,
-            thumb_url,
-            year,
-        })
-        .collect();
+        let ep_dur_sql = format!(
+            "SELECT SUM(duration_ms) FROM scrobbles WHERE user_id = ? AND media_type = 'episode'{}",
+            time_clause_str
+        );
+        let mut q = sqlx::query_scalar::<_, Option<i64>>(&ep_dur_sql).bind(&auth.user_id);
+        if let Some(ref s) = time_start { q = q.bind(s); }
+        if let Some(ref e) = time_end { q = q.bind(e); }
+        let em = q.fetch_one(&state.pool).await.unwrap_or(None).unwrap_or(0) / 60_000;
 
-    // 3. Current streak calculation (in days)
-    let watch_dates_raw: Vec<String> = sqlx::query_scalar(
-        r#"
-        SELECT DISTINCT substr(watched_at, 1, 10) as dt
-        FROM scrobbles
-        WHERE user_id = ?
-        ORDER BY dt DESC
-        LIMIT 60
-        "#,
-    )
-    .bind(&auth.user_id)
-    .fetch_all(&state.pool)
-    .await
-    .unwrap_or_default();
+        (ew, us, em)
+    };
 
-    let date_set: HashSet<NaiveDate> = watch_dates_raw
+    // 3. Totals (matching active filter)
+    let (total_scrobbles, total_minutes) = if is_movie_filter {
+        (movies_watched, movie_minutes)
+    } else if is_tv_filter {
+        (episodes_watched, episode_minutes)
+    } else {
+        (movies_watched + episodes_watched, movie_minutes + episode_minutes)
+    };
+
+    // 4. Ratings and completion rate
+    let rating_sql = format!(
+        "SELECT AVG(user_rating), COUNT(CASE WHEN user_rating IS NOT NULL AND user_rating > 0 THEN 1 END), COUNT(CASE WHEN watch_status = 'completed' THEN 1 END), COUNT(*) FROM scrobbles WHERE user_id = ?{}{}",
+        media_clause,
+        time_clause_str
+    );
+    let mut q = sqlx::query_as::<_, (Option<f64>, i64, i64, i64)>(&rating_sql).bind(&auth.user_id);
+    if let Some(ref s) = time_start { q = q.bind(s); }
+    if let Some(ref e) = time_end { q = q.bind(e); }
+    let (avg_rating, total_rated, completed_cnt, total_matching) = q.fetch_one(&state.pool).await.unwrap_or((None, 0, 0, 0));
+    let average_rating = avg_rating.map(|r| (r * 10.0).round() / 10.0);
+    let completion_rate_percent = if total_matching > 0 {
+        ((completed_cnt as f64 / total_matching as f64) * 1000.0).round() / 10.0
+    } else {
+        100.0
+    };
+
+    // 5. Peak watching day in time range
+    let peak_sql = format!(
+        "SELECT substr(watched_at, 1, 10) as dt, COUNT(*) as cnt FROM scrobbles WHERE user_id = ?{}{} GROUP BY dt ORDER BY cnt DESC LIMIT 1",
+        media_clause,
+        time_clause_str
+    );
+    let mut q = sqlx::query_as::<_, (String, i64)>(&peak_sql).bind(&auth.user_id);
+    if let Some(ref s) = time_start { q = q.bind(s); }
+    if let Some(ref e) = time_end { q = q.bind(e); }
+    let (peak_day, peak_day_count) = match q.fetch_optional(&state.pool).await.unwrap_or(None) {
+        Some((dt, cnt)) => (Some(dt), cnt),
+        None => (None, 0),
+    };
+
+    // 6. Day of week activity
+    let dow_sql = format!(
+        "SELECT strftime('%w', watched_at) as dow, COUNT(*) as cnt FROM scrobbles WHERE user_id = ?{}{} GROUP BY dow",
+        media_clause,
+        time_clause_str
+    );
+    let mut q = sqlx::query_as::<_, (String, i64)>(&dow_sql).bind(&auth.user_id);
+    if let Some(ref s) = time_start { q = q.bind(s); }
+    if let Some(ref e) = time_end { q = q.bind(e); }
+    let dow_rows: Vec<(String, i64)> = q.fetch_all(&state.pool).await.unwrap_or_default();
+    let mut dow_map: HashMap<u32, i64> = HashMap::new();
+    for (dow_str, cnt) in dow_rows {
+        if let Ok(num) = dow_str.parse::<u32>() {
+            dow_map.insert(num, cnt);
+        }
+    }
+    let days_order = [
+        ("Mon", 1), ("Tue", 2), ("Wed", 3), ("Thu", 4),
+        ("Fri", 5), ("Sat", 6), ("Sun", 0),
+    ];
+    let day_of_week_activity: Vec<DayOfWeekActivity> = days_order.iter().map(|(name, idx)| {
+        DayOfWeekActivity {
+            day: name.to_string(),
+            day_index: *idx,
+            count: *dow_map.get(idx).unwrap_or(&0),
+        }
+    }).collect();
+
+    // 7. Time of day watching habits
+    let tod_sql = format!(
+        "SELECT strftime('%H', watched_at) as hr, COUNT(*) as cnt FROM scrobbles WHERE user_id = ?{}{} GROUP BY hr",
+        media_clause,
+        time_clause_str
+    );
+    let mut q = sqlx::query_as::<_, (String, i64)>(&tod_sql).bind(&auth.user_id);
+    if let Some(ref s) = time_start { q = q.bind(s); }
+    if let Some(ref e) = time_end { q = q.bind(e); }
+    let hr_rows: Vec<(String, i64)> = q.fetch_all(&state.pool).await.unwrap_or_default();
+    let mut morning = 0;   // 06:00 - 11:59
+    let mut afternoon = 0; // 12:00 - 16:59
+    let mut evening = 0;   // 17:00 - 21:59
+    let mut night = 0;     // 22:00 - 05:59
+    for (hr_str, cnt) in hr_rows {
+        if let Ok(hr) = hr_str.parse::<u32>() {
+            match hr {
+                6..=11 => morning += cnt,
+                12..=16 => afternoon += cnt,
+                17..=21 => evening += cnt,
+                _ => night += cnt,
+            }
+        }
+    }
+    let tod_total = (morning + afternoon + evening + night).max(1) as f64;
+    let time_of_day_activity = vec![
+        TimeOfDayActivity { period: "Morning".to_string(), count: morning, percentage: ((morning as f64 / tod_total) * 1000.0).round() / 10.0 },
+        TimeOfDayActivity { period: "Afternoon".to_string(), count: afternoon, percentage: ((afternoon as f64 / tod_total) * 1000.0).round() / 10.0 },
+        TimeOfDayActivity { period: "Evening".to_string(), count: evening, percentage: ((evening as f64 / tod_total) * 1000.0).round() / 10.0 },
+        TimeOfDayActivity { period: "Night".to_string(), count: night, percentage: ((night as f64 / tod_total) * 1000.0).round() / 10.0 },
+    ];
+
+    // 8. Streak calculations & active days
+    let dates_sql = format!(
+        "SELECT DISTINCT substr(watched_at, 1, 10) as dt FROM scrobbles WHERE user_id = ?{} ORDER BY dt ASC",
+        media_clause
+    );
+    let watch_dates_raw: Vec<String> = sqlx::query_scalar(&dates_sql)
+        .bind(&auth.user_id)
+        .fetch_all(&state.pool)
+        .await
+        .unwrap_or_default();
+
+    let mut date_list: Vec<NaiveDate> = watch_dates_raw
         .iter()
         .filter_map(|d| NaiveDate::parse_from_str(d, "%Y-%m-%d").ok())
         .collect();
+    date_list.sort();
 
+    let mut longest_streak_days = 0;
+    let mut current_run = 0;
+    let mut prev_d: Option<NaiveDate> = None;
+    for d in &date_list {
+        if let Some(prev) = prev_d {
+            if *d == prev + Duration::days(1) {
+                current_run += 1;
+            } else if *d != prev {
+                current_run = 1;
+            }
+        } else {
+            current_run = 1;
+        }
+        prev_d = Some(*d);
+        if current_run > longest_streak_days {
+            longest_streak_days = current_run;
+        }
+    }
+
+    let date_set: HashSet<NaiveDate> = date_list.iter().cloned().collect();
     let today = Utc::now().date_naive();
     let yesterday = today - Duration::days(1);
-
     let mut current_streak_days = 0;
     let mut check_date = if date_set.contains(&today) {
         today
@@ -151,7 +280,6 @@ pub async fn get_user_stats(
     } else {
         today
     };
-
     if date_set.contains(&check_date) {
         while date_set.contains(&check_date) {
             current_streak_days += 1;
@@ -159,50 +287,64 @@ pub async fn get_user_stats(
         }
     }
 
-    // 4. Daily activity (past 14 days)
-    let daily_rows: Vec<(String, String)> = sqlx::query_as(
-        r#"
-        SELECT substr(watched_at, 1, 10) as dt, media_type
-        FROM scrobbles
-        WHERE user_id = ? AND watched_at >= date('now', '-14 days')
-        ORDER BY dt ASC
-        "#,
-    )
-    .bind(&auth.user_id)
-    .fetch_all(&state.pool)
-    .await
-    .unwrap_or_default();
+    let active_days_count = date_set.len().max(1) as i64;
+    let avg_daily_minutes = total_minutes / active_days_count;
 
-    let mut daily_map: std::collections::BTreeMap<String, (i64, i64)> = std::collections::BTreeMap::new();
-    for (dt, m_type) in daily_rows {
-        let entry = daily_map.entry(dt).or_insert((0, 0));
-        if m_type == "movie" {
-            entry.0 += 1;
-        } else {
-            entry.1 += 1;
-        }
-    }
+    // 9. Top TV Shows (filtered by time range, empty if movie filter)
+    let top_shows: Vec<TopShowItem> = if !is_movie_filter {
+        let top_shows_sql = format!(
+            r#"
+            SELECT grandparent_title, COUNT(*) as cnt, MAX(thumb_url) as thumb
+            FROM scrobbles
+            WHERE user_id = ? AND media_type = 'episode' AND grandparent_title IS NOT NULL{}
+            GROUP BY grandparent_title
+            ORDER BY cnt DESC
+            LIMIT 6
+            "#,
+            time_clause_str
+        );
+        let mut q = sqlx::query_as::<_, (String, i64, Option<String>)>(&top_shows_sql).bind(&auth.user_id);
+        if let Some(ref s) = time_start { q = q.bind(s); }
+        if let Some(ref e) = time_end { q = q.bind(e); }
+        let rows: Vec<(String, i64, Option<String>)> = q.fetch_all(&state.pool).await.unwrap_or_default();
+        rows.into_iter().map(|(show_title, count, thumb_url)| TopShowItem { show_title, count, thumb_url }).collect()
+    } else {
+        Vec::new()
+    };
 
-    let daily_activity: Vec<crate::models::DailyActivityItem> = daily_map
-        .into_iter()
-        .map(|(date, (movies, episodes))| crate::models::DailyActivityItem {
-            date,
-            movies,
-            episodes,
-            total: movies + episodes,
-        })
-        .collect();
+    // 10. Top Movies (filtered by time range, empty if TV filter)
+    let top_movies: Vec<TopMovieItem> = if !is_tv_filter {
+        let top_movies_sql = format!(
+            r#"
+            SELECT title, COUNT(*) as cnt, MAX(thumb_url) as thumb, MAX(year) as yr
+            FROM scrobbles
+            WHERE user_id = ? AND media_type = 'movie'{}
+            GROUP BY title
+            ORDER BY cnt DESC
+            LIMIT 6
+            "#,
+            time_clause_str
+        );
+        let mut q = sqlx::query_as::<_, (String, i64, Option<String>, Option<i32>)>(&top_movies_sql).bind(&auth.user_id);
+        if let Some(ref s) = time_start { q = q.bind(s); }
+        if let Some(ref e) = time_end { q = q.bind(e); }
+        let rows: Vec<(String, i64, Option<String>, Option<i32>)> = q.fetch_all(&state.pool).await.unwrap_or_default();
+        rows.into_iter().map(|(title, count, thumb_url, year)| TopMovieItem { title, count, thumb_url, year }).collect()
+    } else {
+        Vec::new()
+    };
 
-    // 5. Top genres
-    let genre_rows: Vec<String> = sqlx::query_scalar(
-        "SELECT genres FROM scrobbles WHERE user_id = ? AND genres IS NOT NULL AND genres != ''"
-    )
-    .bind(&auth.user_id)
-    .fetch_all(&state.pool)
-    .await
-    .unwrap_or_default();
-
-    let mut genre_counts: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
+    // 11. Top Genres (respects active filter & time range)
+    let genres_sql = format!(
+        "SELECT genres FROM scrobbles WHERE user_id = ? AND genres IS NOT NULL AND genres != ''{}{}",
+        media_clause,
+        time_clause_str
+    );
+    let mut q = sqlx::query_scalar::<_, String>(&genres_sql).bind(&auth.user_id);
+    if let Some(ref s) = time_start { q = q.bind(s); }
+    if let Some(ref e) = time_end { q = q.bind(e); }
+    let genre_rows: Vec<String> = q.fetch_all(&state.pool).await.unwrap_or_default();
+    let mut genre_counts: HashMap<String, i64> = HashMap::new();
     for g_str in genre_rows {
         for g in g_str.split(',') {
             let trimmed = g.trim();
@@ -211,24 +353,137 @@ pub async fn get_user_stats(
             }
         }
     }
-    let mut top_genres: Vec<crate::models::GenreCountItem> = genre_counts
+    let mut top_genres: Vec<GenreCountItem> = genre_counts
         .into_iter()
-        .map(|(genre, count)| crate::models::GenreCountItem { genre, count })
+        .map(|(genre, count)| GenreCountItem { genre, count })
         .collect();
     top_genres.sort_by(|a, b| b.count.cmp(&a.count));
-    top_genres.truncate(6);
+    top_genres.truncate(8);
+
+    // 12. Top Actors & Directors (respects active filter & time range)
+    let people_sql = format!(
+        "SELECT actors, directors FROM scrobbles WHERE user_id = ?{}{}",
+        media_clause,
+        time_clause_str
+    );
+    let mut q = sqlx::query_as::<_, (Option<String>, Option<String>)>(&people_sql).bind(&auth.user_id);
+    if let Some(ref s) = time_start { q = q.bind(s); }
+    if let Some(ref e) = time_end { q = q.bind(e); }
+    let people_rows: Vec<(Option<String>, Option<String>)> = q.fetch_all(&state.pool).await.unwrap_or_default();
+
+    let mut actor_counts: HashMap<String, i64> = HashMap::new();
+    let mut director_counts: HashMap<String, i64> = HashMap::new();
+    for (actors_opt, directors_opt) in people_rows {
+        if let Some(actors_str) = actors_opt {
+            for a in actors_str.split(',') {
+                let trimmed = a.trim();
+                if !trimmed.is_empty() {
+                    *actor_counts.entry(trimmed.to_string()).or_insert(0) += 1;
+                }
+            }
+        }
+        if let Some(directors_str) = directors_opt {
+            for d in directors_str.split(',') {
+                let trimmed = d.trim();
+                if !trimmed.is_empty() {
+                    *director_counts.entry(trimmed.to_string()).or_insert(0) += 1;
+                }
+            }
+        }
+    }
+
+    let mut top_actors: Vec<TopPersonItem> = actor_counts
+        .into_iter()
+        .map(|(name, count)| TopPersonItem { name, count })
+        .collect();
+    top_actors.sort_by(|a, b| b.count.cmp(&a.count));
+    top_actors.truncate(6);
+
+    let mut top_directors: Vec<TopPersonItem> = director_counts
+        .into_iter()
+        .map(|(name, count)| TopPersonItem { name, count })
+        .collect();
+    top_directors.sort_by(|a, b| b.count.cmp(&a.count));
+    top_directors.truncate(6);
+
+    // 13. Daily Watch Activity Chart Data (aligned with time range and filter)
+    let days_back = match query.time_range.as_deref().map(|s| s.to_lowercase()) {
+        Some(ref r) if r == "7d" => 7,
+        Some(ref r) if r == "30d" => 30,
+        Some(ref r) if r == "90d" => 30,
+        _ => 14,
+    };
+
+    let daily_sql = format!(
+        "SELECT substr(watched_at, 1, 10) as dt, media_type FROM scrobbles WHERE user_id = ? AND watched_at >= date('now', '-{} days') ORDER BY dt ASC",
+        days_back
+    );
+    let daily_rows: Vec<(String, String)> = sqlx::query_as(&daily_sql)
+        .bind(&auth.user_id)
+        .fetch_all(&state.pool)
+        .await
+        .unwrap_or_default();
+
+    let mut daily_map: BTreeMap<String, (i64, i64)> = BTreeMap::new();
+    let today_naive = Utc::now().date_naive();
+    for i in (0..days_back).rev() {
+        let day = today_naive - Duration::days(i as i64);
+        daily_map.insert(day.format("%Y-%m-%d").to_string(), (0, 0));
+    }
+
+    for (dt, m_type) in daily_rows {
+        if let Some(entry) = daily_map.get_mut(&dt) {
+            if m_type == "movie" {
+                entry.0 += 1;
+            } else {
+                entry.1 += 1;
+            }
+        }
+    }
+
+    let daily_activity: Vec<DailyActivityItem> = daily_map
+        .into_iter()
+        .map(|(date, (movies, episodes))| {
+            let (m, e) = if is_movie_filter {
+                (movies, 0)
+            } else if is_tv_filter {
+                (0, episodes)
+            } else {
+                (movies, episodes)
+            };
+            DailyActivityItem {
+                date,
+                movies: m,
+                episodes: e,
+                total: m + e,
+            }
+        })
+        .collect();
 
     Ok(Json(StatsSummary {
         total_scrobbles,
         movies_watched,
         episodes_watched,
+        unique_movies,
+        unique_shows,
         total_minutes,
         movie_minutes,
         episode_minutes,
+        avg_daily_minutes,
         current_streak_days,
+        longest_streak_days,
+        average_rating,
+        total_rated,
+        completion_rate_percent,
         top_shows,
         top_movies,
         daily_activity,
         top_genres,
+        top_actors,
+        top_directors,
+        day_of_week_activity,
+        time_of_day_activity,
+        peak_day,
+        peak_day_count,
     }))
 }

@@ -23,6 +23,10 @@ pub struct TimelineQuery {
     pub watch_status: Option<String>,
     pub media_type: Option<String>,
     pub search: Option<String>,
+    #[serde(default, alias = "all_results")]
+    pub all: Option<bool>,
+    #[serde(default)]
+    pub all_dates: Option<bool>,
 }
 
 pub async fn get_timeline(
@@ -30,12 +34,19 @@ pub async fn get_timeline(
     auth: AuthUser,
     Query(query): Query<TimelineQuery>,
 ) -> Result<Json<Vec<TimelineDay>>, (StatusCode, Json<serde_json::Value>)> {
+    let all_results = query.all.unwrap_or(false);
+    let all_dates = query.all_dates.unwrap_or(false);
+
     let limit = query.limit.unwrap_or(50).clamp(1, 1000);
     let offset = query.offset.unwrap_or(0).max(0);
 
     let media_type_filter = query.media_type.as_deref().unwrap_or("all");
     let search_filter = query.search.as_deref().unwrap_or("").trim();
-    let date_filter = query.date.as_deref().unwrap_or("").trim();
+    let date_filter = if all_dates {
+        ""
+    } else {
+        query.date.as_deref().unwrap_or("").trim()
+    };
     let genre_filter = query.genre.as_deref().unwrap_or("").trim();
     let person_filter = query.person.as_deref().unwrap_or("").trim();
     let rating_filter = query.rating.as_deref().unwrap_or("all").trim();
@@ -110,13 +121,19 @@ pub async fn get_timeline(
         bind_params.push(watch_status_filter.to_string());
     }
 
-    sql.push_str(" ORDER BY watched_at DESC LIMIT ? OFFSET ?");
+    if all_results {
+        sql.push_str(" ORDER BY watched_at DESC");
+    } else {
+        sql.push_str(" ORDER BY watched_at DESC LIMIT ? OFFSET ?");
+    }
 
     let mut fetch_query = sqlx::query_as::<_, Scrobble>(&sql);
     for p in &bind_params {
         fetch_query = fetch_query.bind(p);
     }
-    fetch_query = fetch_query.bind(limit).bind(offset);
+    if !all_results {
+        fetch_query = fetch_query.bind(limit).bind(offset);
+    }
 
     let scrobbles = fetch_query
         .fetch_all(&state.pool)

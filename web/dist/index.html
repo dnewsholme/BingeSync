@@ -17,8 +17,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
   <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
-  <script type="module" crossorigin src="./assets/index-Dx_YTRhL.js"></script>
-  <link rel="stylesheet" crossorigin href="./assets/index-BQ46tV44.css">
+  <script type="module" crossorigin src="./assets/index-Bm_8fkrc.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-Bc6tcH_f.css">
 </head>
 <body>
   <div id="app">
@@ -171,6 +171,11 @@
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                 <input type="search" id="timeline-search" class="form-control" placeholder="Search timeline..." />
               </div>
+              <label class="search-all-toggle-label" id="timeline-search-all-label" title="Search across all history regardless of date and return all results">
+                <input type="checkbox" id="timeline-search-all-dates" />
+                <span class="toggle-checkbox-custom"></span>
+                <span class="toggle-text">All History (All Dates)</span>
+              </label>
             </div>
             <div class="timeline-filters-grid" id="timeline-filters-grid" style="display: none;">
               <input type="date" id="timeline-date-filter" class="form-control filter-ctrl" title="Filter by date" />
@@ -246,6 +251,12 @@
               <input type="search" id="history-search" class="form-control" placeholder="Search by title, show, episode..." />
             </div>
 
+            <label class="search-all-toggle-label" id="history-search-all-label" title="Return all results across all history without pagination">
+              <input type="checkbox" id="history-search-all-results" />
+              <span class="toggle-checkbox-custom"></span>
+              <span class="toggle-text">All Results</span>
+            </label>
+
             <div class="filter-pills" id="history-filter-pills">
               <button class="pill active" data-type="all" id="pill-all">All</button>
               <button class="pill" data-type="movie" id="pill-movies">Movies</button>
@@ -293,6 +304,7 @@
               <h1 class="view-title">Binge Statistics</h1>
               <p class="view-subtitle">Detailed metrics, TV vs movie breakdown, and watching patterns</p>
             </div>
+            <!-- Media Type Filter Pills -->
             <div class="filter-pills" id="stats-filter-pills">
               <button class="pill active" data-type="all" id="pill-stats-all">All</button>
               <button class="pill" data-type="movie" id="pill-stats-movies">Movies</button>
@@ -300,11 +312,27 @@
             </div>
           </div>
 
+          <!-- Secondary Filter Bar: Time Range Selector -->
+          <div class="stats-controls-bar">
+            <div class="stats-range-label">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              <span>Period:</span>
+            </div>
+            <div class="filter-pills stats-range-pills" id="stats-range-pills">
+              <button class="pill active" data-range="all" id="pill-stats-range-all">All Time</button>
+              <button class="pill" data-range="7d" id="pill-stats-range-7d">Last 7 Days</button>
+              <button class="pill" data-range="30d" id="pill-stats-range-30d">Last 30 Days</button>
+              <button class="pill" data-range="90d" id="pill-stats-range-90d">Last 90 Days</button>
+              <button class="pill" data-range="year" id="pill-stats-range-year">Past Year</button>
+            </div>
+          </div>
+
+          <!-- Expanded Metrics Grid -->
           <div class="stats-grid">
             <div class="stat-card">
               <div class="stat-label">Total Scrobbles</div>
               <div class="stat-value" id="stat-scrobbles">0</div>
-              <div class="stat-sub">Logged items</div>
+              <div class="stat-sub" id="stat-scrobbles-sub">Logged items</div>
             </div>
             <div class="stat-card">
               <div class="stat-label">Total Time</div>
@@ -314,50 +342,134 @@
             <div class="stat-card">
               <div class="stat-label">Movies Watched</div>
               <div class="stat-value" id="stat-movies">0</div>
-              <div class="stat-sub" id="stat-movie-time">0h films</div>
+              <div class="stat-sub"><span id="stat-movie-time">0h films</span> <span id="stat-unique-movies-wrap" style="color:var(--text-dim);">(<span id="stat-unique-movies">0</span> unique)</span></div>
             </div>
             <div class="stat-card">
               <div class="stat-label">Episodes Watched</div>
               <div class="stat-value" id="stat-episodes">0</div>
-              <div class="stat-sub" id="stat-episode-time">0h series</div>
+              <div class="stat-sub"><span id="stat-episode-time">0h series</span> <span id="stat-unique-shows-wrap" style="color:var(--text-dim);">(<span id="stat-unique-shows">0</span> shows)</span></div>
             </div>
             <div class="stat-card">
-              <div class="stat-label">Current Streak</div>
+              <div class="stat-label">Streak Status</div>
               <div class="stat-value highlight" id="stat-streak">0 🔥</div>
-              <div class="stat-sub">Consecutive days</div>
+              <div class="stat-sub" id="stat-streak-sub">Consecutive days</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Daily Pace</div>
+              <div class="stat-value" id="stat-avg-daily">0m</div>
+              <div class="stat-sub">Average per active day</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Average Rating</div>
+              <div class="stat-value" id="stat-avg-rating">—</div>
+              <div class="stat-sub" id="stat-total-rated">0 rated items</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Completion Rate</div>
+              <div class="stat-value" id="stat-completion-rate">100%</div>
+              <div class="stat-sub">Finished playbacks</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Peak Binge Day</div>
+              <div class="stat-value" id="stat-peak-count">0</div>
+              <div class="stat-sub" id="stat-peak-day">—</div>
             </div>
           </div>
 
-          <!-- Charts Grid -->
+          <!-- Charts Grid Row 1: Daily Activity & Top Genres -->
           <div class="stats-charts-grid">
             <div class="chart-card">
-              <h3 class="chart-title">Daily Watch Activity</h3>
-              <p class="chart-subtitle">Scrobbles over the past 14 days (Movies vs TV)</p>
+              <div class="chart-header-row">
+                <div>
+                  <h3 class="chart-title" id="activity-chart-title">Daily Watch Activity</h3>
+                  <p class="chart-subtitle" id="activity-chart-subtitle">Scrobbles over recent days</p>
+                </div>
+              </div>
               <div class="activity-chart-container" id="activity-chart">
                 <!-- Activity bars injected here -->
               </div>
-              <div class="chart-legend">
-                <span class="legend-item"><span class="legend-color legend-movie"></span> Movies</span>
-                <span class="legend-item"><span class="legend-color legend-episode"></span> TV Episodes</span>
+              <div class="chart-legend" id="activity-chart-legend">
+                <span class="legend-item" id="legend-movie-item"><span class="legend-color legend-movie"></span> Movies</span>
+                <span class="legend-item" id="legend-episode-item"><span class="legend-color legend-episode"></span> TV Episodes</span>
               </div>
             </div>
 
             <div class="chart-card">
-              <h3 class="chart-title">Top Genres</h3>
-              <p class="chart-subtitle">Most watched genres</p>
+              <div class="chart-header-row">
+                <div>
+                  <h3 class="chart-title" id="genres-chart-title">Top Genres</h3>
+                  <p class="chart-subtitle" id="genres-chart-subtitle">Most watched genres</p>
+                </div>
+              </div>
               <div class="genres-chart-container" id="genres-chart">
                 <!-- Genre bars injected here -->
               </div>
             </div>
           </div>
 
-          <div class="stats-section" id="top-shows-section">
+          <!-- Charts Grid Row 2: Day of Week & Time of Day Habits -->
+          <div class="stats-charts-grid" style="margin-top: 20px;">
+            <div class="chart-card">
+              <div class="chart-header-row">
+                <div>
+                  <h3 class="chart-title">Day of the Week Pattern</h3>
+                  <p class="chart-subtitle">When you scrobble throughout the week</p>
+                </div>
+              </div>
+              <div class="dow-chart-container" id="day-of-week-chart">
+                <!-- Day of week bars injected here -->
+              </div>
+            </div>
+
+            <div class="chart-card">
+              <div class="chart-header-row">
+                <div>
+                  <h3 class="chart-title">Time of Day Habits</h3>
+                  <p class="chart-subtitle">Viewing activity by time bracket</p>
+                </div>
+              </div>
+              <div class="tod-chart-container" id="time-of-day-chart">
+                <!-- Time of day progress bars injected here -->
+              </div>
+            </div>
+          </div>
+
+          <!-- Top Cast & Directors Section -->
+          <div class="stats-charts-grid" id="top-people-section" style="margin-top: 20px;">
+            <div class="chart-card">
+              <div class="chart-header-row">
+                <div>
+                  <h3 class="chart-title" id="top-actors-title">Top Watched Actors</h3>
+                  <p class="chart-subtitle">Cast members in your logged watches</p>
+                </div>
+              </div>
+              <div class="top-people-list" id="top-actors-list">
+                <!-- Top actors injected here -->
+              </div>
+            </div>
+
+            <div class="chart-card">
+              <div class="chart-header-row">
+                <div>
+                  <h3 class="chart-title" id="top-directors-title">Top Watched Directors</h3>
+                  <p class="chart-subtitle">Creators and directors in your logged watches</p>
+                </div>
+              </div>
+              <div class="top-people-list" id="top-directors-list">
+                <!-- Top directors injected here -->
+              </div>
+            </div>
+          </div>
+
+          <!-- Top TV Shows Section -->
+          <div class="stats-section" id="top-shows-section" style="margin-top: 24px;">
             <h2 class="section-title">Top Watched TV Series</h2>
             <div id="top-shows-list" class="top-shows-list">
               <!-- Top shows injected here -->
             </div>
           </div>
 
+          <!-- Top Movies Section -->
           <div class="stats-section" id="top-movies-section" style="margin-top: 24px;">
             <h2 class="section-title">Top Watched Movies</h2>
             <div id="top-movies-list" class="top-shows-list">
