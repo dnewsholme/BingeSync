@@ -135,7 +135,11 @@ pub async fn check_media_in_library(
     auth: AuthUser,
     Query(query): Query<IntegrationCheckQuery>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
-    let client = Client::builder().timeout(std::time::Duration::from_secs(5)).build().unwrap_or_default();
+    let client = Client::builder()
+        .timeout(std::time::Duration::from_secs(5))
+        .danger_accept_invalid_certs(true)
+        .build()
+        .unwrap_or_default();
 
     if query.media_type == "movie" {
         let user_radarr_url = crate::api::user_settings::get_user_setting(&state.pool, &auth.user_id, "radarr_url").await;
@@ -143,42 +147,54 @@ pub async fn check_media_in_library(
         if let (Some(ref radarr_url), Some(ref api_key)) = (user_radarr_url, user_radarr_key) {
             if let Ok(safe_url) = crate::api::ssrf::validate_integration_url(radarr_url) {
                 let lookup_url = format!("{}/api/v3/movie/lookup", safe_url.as_str().trim_end_matches('/'));
-            let res = client
-                .get(&lookup_url)
-                .header("X-Api-Key", api_key)
-                .query(&[("term", &query.title)])
-                .send()
-                .await;
+                let mut res = client
+                    .get(&lookup_url)
+                    .header("X-Api-Key", api_key)
+                    .query(&[("term", &query.title)])
+                    .send()
+                    .await;
 
-            if let Ok(resp) = res {
-                if resp.status().is_success() {
-                    if let Ok(movies) = resp.json::<Vec<serde_json::Value>>().await {
-                        for m in movies {
-                            let m_id = m.get("id").and_then(|v| v.as_i64()).unwrap_or(0);
-                            let title_match = m.get("title").and_then(|v| v.as_str()).map(|t| t.eq_ignore_ascii_case(&query.title)).unwrap_or(false);
-                            let year_match = match (query.year, m.get("year").and_then(|y| y.as_i64())) {
-                                (Some(qy), Some(my)) => (qy as i64 - my).abs() <= 1,
-                                _ => true,
-                            };
+                if res.is_err() && safe_url.scheme() == "https" {
+                    let mut fallback_url = safe_url.clone();
+                    if fallback_url.set_scheme("http").is_ok() {
+                        let fallback_req = format!("{}/api/v3/movie/lookup", fallback_url.as_str().trim_end_matches('/'));
+                        if let Ok(f_res) = client.get(&fallback_req).header("X-Api-Key", api_key).query(&[("term", &query.title)]).send().await {
+                            if f_res.status().is_success() {
+                                res = Ok(f_res);
+                            }
+                        }
+                    }
+                }
 
-                            if m_id > 0 && (title_match || year_match) {
-                                let has_file = m.get("hasFile").and_then(|v| v.as_bool()).unwrap_or(false);
-                                let size_on_disk = m.get("sizeOnDisk").and_then(|v| v.as_i64()).unwrap_or(0);
-                                return Ok(Json(serde_json::json!({
-                                    "found": true,
-                                    "service": "radarr",
-                                    "movie_id": m_id,
-                                    "title": m.get("title"),
-                                    "has_file": has_file,
-                                    "size_on_disk": size_on_disk,
-                                })));
+                if let Ok(resp) = res {
+                    if resp.status().is_success() {
+                        if let Ok(movies) = resp.json::<Vec<serde_json::Value>>().await {
+                            for m in movies {
+                                let m_id = m.get("id").and_then(|v| v.as_i64()).unwrap_or(0);
+                                let title_match = m.get("title").and_then(|v| v.as_str()).map(|t| t.eq_ignore_ascii_case(&query.title)).unwrap_or(false);
+                                let year_match = match (query.year, m.get("year").and_then(|y| y.as_i64())) {
+                                    (Some(qy), Some(my)) => (qy as i64 - my).abs() <= 1,
+                                    _ => true,
+                                };
+
+                                if m_id > 0 && (title_match || year_match) {
+                                    let has_file = m.get("hasFile").and_then(|v| v.as_bool()).unwrap_or(false);
+                                    let size_on_disk = m.get("sizeOnDisk").and_then(|v| v.as_i64()).unwrap_or(0);
+                                    return Ok(Json(serde_json::json!({
+                                        "found": true,
+                                        "service": "radarr",
+                                        "movie_id": m_id,
+                                        "title": m.get("title"),
+                                        "has_file": has_file,
+                                        "size_on_disk": size_on_disk,
+                                    })));
+                                }
                             }
                         }
                     }
                 }
             }
         }
-    }
 
         return Ok(Json(serde_json::json!({ "found": false, "service": "radarr" })));
     } else {
@@ -189,12 +205,24 @@ pub async fn check_media_in_library(
             if let Ok(safe_url) = crate::api::ssrf::validate_integration_url(sonarr_url) {
                 let search_term = query.grandparent_title.as_deref().unwrap_or(&query.title);
                 let lookup_url = format!("{}/api/v3/series/lookup", safe_url.as_str().trim_end_matches('/'));
-                let res = client
+                let mut res = client
                     .get(&lookup_url)
                     .header("X-Api-Key", api_key)
                     .query(&[("term", search_term)])
                     .send()
                     .await;
+
+                if res.is_err() && safe_url.scheme() == "https" {
+                    let mut fallback_url = safe_url.clone();
+                    if fallback_url.set_scheme("http").is_ok() {
+                        let fallback_req = format!("{}/api/v3/series/lookup", fallback_url.as_str().trim_end_matches('/'));
+                        if let Ok(f_res) = client.get(&fallback_req).header("X-Api-Key", api_key).query(&[("term", search_term)]).send().await {
+                            if f_res.status().is_success() {
+                                res = Ok(f_res);
+                            }
+                        }
+                    }
+                }
 
                 if let Ok(resp) = res {
                     if resp.status().is_success() {
@@ -252,7 +280,11 @@ pub async fn delete_from_radarr(
         delete_files
     );
 
-    let client = Client::builder().timeout(std::time::Duration::from_secs(10)).build().unwrap_or_default();
+    let client = Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .danger_accept_invalid_certs(true)
+        .build()
+        .unwrap_or_default();
     let res = client
         .delete(&target_url)
         .header("X-Api-Key", api_key)
@@ -306,6 +338,7 @@ pub async fn delete_from_sonarr(
 
     let client = Client::builder()
         .timeout(std::time::Duration::from_secs(30))
+        .danger_accept_invalid_certs(true)
         .build()
         .unwrap_or_default();
     let base_url = safe_url.as_str().trim_end_matches('/');
@@ -599,6 +632,7 @@ pub async fn get_cleanup_items(
 ) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
     let client = Client::builder()
         .timeout(std::time::Duration::from_secs(15))
+        .danger_accept_invalid_certs(true)
         .build()
         .unwrap_or_default();
 
@@ -648,7 +682,19 @@ pub async fn get_cleanup_items(
 
                 if !watched_movies.is_empty() {
                     let req_url = format!("{}/api/v3/movie", safe_url.as_str().trim_end_matches('/'));
-                    let res = client.get(&req_url).header("X-Api-Key", r_key.as_str()).send().await;
+                    let mut res = client.get(&req_url).header("X-Api-Key", r_key.as_str()).send().await;
+
+                    if res.is_err() && safe_url.scheme() == "https" {
+                        let mut fallback_url = safe_url.clone();
+                        if fallback_url.set_scheme("http").is_ok() {
+                            let fallback_req = format!("{}/api/v3/movie", fallback_url.as_str().trim_end_matches('/'));
+                            if let Ok(fallback_res) = client.get(&fallback_req).header("X-Api-Key", r_key.as_str()).send().await {
+                                if fallback_res.status().is_success() {
+                                    res = Ok(fallback_res);
+                                }
+                            }
+                        }
+                    }
 
                     match res {
                         Ok(resp) if resp.status().is_success() => {
@@ -711,7 +757,12 @@ pub async fn get_cleanup_items(
                             radarr_error = Some(format!("Radarr returned HTTP status {}", resp.status()));
                         }
                         Err(e) => {
-                            radarr_error = Some(format!("Failed to connect to Radarr: {}", e));
+                            let hint = if safe_url.scheme() == "https" {
+                                " (Tip: if Radarr is running without SSL on this port, use http:// instead of https://)"
+                            } else {
+                                ""
+                            };
+                            radarr_error = Some(format!("Failed to connect to Radarr: {}{}", e, hint));
                         }
                     }
                 }
@@ -761,7 +812,19 @@ pub async fn get_cleanup_items(
                     }
 
                     let req_url = format!("{}/api/v3/series", safe_url.as_str().trim_end_matches('/'));
-                    let res = client.get(&req_url).header("X-Api-Key", s_key.as_str()).send().await;
+                    let mut res = client.get(&req_url).header("X-Api-Key", s_key.as_str()).send().await;
+
+                    if res.is_err() && safe_url.scheme() == "https" {
+                        let mut fallback_url = safe_url.clone();
+                        if fallback_url.set_scheme("http").is_ok() {
+                            let fallback_req = format!("{}/api/v3/series", fallback_url.as_str().trim_end_matches('/'));
+                            if let Ok(fallback_res) = client.get(&fallback_req).header("X-Api-Key", s_key.as_str()).send().await {
+                                if fallback_res.status().is_success() {
+                                    res = Ok(fallback_res);
+                                }
+                            }
+                        }
+                    }
 
                     match res {
                         Ok(resp) if resp.status().is_success() => {
@@ -834,7 +897,12 @@ pub async fn get_cleanup_items(
                             sonarr_error = Some(format!("Sonarr returned HTTP status {}", resp.status()));
                         }
                         Err(e) => {
-                            sonarr_error = Some(format!("Failed to connect to Sonarr: {}", e));
+                            let hint = if safe_url.scheme() == "https" {
+                                " (Tip: if Sonarr is running without SSL on this port, use http:// instead of https://)"
+                            } else {
+                                ""
+                            };
+                            sonarr_error = Some(format!("Failed to connect to Sonarr: {}{}", e, hint));
                         }
                     }
                 }

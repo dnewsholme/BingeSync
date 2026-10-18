@@ -1590,6 +1590,7 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
   test('library cleanup: list watched items on radarr/sonarr, view reclaimable space, filter, and execute cleanup action', async ({ page }) => {
     let lastRadarrDelete = null;
     let lastSonarrDelete = null;
+    let lastMediaHistoryDelete = null;
 
     // Route /api/v1/integrations/cleanup
     await page.route('**/api/v1/integrations/cleanup', async route => {
@@ -1675,6 +1676,16 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
       });
     });
 
+    // Route History by-media delete
+    await page.route('**/api/v1/history/by-media*', async route => {
+      lastMediaHistoryDelete = route.request().url();
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ status: 'deleted', deleted_count: 1 }),
+      });
+    });
+
     const userEmail = `cleanup_ui_${Date.now()}@bingesync.local`;
     await page.goto('/');
     await page.fill('#dev-email', userEmail);
@@ -1709,34 +1720,41 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     await page.click('#btn-cleanup-filter-all');
     await expect(page.locator('#cleanup-items-grid .cleanup-card')).toHaveCount(2);
 
-    // 5. Test Radarr modal & action
+    // 5. Test Radarr modal & action with "Also remove from watch history" checked
     await page.locator('.cleanup-card', { hasText: 'Inception' }).click();
     await expect(page.locator('#modal-cleanup-action')).toBeVisible();
     await expect(page.locator('#cleanup-modal-item-title')).toContainText('Inception');
     await expect(page.locator('#opt-radarr-delete-both')).toBeVisible();
     await expect(page.locator('#opt-radarr-delete-entry-only')).toBeVisible();
+    await expect(page.locator('#opt-cleanup-history-only')).toBeVisible();
+    await expect(page.locator('#cleanup-also-remove-history')).toBeVisible();
+
+    // Check the also-remove-history checkbox
+    await page.check('#cleanup-also-remove-history');
 
     page.once('dialog', dialog => dialog.accept());
     await page.click('#opt-radarr-delete-both');
+    await expect(page.locator('#cleanup-modal-status')).toContainText('Successfully removed');
     expect(lastRadarrDelete).toEqual({
       movie_id: 101,
       delete_files: true,
     });
+    expect(lastMediaHistoryDelete).toContain('media_type=movie');
+    expect(lastMediaHistoryDelete).toContain('Inception');
 
-    // 6. Test Sonarr modal & action
+    // 6. Test Sonarr modal & "Remove from Watch History Only" action
+    lastMediaHistoryDelete = null;
     await page.locator('.cleanup-card', { hasText: 'Breaking Bad' }).click();
     await expect(page.locator('#modal-cleanup-action')).toBeVisible();
     await expect(page.locator('#cleanup-modal-item-title')).toContainText('Breaking Bad');
     await expect(page.locator('#opt-sonarr-delete-series')).toBeVisible();
-    await expect(page.locator('#opt-sonarr-delete-all-files')).toBeVisible();
+    await expect(page.locator('#opt-cleanup-history-only')).toBeVisible();
 
     page.once('dialog', dialog => dialog.accept());
-    await page.click('#opt-sonarr-delete-series');
-    expect(lastSonarrDelete).toEqual({
-      series_id: 201,
-      action: 'delete_series',
-      delete_files: true,
-    });
+    await page.click('#opt-cleanup-history-only');
+    await expect(page.locator('#cleanup-modal-status')).toContainText('Successfully removed');
+    expect(lastMediaHistoryDelete).toContain('media_type=series');
+    expect(lastMediaHistoryDelete).toContain('Breaking');
   });
 });
 

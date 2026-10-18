@@ -574,6 +574,13 @@ pub struct DeleteShowQuery {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct DeleteMediaHistoryQuery {
+    pub media_type: String,
+    pub title: String,
+    pub year: Option<i32>,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct DeleteDateQuery {
     pub date: String,
 }
@@ -588,8 +595,9 @@ pub async fn delete_by_show(
     auth: AuthUser,
     Query(query): Query<DeleteShowQuery>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
-    let res = sqlx::query("DELETE FROM scrobbles WHERE user_id = ? AND grandparent_title = ?")
+    let res = sqlx::query("DELETE FROM scrobbles WHERE user_id = ? AND (grandparent_title = ? OR (media_type = 'episode' AND title = ?))")
         .bind(&auth.user_id)
+        .bind(&query.show)
         .bind(&query.show)
         .execute(&state.pool)
         .await
@@ -604,6 +612,78 @@ pub async fn delete_by_show(
         "status": "deleted",
         "show": query.show,
         "deleted_count": res.rows_affected()
+    })))
+}
+
+pub async fn delete_by_media(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Query(query): Query<DeleteMediaHistoryQuery>,
+) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
+    let deleted_count = if query.media_type.eq_ignore_ascii_case("movie") {
+        let mut sql = "DELETE FROM scrobbles WHERE user_id = ? AND media_type = 'movie' AND LOWER(TRIM(title)) = LOWER(TRIM(?))".to_string();
+        if query.year.is_some() {
+            sql.push_str(" AND (year = ? OR year IS NULL)");
+            let res = sqlx::query(&sql)
+                .bind(&auth.user_id)
+                .bind(&query.title)
+                .bind(query.year.unwrap())
+                .execute(&state.pool)
+                .await
+                .map_err(|e| {
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(serde_json::json!({ "error": format!("Database error deleting movie scrobbles: {}", e) })),
+                    )
+                })?;
+            res.rows_affected()
+        } else {
+            let res = sqlx::query(&sql)
+                .bind(&auth.user_id)
+                .bind(&query.title)
+                .execute(&state.pool)
+                .await
+                .map_err(|e| {
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(serde_json::json!({ "error": format!("Database error deleting movie scrobbles: {}", e) })),
+                    )
+                })?;
+            res.rows_affected()
+        }
+    } else {
+        let res = sqlx::query(
+            r#"
+            DELETE FROM scrobbles
+            WHERE user_id = ?
+              AND media_type = 'episode'
+              AND (
+                  LOWER(TRIM(COALESCE(grandparent_title, title))) = LOWER(TRIM(?))
+                  OR grandparent_title = ?
+                  OR title = ?
+              )
+            "#,
+        )
+        .bind(&auth.user_id)
+        .bind(&query.title)
+        .bind(&query.title)
+        .bind(&query.title)
+        .execute(&state.pool)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": format!("Database error deleting series scrobbles: {}", e) })),
+            )
+        })?;
+        res.rows_affected()
+    };
+
+    Ok(Json(serde_json::json!({
+        "status": "deleted",
+        "media_type": query.media_type,
+        "title": query.title,
+        "deleted_count": deleted_count
     })))
 }
 

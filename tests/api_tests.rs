@@ -4869,3 +4869,109 @@ async fn test_library_cleanup_endpoint() {
     assert_eq!(second["has_file"], true);
 }
 
+#[tokio::test]
+async fn test_delete_by_media_endpoint() {
+    let (app, pool, config) = setup_test_app().await;
+
+    // 1. Create User A and User B
+    let user_a_id = "user_a_del_media";
+    let token_a = create_jwt(user_a_id, "user_a_del@test.local", &config.jwt_secret).unwrap();
+    sqlx::query("INSERT INTO users (id, email, display_name, webhook_token, role) VALUES (?, ?, ?, ?, 'user')")
+        .bind(user_a_id)
+        .bind("user_a_del@test.local")
+        .bind("User A Del")
+        .bind("token_del_a")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let user_b_id = "user_b_del_media";
+    let _token_b = create_jwt(user_b_id, "user_b_del@test.local", &config.jwt_secret).unwrap();
+    sqlx::query("INSERT INTO users (id, email, display_name, webhook_token, role) VALUES (?, ?, ?, ?, 'user')")
+        .bind(user_b_id)
+        .bind("user_b_del@test.local")
+        .bind("User B Del")
+        .bind("token_del_b")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    // 2. Insert movie and episode scrobbles for both users
+    sqlx::query("INSERT INTO scrobbles (id, user_id, title, media_type, year, watched_at) VALUES ('m_a', ?, 'The Matrix', 'movie', 1999, datetime('now'))")
+        .bind(user_a_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO scrobbles (id, user_id, title, media_type, year, watched_at) VALUES ('m_b', ?, 'The Matrix', 'movie', 1999, datetime('now'))")
+        .bind(user_b_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    sqlx::query("INSERT INTO scrobbles (id, user_id, title, media_type, grandparent_title, season_number, episode_number, watched_at) VALUES ('ep_a1', ?, 'Pilot', 'episode', 'Breaking Bad', 1, 1, datetime('now'))")
+        .bind(user_a_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO scrobbles (id, user_id, title, media_type, grandparent_title, season_number, episode_number, watched_at) VALUES ('ep_b1', ?, 'Pilot', 'episode', 'Breaking Bad', 1, 1, datetime('now'))")
+        .bind(user_b_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    // 3. User A deletes movie "The Matrix"
+    let req = Request::builder()
+        .method("DELETE")
+        .uri("/api/v1/history/by-media?media_type=movie&title=The+Matrix&year=1999")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token_a))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let res: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    assert_eq!(res["deleted_count"], 1);
+
+    // Verify User A has no Matrix, but User B still does
+    let count_a_matrix: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE user_id = ? AND title = 'The Matrix'")
+        .bind(user_a_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(count_a_matrix, 0);
+
+    let count_b_matrix: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE user_id = ? AND title = 'The Matrix'")
+        .bind(user_b_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(count_b_matrix, 1);
+
+    // 4. User A deletes series "Breaking Bad"
+    let req2 = Request::builder()
+        .method("DELETE")
+        .uri("/api/v1/history/by-media?media_type=series&title=Breaking+Bad")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token_a))
+        .body(Body::empty())
+        .unwrap();
+    let resp2 = app.clone().oneshot(req2).await.unwrap();
+    assert_eq!(resp2.status(), StatusCode::OK);
+    let body_bytes2 = axum::body::to_bytes(resp2.into_body(), usize::MAX).await.unwrap();
+    let res2: serde_json::Value = serde_json::from_slice(&body_bytes2).unwrap();
+    assert_eq!(res2["deleted_count"], 1);
+
+    let count_a_bb: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE user_id = ? AND grandparent_title = 'Breaking Bad'")
+        .bind(user_a_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(count_a_bb, 0);
+
+    let count_b_bb: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE user_id = ? AND grandparent_title = 'Breaking Bad'")
+        .bind(user_b_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(count_b_bb, 1);
+}
+

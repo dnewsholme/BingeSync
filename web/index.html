@@ -1345,6 +1345,17 @@
             </div>
           </div>
 
+          <!-- Also Remove from Watch History Option -->
+          <div style="background: rgba(244,63,94,0.06); border: 1px solid rgba(244,63,94,0.22); border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; display: flex; align-items: flex-start; gap: 10px;">
+            <input type="checkbox" id="cleanup-also-remove-history" style="margin-top: 3px; cursor: pointer; accent-color: #f43f5e;" />
+            <label for="cleanup-also-remove-history" style="font-size: 0.86rem; color: var(--text-main); cursor: pointer; user-select: none;">
+              <strong style="color: #fb7185;">Also remove from BingeSync watch history</strong>
+              <div style="font-size: 0.78rem; color: var(--text-dim); margin-top: 2px;">
+                Removes all scrobbles for this title so it will no longer appear in your watch history or this cleanup list.
+              </div>
+            </label>
+          </div>
+
           <!-- Options Container -->
           <div id="cleanup-modal-options" style="display: flex; flex-direction: column; gap: 10px;">
             <!-- Injected options depending on movie vs series -->

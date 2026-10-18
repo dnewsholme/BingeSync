@@ -129,7 +129,7 @@ Plex webhooks send:
 ```bash
 cargo test
 ```
-Tests in `tests/api_tests.rs` (37 integration tests) cover:
+Tests in `tests/api_tests.rs` (38 integration tests) cover:
 - Dev login and `/api/v1/auth/me`
 - Plex movie and TV episode scrobbling
 - Multi-user isolation (User A cannot see User B's data)
@@ -141,6 +141,7 @@ Tests in `tests/api_tests.rs` (37 integration tests) cover:
 - Timeline and history rich filters (genre, director, actor, rating, watch status)
 - Trakt history and ratings import from multi-file ZIP archives, JSON, and CSV (with automatic chronological sorting)
 - Delete by show, batch delete, and delete by date
+- Delete watch history by media item (movie title/year and series/episodes)
 - Admin user management, list users, and cascading data deletion
 - OpenID Connect Back-Channel Logout token validation, session termination, and token invalidation
 - Disk-based media poster caching and image serving with traversal protection

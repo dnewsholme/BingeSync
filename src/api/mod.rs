@@ -190,6 +190,7 @@ pub fn create_api_router(state: AppState) -> Router {
         // History & Scrobble
         .route("/api/v1/history", get(history::list_history).post(history::create_scrobble))
         .route("/api/v1/history/by-show", delete(history::delete_by_show))
+        .route("/api/v1/history/by-media", delete(history::delete_by_media))
         .route("/api/v1/history/delete-batch", post(history::delete_batch))
         .route("/api/v1/history/by-date", delete(history::delete_by_date))
         .route("/api/v1/history/{id}/watches", get(history::get_item_watches))

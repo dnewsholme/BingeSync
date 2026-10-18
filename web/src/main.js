@@ -378,6 +378,7 @@ const el = {
   cleanupModalExtraInfo: document.getElementById('cleanup-modal-extra-info'),
   cleanupModalOptions: document.getElementById('cleanup-modal-options'),
   cleanupModalStatus: document.getElementById('cleanup-modal-status'),
+  cleanupAlsoRemoveHistory: document.getElementById('cleanup-also-remove-history'),
 };
 
 // Initialization
@@ -4140,8 +4141,26 @@ function openCleanupModal(item) {
     el.cleanupModalStatus.style.display = 'none';
     el.cleanupModalStatus.textContent = '';
   }
+  if (el.cleanupAlsoRemoveHistory) {
+    el.cleanupAlsoRemoveHistory.checked = false;
+  }
 
   // Populate extra info & options based on media type
+  const historyOnlyOptionHtml = `
+    <div class="cleanup-action-opt" id="opt-cleanup-history-only" style="border-color: rgba(168, 85, 247, 0.35); margin-top: 6px;">
+      <div class="cleanup-action-header">
+        <span class="cleanup-action-title" style="color: #c084fc;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 14 14"/></svg>
+          Remove from Watch History Only
+        </span>
+        <span class="badge-pill" style="background: rgba(168, 85, 247, 0.15); color: #c084fc;">BingeSync History</span>
+      </div>
+      <div class="cleanup-action-desc">
+        Deletes watch scrobbles for this title from BingeSync. Leaves media files and library monitoring untouched on ${item.service === 'radarr' ? 'Radarr' : 'Sonarr'}.
+      </div>
+    </div>
+  `;
+
   if (item.service === 'radarr') {
     if (el.cleanupModalExtraInfo) {
       el.cleanupModalExtraInfo.textContent = `Film stored in Radarr library • ${item.has_file ? 'Video file exists on disk' : 'No file on disk'}`;
@@ -4172,10 +4191,13 @@ function openCleanupModal(item) {
             Removes movie from Radarr library but leaves downloaded video files untouched on your storage.
           </div>
         </div>
+
+        ${historyOnlyOptionHtml}
       `;
 
       document.getElementById('opt-radarr-delete-both').addEventListener('click', () => executeRadarrCleanup(item, true));
       document.getElementById('opt-radarr-delete-entry-only').addEventListener('click', () => executeRadarrCleanup(item, false));
+      document.getElementById('opt-cleanup-history-only').addEventListener('click', () => executeRemoveWatchHistory(item));
     }
   } else {
     // Sonarr TV Show
@@ -4238,6 +4260,8 @@ function openCleanupModal(item) {
         </div>
 
         ${seasonsHtml}
+
+        ${historyOnlyOptionHtml}
       `;
 
       document.getElementById('opt-sonarr-delete-series').addEventListener('click', () => {
@@ -4247,6 +4271,8 @@ function openCleanupModal(item) {
       document.getElementById('opt-sonarr-delete-all-files').addEventListener('click', () => {
         executeSonarrCleanup(item, { action: 'delete_all_files_unmonitor', delete_files: true });
       });
+
+      document.getElementById('opt-cleanup-history-only').addEventListener('click', () => executeRemoveWatchHistory(item));
 
       el.cleanupModalOptions.querySelectorAll('.btn-delete-season').forEach(btn => {
         btn.addEventListener('click', (e) => {
@@ -4278,10 +4304,16 @@ async function executeRadarrCleanup(item, deleteFiles) {
   }
 
   try {
+    const alsoRemoveHistory = el.cleanupAlsoRemoveHistory && el.cleanupAlsoRemoveHistory.checked;
     await api.deleteFromRadarr(item.service_id, deleteFiles);
+    if (alsoRemoveHistory) {
+      await api.deleteHistoryByMedia(item.media_type, item.title, item.year);
+    }
     if (el.cleanupModalStatus) {
       el.cleanupModalStatus.className = 'import-status-box success';
-      el.cleanupModalStatus.textContent = `Successfully removed "${item.title}" from Radarr!`;
+      el.cleanupModalStatus.textContent = alsoRemoveHistory
+        ? `Successfully removed "${item.title}" from Radarr and watch history!`
+        : `Successfully removed "${item.title}" from Radarr!`;
     }
 
     state.cleanup.items = state.cleanup.items.filter(i => i.id !== item.id);
@@ -4316,13 +4348,19 @@ async function executeSonarrCleanup(item, options) {
   }
 
   try {
+    const alsoRemoveHistory = el.cleanupAlsoRemoveHistory && el.cleanupAlsoRemoveHistory.checked;
     await api.deleteFromSonarr(item.service_id, options);
+    if (alsoRemoveHistory) {
+      await api.deleteHistoryByMedia(item.media_type, item.title, item.year);
+    }
     if (el.cleanupModalStatus) {
       el.cleanupModalStatus.className = 'import-status-box success';
-      el.cleanupModalStatus.textContent = `Successfully updated "${item.title}" in Sonarr!`;
+      el.cleanupModalStatus.textContent = alsoRemoveHistory
+        ? `Successfully updated "${item.title}" in Sonarr and removed from watch history!`
+        : `Successfully updated "${item.title}" in Sonarr!`;
     }
 
-    if (options.action === 'delete_series') {
+    if (options.action === 'delete_series' || alsoRemoveHistory) {
       state.cleanup.items = state.cleanup.items.filter(i => i.id !== item.id);
     }
 
@@ -4334,6 +4372,37 @@ async function executeSonarrCleanup(item, options) {
     if (el.cleanupModalStatus) {
       el.cleanupModalStatus.className = 'import-status-box error';
       el.cleanupModalStatus.textContent = `Sonarr action failed: ${err.message}`;
+    }
+  }
+}
+
+async function executeRemoveWatchHistory(item) {
+  if (!confirm(`Are you sure you want to remove "${item.title}" from your watch history? This will delete all watch scrobbles for this title in BingeSync.`)) {
+    return;
+  }
+
+  if (el.cleanupModalStatus) {
+    el.cleanupModalStatus.style.display = 'block';
+    el.cleanupModalStatus.className = 'import-status-box';
+    el.cleanupModalStatus.textContent = 'Removing scrobbles from watch history...';
+  }
+
+  try {
+    const res = await api.deleteHistoryByMedia(item.media_type, item.title, item.year);
+    if (el.cleanupModalStatus) {
+      el.cleanupModalStatus.className = 'import-status-box success';
+      el.cleanupModalStatus.textContent = `Successfully removed "${item.title}" from watch history (${res.deleted_count || 0} scrobbles deleted)!`;
+    }
+
+    state.cleanup.items = state.cleanup.items.filter(i => i.id !== item.id);
+    setTimeout(() => {
+      closeCleanupModal();
+      loadCleanupItems();
+    }, 1200);
+  } catch (err) {
+    if (el.cleanupModalStatus) {
+      el.cleanupModalStatus.className = 'import-status-box error';
+      el.cleanupModalStatus.textContent = `Failed to delete watch history: ${err.message}`;
     }
   }
 }

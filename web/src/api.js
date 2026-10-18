@@ -173,6 +173,11 @@ export const api = {
     request(`/history/by-show?show=${encodeURIComponent(showTitle)}`, {
       method: 'DELETE',
     }),
+  deleteHistoryByMedia: (mediaType, title, year) => {
+    let url = `/history/by-media?media_type=${encodeURIComponent(mediaType)}&title=${encodeURIComponent(title)}`;
+    if (year) url += `&year=${year}`;
+    return request(url, { method: 'DELETE' });
+  },
   deleteBatch: (ids) =>
     request('/history/delete-batch', {
       method: 'POST',
