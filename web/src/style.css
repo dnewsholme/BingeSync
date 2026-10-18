@@ -1012,6 +1012,9 @@ h1, h2, h3, h4 {
   border-radius: var(--radius-lg);
   width: 100%;
   max-width: 520px;
+  max-height: calc(100vh - 40px);
+  display: flex;
+  flex-direction: column;
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8);
   overflow: hidden;
   animation: slideUp 0.2s ease-out;
@@ -1023,11 +1026,12 @@ h1, h2, h3, h4 {
 }
 
 .modal-header {
-  padding: 20px 24px;
+  padding: 18px 24px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
 }
 
 .modal-title {
@@ -1049,8 +1053,10 @@ h1, h2, h3, h4 {
 
 .modal-body {
   padding: 24px;
-  max-height: 70vh;
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .modal-footer {
@@ -1061,6 +1067,7 @@ h1, h2, h3, h4 {
   justify-content: flex-end;
   gap: 12px;
   background: rgba(10, 15, 28, 0.5);
+  flex-shrink: 0;
 }
 
 .empty-state {
@@ -1451,18 +1458,21 @@ h1, h2, h3, h4 {
   align-items: center;
   flex-wrap: wrap;
   gap: 12px;
+  flex-shrink: 0;
 }
 
 .detail-actions-left,
 .detail-actions-right {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
 /* Modal Detail Dialog Extension */
 .modal-dialog-detail {
   max-width: 640px;
+  max-height: calc(100vh - 40px);
 }
 
 /* Other Watches Section */
@@ -2601,12 +2611,6 @@ h1, h2, h3, h4 {
   color: var(--text-dim);
 }
 
-@media (max-width: 860px) {
-  .timeline-scrubber {
-    display: none !important;
-  }
-}
-
 /* ==========================================================================
    Admin Sub-Navigation & Settings
    ========================================================================== */
@@ -3049,4 +3053,409 @@ select option,
 
 .person-history-item.current-item {
   background: rgba(99, 102, 241, 0.08);
+}
+
+/* ==========================================================================
+   Comprehensive Mobile & Tablet Responsive Design
+   ========================================================================== */
+
+/* --- Tablet & Medium Screens (<= 992px) --- */
+@media (max-width: 992px) {
+  .main-content {
+    padding: 24px 18px 80px;
+  }
+  .timeline-scrubber {
+    display: none !important;
+  }
+  .stats-grid {
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 14px;
+  }
+}
+
+/* --- Mobile Landscape & Phones (<= 768px) --- */
+@media (max-width: 768px) {
+  /* 1. Header & Navigation */
+  .navbar {
+    height: 56px;
+    padding: 0 12px;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: #080c14;
+  }
+  .nav-container {
+    height: 56px;
+    gap: 8px;
+  }
+  .brand-logo-icon {
+    width: 32px;
+    height: 32px;
+  }
+  .brand-logo-icon svg {
+    width: 18px;
+    height: 18px;
+  }
+  .brand-title {
+    font-size: 1.12rem;
+  }
+  .nav-actions {
+    gap: 8px;
+  }
+  .user-name {
+    display: none;
+  }
+  .user-badge {
+    padding: 0;
+    border: none;
+    background: transparent;
+  }
+  .user-avatar {
+    width: 30px;
+    height: 30px;
+    font-size: 0.8rem;
+  }
+
+  /* 2. App-Style Bottom Navigation Bar */
+  .nav-links {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 58px;
+    background: rgba(10, 15, 29, 0.96);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-radius: 0;
+    border: none;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    padding: 4px 6px calc(4px + env(safe-area-inset-bottom, 0px));
+    z-index: 150;
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.5);
+  }
+  .nav-tab {
+    flex: 1;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 3px;
+    padding: 4px 2px;
+    font-size: 0.68rem;
+    font-weight: 500;
+    border-radius: 8px;
+    background: transparent;
+  }
+  .nav-tab svg {
+    width: 20px;
+    height: 20px;
+  }
+  .nav-tab.active {
+    background: rgba(244, 63, 94, 0.15);
+    color: var(--primary);
+    box-shadow: none;
+  }
+
+  /* 3. Main Content Spacing */
+  .main-content {
+    padding: 16px 14px calc(76px + env(safe-area-inset-bottom, 16px));
+  }
+
+  /* 4. Touch-Friendly Swipeable Filter Carousels */
+  .filter-pills,
+  .stats-range-pills,
+  .timeline-month-chips,
+  .admin-nav-pills {
+    display: flex;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    max-width: 100%;
+    padding-bottom: 6px;
+  }
+  .filter-pills::-webkit-scrollbar,
+  .stats-range-pills::-webkit-scrollbar,
+  .timeline-month-chips::-webkit-scrollbar,
+  .admin-nav-pills::-webkit-scrollbar {
+    display: none;
+  }
+  .pill {
+    flex-shrink: 0;
+    padding: 6px 14px;
+    font-size: 0.82rem;
+  }
+
+  /* 5. Timeline Filters & Hierarchy Nav */
+  .timeline-filter-bar {
+    padding: 10px 12px;
+  }
+  .timeline-filters-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+  .timeline-filters-grid #btn-reset-timeline-filters {
+    grid-column: 1 / -1;
+  }
+  .hierarchy-top-row {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .hierarchy-controls {
+    margin-left: auto;
+  }
+
+  /* 6. History Floating Bulk Bar */
+  .history-bulk-bar {
+    bottom: calc(68px + env(safe-area-inset-bottom, 10px));
+    margin: 0 10px;
+  }
+  .bulk-bar-content {
+    padding: 10px 14px;
+    flex-wrap: wrap;
+    gap: 10px;
+    justify-content: space-between;
+  }
+  .bulk-buttons {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  /* 7. Timeline Days & Card Layout */
+  .timeline-day {
+    padding: 16px 14px;
+    border-radius: var(--radius-md);
+  }
+  .timeline-day-header {
+    flex-wrap: wrap;
+    gap: 8px;
+    padding-bottom: 12px;
+    margin-bottom: 14px;
+  }
+  .timeline-date-title {
+    font-size: 1.05rem;
+  }
+  .timeline-day-stats {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+}
+
+/* --- Smartphones & Small Screens (<= 640px) --- */
+@media (max-width: 640px) {
+  /* 1. Header action buttons compact icon style */
+  #btn-open-import-modal span,
+  #btn-open-log-modal span {
+    display: none;
+  }
+  #btn-open-import-modal,
+  #btn-open-log-modal {
+    padding: 7px 10px;
+  }
+  .nav-language-select {
+    padding: 4px 6px;
+    font-size: 0.78rem;
+    max-width: 80px;
+  }
+
+  /* 2. Scrobble Card 2-Column Responsive Grid */
+  .scrobble-grid {
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 10px;
+  }
+  .scrobble-card {
+    padding: 10px;
+  }
+  .scrobble-poster {
+    height: 110px;
+    margin-bottom: 8px;
+  }
+  .scrobble-title {
+    font-size: 0.88rem;
+    margin-bottom: 2px;
+  }
+  .scrobble-subtitle {
+    font-size: 0.76rem;
+  }
+  .scrobble-meta-row {
+    font-size: 0.72rem;
+  }
+  .scrobble-card-crew {
+    display: none;
+  }
+
+  /* 3. 2-Column Stats Dashboard */
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    margin-bottom: 24px;
+  }
+  .stat-card {
+    padding: 14px 12px;
+    border-radius: var(--radius-md);
+  }
+  .stat-value {
+    font-size: 1.45rem;
+  }
+  .stat-label {
+    font-size: 0.7rem;
+    margin-bottom: 4px;
+  }
+  .stat-sub {
+    font-size: 0.72rem;
+  }
+  .stats-section {
+    padding: 18px 14px;
+    border-radius: var(--radius-md);
+  }
+  .stats-controls-bar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  /* 4. Form Layout: Stack Form Inputs Full-Width */
+  .form-row {
+    flex-direction: column;
+    gap: 12px;
+  }
+  .col-half {
+    width: 100%;
+  }
+
+  /* 5. Modals Optimized for Touch */
+  .modal-backdrop {
+    padding: 10px;
+  }
+  .modal-dialog {
+    max-height: calc(100vh - 20px);
+    border-radius: var(--radius-md);
+  }
+  .modal-header {
+    padding: 14px 16px;
+  }
+  .modal-title {
+    font-size: 1.1rem;
+  }
+  .modal-body {
+    padding: 16px 14px;
+  }
+  .modal-footer {
+    padding: 12px 14px;
+    flex-direction: column-reverse;
+    gap: 8px;
+  }
+  .modal-footer button,
+  .modal-footer .btn {
+    width: 100%;
+  }
+  .detail-modal-footer {
+    flex-direction: column;
+    gap: 10px;
+  }
+  .detail-actions-left,
+  .detail-actions-right {
+    width: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .detail-actions-left button,
+  .detail-actions-left a,
+  .detail-actions-right button {
+    flex: 1 1 calc(50% - 4px);
+    justify-content: center;
+  }
+  .detail-rating-widget {
+    flex-direction: column;
+    align-items: flex-start !important;
+    gap: 8px !important;
+  }
+  .detail-rating-widget > div {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+  .detail-rating-widget select {
+    flex: 1;
+  }
+  .fix-match-box > div:last-of-type {
+    flex-direction: column;
+    align-items: stretch !important;
+  }
+  .fix-match-box input {
+    width: 100% !important;
+  }
+
+  /* 6. Settings & Admin Cards */
+  .settings-card {
+    padding: 18px 14px;
+    border-radius: var(--radius-md);
+  }
+  .card-title {
+    font-size: 1.12rem;
+  }
+  .webhook-input-group {
+    flex-direction: column;
+    gap: 8px;
+  }
+  .webhook-input-group .btn {
+    width: 100%;
+  }
+  .token-regen-wrap {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .token-regen-wrap .btn {
+    width: 100%;
+  }
+  .admin-tasks-grid {
+    grid-template-columns: 1fr;
+  }
+  .task-meta-row {
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .view-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  .view-title {
+    font-size: 1.4rem;
+  }
+  .view-subtitle {
+    font-size: 0.85rem;
+  }
+}
+
+/* --- Small Phones (<= 420px) --- */
+@media (max-width: 420px) {
+  .brand-title span:not(.brand-logo-icon span) {
+    display: inline;
+  }
+  .scrobble-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .scrobble-card {
+    padding: 8px;
+  }
+  .scrobble-poster {
+    height: 100px;
+  }
+  .auth-card {
+    padding: 24px 16px;
+    margin: 8px;
+  }
+  .auth-logo {
+    width: 48px;
+    height: 48px;
+    margin-bottom: 12px;
+  }
+  .auth-header h2 {
+    font-size: 1.3rem;
+  }
 }

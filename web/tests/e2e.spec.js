@@ -1523,5 +1523,50 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     // Verify triggered message or button state
     await expect(tvdbCard).toBeVisible();
   });
+
+  test('mobile responsive: bottom app navigation, stacked forms, and responsive modal on phone viewport', async ({ page }) => {
+    // 1. Set mobile viewport (iPhone 14 dimensions: 390 x 844)
+    await page.setViewportSize({ width: 390, height: 844 });
+
+    const userEmail = `mobile_ui_${Date.now()}@bingesync.local`;
+    await page.goto('/');
+    await page.fill('#dev-email', userEmail);
+    await page.fill('#dev-name', 'Mobile Tester');
+    await page.click('#btn-dev-submit');
+
+    await expect(page.locator('#tab-timeline')).toBeVisible();
+
+    // 2. Verify bottom app navigation bar positioning
+    const navLinks = page.locator('#nav-links');
+    await expect(navLinks).toBeVisible();
+    const navBox = await navLinks.boundingBox();
+    expect(navBox).not.toBeNull();
+    // Nav bar should be docked at the bottom of the viewport
+    expect(navBox.y + navBox.height).toBeGreaterThanOrEqual(840);
+
+    // 3. Test navigation tabs on mobile (Timeline -> History -> Stats -> Settings)
+    await page.click('#tab-history');
+    await expect(page.locator('#view-history')).toBeVisible();
+
+    await page.click('#tab-stats');
+    await expect(page.locator('#view-stats')).toBeVisible();
+
+    await page.click('#tab-settings');
+    await expect(page.locator('#view-settings')).toBeVisible();
+
+    // 4. Test mobile scrobble modal fit and interactions
+    await page.click('#btn-open-log-modal');
+    await expect(page.locator('#modal-log-scrobble')).toBeVisible();
+
+    const logModalDialog = page.locator('#modal-log-scrobble .modal-dialog');
+    const modalBox = await logModalDialog.boundingBox();
+    expect(modalBox).not.toBeNull();
+    // Modal width should not exceed screen width
+    expect(modalBox.width).toBeLessThanOrEqual(390);
+
+    // Close modal
+    await page.click('#btn-close-log-modal');
+    await expect(page.locator('#modal-log-scrobble')).toBeHidden();
+  });
 });
 

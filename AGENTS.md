@@ -169,7 +169,7 @@ cd web
 npm install
 npx playwright test
 ```
-Playwright tests in `web/tests/e2e.spec.js` (29 browser E2E tests) cover:
+Playwright tests in `web/tests/e2e.spec.js` (30 browser E2E tests) cover:
 - User sign-in flow, "+ Log Watch" modal, and timeline rendering
 - Multi-user separation in the web UI
 - Trakt history and rating import flow in the web UI (pasted JSON)
@@ -199,6 +199,7 @@ Playwright tests in `web/tests/e2e.spec.js` (29 browser E2E tests) cover:
 - Specific director and cinematographer chips on cards and detail modal tags
 - Fix incorrect match on history items by specifying TheTVDB ID
 - Admin background tasks: force refresh all metadata option
+- Mobile responsive layout: bottom app navigation bar, stacked touch forms, and responsive modals on phone viewports
 
 ### Run the App Locally
 ```bash
