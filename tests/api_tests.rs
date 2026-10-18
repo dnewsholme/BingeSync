@@ -4150,3 +4150,345 @@ async fn test_user_cache_background_sync_and_jellyfin_id_resolution() {
     // Without active external servers, it safely returns without panicking
     assert_eq!(processed, 0);
 }
+
+#[tokio::test]
+async fn test_specific_director_and_cinematographer_fields() {
+    let (app, _pool, _config) = setup_test_app().await;
+
+    // 1. Dev login to obtain token
+    let login_req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/auth/dev-login")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(
+            json!({
+                "email": "cinema_enthusiast@test.local",
+                "display_name": "Cinema Enthusiast"
+            })
+            .to_string(),
+        ))
+        .unwrap();
+
+    let res = app.clone().oneshot(login_req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let login_data: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    let token = login_data["token"].as_str().unwrap().to_string();
+
+    // 2. Create a scrobble with specific director and cinematographer
+    let create_payload = serde_json::json!({
+        "title": "Oppenheimer",
+        "media_type": "movie",
+        "year": 2023,
+        "director": "Christopher Nolan",
+        "cinematographer": "Hoyte van Hoytema",
+        "actors": "Cillian Murphy, Emily Blunt, Matt Damon",
+        "overview": "The story of J. Robert Oppenheimer."
+    });
+
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/history")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(serde_json::to_vec(&create_payload).unwrap()))
+        .unwrap();
+
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let created: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+
+    assert_eq!(created["director"], "Christopher Nolan");
+    assert_eq!(created["cinematographer"], "Hoyte van Hoytema");
+
+    // 3. Query history filtered specifically by director
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/history?director=Nolan")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let list: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    assert_eq!(list["items"].as_array().unwrap().len(), 1);
+    assert_eq!(list["items"][0]["title"], "Oppenheimer");
+
+    // 4. Query history filtered specifically by cinematographer
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/history?cinematographer=Hoyte")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let list: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    assert_eq!(list["items"].as_array().unwrap().len(), 1);
+    assert_eq!(list["items"][0]["cinematographer"], "Hoyte van Hoytema");
+
+    // 5. Query history with person filter matching cinematographer
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/history?person=Hoytema")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let list: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    assert_eq!(list["items"].as_array().unwrap().len(), 1);
+
+    // 6. Non-matching cinematographer query returns 0 items
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/history?cinematographer=Roger+Deakins")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let list: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    assert_eq!(list["items"].as_array().unwrap().len(), 0);
+}
+
+#[tokio::test]
+async fn test_force_refresh_all_metadata_option() {
+    let (app, pool, config) = setup_test_app().await;
+
+    // 1. Create Admin User and Standard User
+    let admin_id = "admin_user_force_refresh";
+    let admin_jwt = create_jwt(admin_id, "admin@test.local", &config.jwt_secret).unwrap();
+    sqlx::query("INSERT INTO users (id, email, display_name, webhook_token, role) VALUES (?, ?, ?, ?, 'admin')")
+        .bind(admin_id)
+        .bind("admin@test.local")
+        .bind("Admin")
+        .bind("admin_token_force")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let standard_id = "standard_user_force_refresh";
+    let standard_jwt = create_jwt(standard_id, "user@test.local", &config.jwt_secret).unwrap();
+    sqlx::query("INSERT INTO users (id, email, display_name, webhook_token, role) VALUES (?, ?, ?, ?, 'user')")
+        .bind(standard_id)
+        .bind("user@test.local")
+        .bind("Standard User")
+        .bind("user_token_force")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    // 2. Insert scrobbles with metadata_updated_at populated
+    for i in 1..=3 {
+        sqlx::query(
+            r#"
+            INSERT INTO scrobbles (
+                id, user_id, title, media_type, watched_at, metadata_updated_at, overview, genres
+            ) VALUES (?, ?, ?, 'movie', datetime('now'), datetime('now'), 'Some overview', 'Action')
+            "#,
+        )
+        .bind(format!("scrobble_force_{}", i))
+        .bind(admin_id)
+        .bind(format!("Movie {}", i))
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+
+    // Verify 3 records have metadata_updated_at set
+    let count_set: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE metadata_updated_at IS NOT NULL")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(count_set, 3);
+
+    // 3. Test non-admin user forbidden
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/admin/metadata/force-refresh")
+        .header(header::AUTHORIZATION, format!("Bearer {}", standard_jwt))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+
+    // 4. Test admin user successfully triggers force refresh
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/admin/metadata/force-refresh")
+        .header(header::AUTHORIZATION, format!("Bearer {}", admin_jwt))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let res: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    assert_eq!(res["status"], "triggered");
+    assert_eq!(res["forced"], true);
+    assert_eq!(res["records_reset"], 3);
+
+    // Verify all records now have metadata_updated_at IS NULL
+    let count_null: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE metadata_updated_at IS NULL")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(count_null, 3);
+
+    // 5. Test triggering via admin task runner with ?force=true
+    // First set metadata_updated_at again
+    sqlx::query("UPDATE scrobbles SET metadata_updated_at = datetime('now')")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/admin/tasks/tvdb_metadata/run?force=true")
+        .header(header::AUTHORIZATION, format!("Bearer {}", admin_jwt))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let res: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    assert_eq!(res["status"], "triggered");
+    assert_eq!(res["forced"], true);
+
+    let count_null_after_task: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE metadata_updated_at IS NULL")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(count_null_after_task, 3);
+}
+
+#[tokio::test]
+async fn test_fix_incorrect_match_with_tvdb_id() {
+    let (app, pool, config) = setup_test_app().await;
+
+    // 1. Create two users for isolation testing
+    let user_a_id = "user_a_fix_match";
+    let token_a = create_jwt(user_a_id, "user_a@test.local", &config.jwt_secret).unwrap();
+    sqlx::query("INSERT INTO users (id, email, display_name, webhook_token, role) VALUES (?, ?, ?, ?, 'user')")
+        .bind(user_a_id)
+        .bind("user_a@test.local")
+        .bind("User A")
+        .bind("token_a_fix")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let user_b_id = "user_b_fix_match";
+    let token_b = create_jwt(user_b_id, "user_b@test.local", &config.jwt_secret).unwrap();
+    sqlx::query("INSERT INTO users (id, email, display_name, webhook_token, role) VALUES (?, ?, ?, ?, 'user')")
+        .bind(user_b_id)
+        .bind("user_b@test.local")
+        .bind("User B")
+        .bind("token_b_fix")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    // 2. Insert TV episodes for User A
+    let scrobble_e1 = "scrobble_bb_s1e1";
+    let scrobble_e2 = "scrobble_bb_s1e2";
+
+    sqlx::query(
+        r#"
+        INSERT INTO scrobbles (id, user_id, title, media_type, grandparent_title, season_number, episode_number, watched_at)
+        VALUES (?, ?, 'Pilot', 'episode', 'Breaking Bad', 1, 1, datetime('now', '-2 days'))
+        "#,
+    )
+    .bind(scrobble_e1)
+    .bind(user_a_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    sqlx::query(
+        r#"
+        INSERT INTO scrobbles (id, user_id, title, media_type, grandparent_title, season_number, episode_number, watched_at)
+        VALUES (?, ?, 'Cat in the Bag', 'episode', 'Breaking Bad', 1, 2, datetime('now', '-1 day'))
+        "#,
+    )
+    .bind(scrobble_e2)
+    .bind(user_a_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    // 3. User B attempts to fix match on User A's item -> returns 404 Not Found
+    let req = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/history/{}/fix-match", scrobble_e1))
+        .header(header::AUTHORIZATION, format!("Bearer {}", token_b))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(serde_json::to_vec(&serde_json::json!({
+            "tvdb_id": "81189"
+        })).unwrap()))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+
+    // 4. Empty TVDB ID returns 400 Bad Request
+    let req = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/history/{}/fix-match", scrobble_e1))
+        .header(header::AUTHORIZATION, format!("Bearer {}", token_a))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(serde_json::to_vec(&serde_json::json!({
+            "tvdb_id": "   "
+        })).unwrap()))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+    // 5. User A fixes match with "series-81189" (prefix stripped)
+    let req = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/history/{}/fix-match", scrobble_e1))
+        .header(header::AUTHORIZATION, format!("Bearer {}", token_a))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(serde_json::to_vec(&serde_json::json!({
+            "tvdb_id": "series-81189"
+        })).unwrap()))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let res: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    assert_eq!(res["status"], "fixed");
+    assert_eq!(res["tvdb_id"], "81189");
+    assert_eq!(res["scrobble"]["tvdb_id"], "81189");
+
+    // 6. Verify that sibling episode also had its tvdb_id updated for the same show
+    let sibling_tvdb_id: Option<String> = sqlx::query_scalar("SELECT tvdb_id FROM scrobbles WHERE id = ?")
+        .bind(scrobble_e2)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(sibling_tvdb_id.as_deref(), Some("81189"));
+
+    // 7. Verify GET /api/v1/history returns the tvdb_id field
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/history")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token_a))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let list: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    let items = list["items"].as_array().unwrap();
+    assert!(items.iter().any(|it| it["id"] == scrobble_e1 && it["tvdb_id"] == "81189"));
+}
+

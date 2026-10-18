@@ -414,9 +414,9 @@ pub async fn import_tautulli_handler(
                 id, user_id, title, media_type, grandparent_title, parent_title,
                 season_number, episode_number, year, overview, thumb_url,
                 rating_key, guid, duration_ms, user_rating,
-                genres, directors, actors, watch_status, progress_percent, view_offset_ms,
+                genres, directors, director, cinematographer, actors, watch_status, progress_percent, view_offset_ms,
                 watched_at, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             "#,
         )
         .bind(&scrobble_id)
@@ -435,8 +435,10 @@ pub async fn import_tautulli_handler(
         .bind(item.duration_ms)
         .bind(None::<i32>)
         .bind(None::<String>)
-        .bind(None::<String>)
-        .bind(None::<String>)
+        .bind(None::<String>) // directors
+        .bind(None::<String>) // director
+        .bind(None::<String>) // cinematographer
+        .bind(None::<String>) // actors
         .bind("completed")
         .bind(item.progress_percent.unwrap_or(100))
         .bind(item.duration_ms.unwrap_or(0))

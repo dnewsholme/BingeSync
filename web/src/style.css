@@ -2967,7 +2967,8 @@ select option,
   opacity: 1;
 }
 
-.scrobble-card-director {
+.scrobble-card-director,
+.scrobble-card-cinematographer {
   margin-top: 4px;
   font-size: 0.72rem;
   display: flex;

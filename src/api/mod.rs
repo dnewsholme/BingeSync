@@ -195,6 +195,7 @@ pub fn create_api_router(state: AppState) -> Router {
         .route("/api/v1/history/{id}/watches", get(history::get_item_watches))
         .route("/api/v1/history/{id}/rate", post(history::rate_scrobble).put(history::rate_scrobble))
         .route("/api/v1/history/{id}/refresh-metadata", post(history::refresh_scrobble_metadata))
+        .route("/api/v1/history/{id}/fix-match", post(history::fix_match_handler).put(history::fix_match_handler))
         .route("/api/v1/history/{id}", delete(history::delete_scrobble))
         // Timeline & Stats
         .route("/api/v1/timeline", get(timeline::get_timeline))
@@ -220,6 +221,7 @@ pub fn create_api_router(state: AppState) -> Router {
         .route("/api/v1/admin/tasks", get(jobs::get_admin_tasks_handler))
         .route("/api/v1/admin/tasks/{id}/run", post(jobs::trigger_admin_task_handler))
         .route("/api/v1/admin/tasks/{id}/schedule", post(jobs::update_admin_task_schedule_handler))
+        .route("/api/v1/admin/metadata/force-refresh", post(jobs::force_refresh_all_metadata_handler))
         // OpenAPI specification and Swagger UI
         .route("/api/v1/openapi.json", get(openapi::get_openapi_json))
         .route("/docs", get(openapi::get_swagger_ui))

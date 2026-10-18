@@ -98,6 +98,11 @@ export const api = {
     request(`/history/${id}/refresh-metadata`, {
       method: 'POST',
     }),
+  fixMatch: (id, tvdbId) =>
+    request(`/history/${id}/fix-match`, {
+      method: 'POST',
+      body: JSON.stringify({ tvdb_id: tvdbId }),
+    }),
   getStats: (params = {}) => {
     const query = new URLSearchParams();
     if (params.media_type && params.media_type !== 'all') {
@@ -217,7 +222,9 @@ export const api = {
   },
   clearAdminLogs: () => request('/admin/logs', { method: 'DELETE' }),
   getAdminTasks: () => request('/admin/tasks'),
-  triggerAdminTask: (taskId) => request(`/admin/tasks/${taskId}/run`, { method: 'POST' }),
+  triggerAdminTask: (taskId, force = false) =>
+    request(`/admin/tasks/${taskId}/run${force ? '?force=true' : ''}`, { method: 'POST' }),
+  forceRefreshMetadata: () => request('/admin/metadata/force-refresh', { method: 'POST' }),
   updateAdminTaskSchedule: (taskId, intervalHours) =>
     request(`/admin/tasks/${taskId}/schedule`, {
       method: 'POST',

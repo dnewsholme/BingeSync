@@ -159,6 +159,9 @@ Tests in `tests/api_tests.rs` (30 integration tests) cover:
 - Plex webhook username and ID filtering
 - Search across all history regardless of date and return all matching results
 - Jellyfin webhook scrobbles for movies and TV episodes, active sessions, and username filtering
+- Specific director and cinematographer history fields, filters, and crew metadata enrichment
+- Option to force refresh metadata for all records resetting metadata timestamps and triggering TVDB sync
+- Fix match option on history items specifying TheTVDB ID with sibling episode matching and multi-user isolation
 
 ### Run Playwright E2E UI Tests
 ```bash
@@ -166,7 +169,7 @@ cd web
 npm install
 npx playwright test
 ```
-Playwright tests in `web/tests/e2e.spec.js` (24 browser E2E tests) cover:
+Playwright tests in `web/tests/e2e.spec.js` (29 browser E2E tests) cover:
 - User sign-in flow, "+ Log Watch" modal, and timeline rendering
 - Multi-user separation in the web UI
 - Trakt history and rating import flow in the web UI (pasted JSON)
@@ -191,6 +194,11 @@ Playwright tests in `web/tests/e2e.spec.js` (24 browser E2E tests) cover:
 - User settings: configure personal radarr, sonarr, and tautulli with secret redaction
 - Jellyfin webhooks: displays Jellyfin webhook URL, supports username filtering, and processes scrobbles
 - Multilingual support: switch between English, Spanish, German, and French with dynamic UI updates and persistence
+- Clickable actors, directors, and cinematographers to filter history items
+- Background jobs: user cache sync displays in admin tasks and can be triggered
+- Specific director and cinematographer chips on cards and detail modal tags
+- Fix incorrect match on history items by specifying TheTVDB ID
+- Admin background tasks: force refresh all metadata option
 
 ### Run the App Locally
 ```bash

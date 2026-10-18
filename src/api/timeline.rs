@@ -83,7 +83,9 @@ pub async fn get_timeline(
 
     if !person_filter.is_empty() {
         let pattern = format!("%{}%", person_filter);
-        sql.push_str(" AND (directors LIKE ? OR actors LIKE ?)");
+        sql.push_str(" AND (director LIKE ? OR directors LIKE ? OR cinematographer LIKE ? OR actors LIKE ?)");
+        bind_params.push(pattern.clone());
+        bind_params.push(pattern.clone());
         bind_params.push(pattern.clone());
         bind_params.push(pattern);
     }

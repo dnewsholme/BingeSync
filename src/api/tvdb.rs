@@ -14,6 +14,8 @@ pub struct TvdbMetadata {
     pub genres: Option<String>,
     pub actors: Option<String>,
     pub directors: Option<String>,
+    pub director: Option<String>,
+    pub cinematographer: Option<String>,
     pub image_url: Option<String>,
 }
 
@@ -600,6 +602,7 @@ fn parse_extended_metadata(data: &serde_json::Value) -> TvdbMetadata {
 
     let mut actors_list: Vec<String> = Vec::new();
     let mut directors_list: Vec<String> = Vec::new();
+    let mut cinematographers_list: Vec<String> = Vec::new();
 
     let mut extract_person = |c: &serde_json::Value| {
         let person_name = c
@@ -619,6 +622,15 @@ fn parse_extended_metadata(data: &serde_json::Value) -> TvdbMetadata {
             .unwrap_or_else(|| "actor".to_string());
 
         if let Some(name) = person_name {
+            if role_type.contains("cinematograph")
+                || role_type.contains("director of photography")
+                || role_type.contains("camera")
+                || role_type.contains("dop")
+            {
+                if !cinematographers_list.contains(&name) {
+                    cinematographers_list.push(name.clone());
+                }
+            }
             if role_type.contains("director") || role_type.contains("creator") {
                 if !directors_list.contains(&name) {
                     directors_list.push(name);
@@ -670,6 +682,14 @@ fn parse_extended_metadata(data: &serde_json::Value) -> TvdbMetadata {
         Some(directors_list.join(", "))
     };
 
+    let director = directors_list.first().cloned();
+
+    let cinematographer = if cinematographers_list.is_empty() {
+        None
+    } else {
+        Some(cinematographers_list.join(", "))
+    };
+
     let image_url = data
         .get("image")
         .or_else(|| data.get("image_url"))
@@ -683,6 +703,8 @@ fn parse_extended_metadata(data: &serde_json::Value) -> TvdbMetadata {
         genres,
         actors,
         directors,
+        director,
+        cinematographer,
         image_url,
     }
 }
@@ -747,9 +769,10 @@ struct MissingMetadataItem {
     actors: Option<String>,
     directors: Option<String>,
     thumb_url: Option<String>,
+    tvdb_id: Option<String>,
 }
 
-/// Process a single batch of scrobbles missing genres, actors, or plot overview.
+/// Process a single batch of scrobbles requiring metadata enrichment.
 pub async fn process_missing_metadata_batch(
     state: &AppState,
     client: &TvdbClient,
@@ -757,14 +780,9 @@ pub async fn process_missing_metadata_batch(
 ) -> usize {
     let rows: Vec<MissingMetadataItem> = match sqlx::query_as(
         r#"
-        SELECT id, title, media_type, grandparent_title, year, overview, genres, actors, directors, thumb_url
+        SELECT id, title, media_type, grandparent_title, year, overview, genres, actors, directors, thumb_url, tvdb_id
         FROM scrobbles
         WHERE metadata_updated_at IS NULL
-          AND (
-            (genres IS NULL OR genres = '')
-            OR (actors IS NULL OR actors = '')
-            OR (overview IS NULL OR overview = '')
-          )
         ORDER BY watched_at DESC
         LIMIT 10
         "#
@@ -793,64 +811,80 @@ pub async fn process_missing_metadata_batch(
         let (search_title, detected_year) = normalize_search_query(raw_title);
         let effective_year = item.year.or(detected_year);
 
-        let cache_key = format!("{}:{}:{:?}", item.media_type, search_title.to_lowercase(), effective_year);
-        if failed_lookups.contains(&cache_key) {
-            let _ = sqlx::query("UPDATE scrobbles SET metadata_updated_at = datetime('now') WHERE id = ?")
-                .bind(&item.id)
-                .execute(&state.pool)
-                .await;
-            processed_count += 1;
-            continue;
-        }
-
-        let search_res = client
-            .search(&search_title, if is_episode { "series" } else { "movie" }, effective_year)
-            .await;
-
-        let match_result = match search_res {
-            Ok(Some(res)) => res,
-            _ => {
-                // Mark metadata_updated_at so we don't query TVDB on every loop for unmatchable items
-                if is_episode {
-                    let show_name = item.grandparent_title.as_deref().unwrap_or(&item.title);
-                    let _ = sqlx::query(
-                        "UPDATE scrobbles SET metadata_updated_at = datetime('now') WHERE id = ? OR (grandparent_title IS NOT NULL AND LOWER(TRIM(grandparent_title)) = LOWER(TRIM(?)))"
-                    )
+        let meta = if let Some(ref tid) = item.tvdb_id {
+            let clean_tid = tid.trim();
+            if is_episode {
+                match client.get_series_extended(clean_tid).await {
+                    Ok(m) => m,
+                    Err(_) => client.get_movie_extended(clean_tid).await.unwrap_or_default(),
+                }
+            } else {
+                match client.get_movie_extended(clean_tid).await {
+                    Ok(m) => m,
+                    Err(_) => client.get_series_extended(clean_tid).await.unwrap_or_default(),
+                }
+            }
+        } else {
+            let cache_key = format!("{}:{}:{:?}", item.media_type, search_title.to_lowercase(), effective_year);
+            if failed_lookups.contains(&cache_key) {
+                let _ = sqlx::query("UPDATE scrobbles SET metadata_updated_at = datetime('now') WHERE id = ?")
                     .bind(&item.id)
-                    .bind(show_name)
                     .execute(&state.pool)
                     .await;
-                } else {
-                    let _ = sqlx::query("UPDATE scrobbles SET metadata_updated_at = datetime('now') WHERE id = ?")
-                        .bind(&item.id)
-                        .execute(&state.pool)
-                        .await;
-                }
-                failed_lookups.insert(cache_key);
                 processed_count += 1;
                 continue;
             }
-        };
 
-        let match_is_series = match_result.entity_type.as_deref() == Some("series") || is_episode;
-        let mut meta = if match_is_series {
-            match client.get_series_extended(&match_result.id).await {
-                Ok(m) => m,
-                Err(_) => client.get_movie_extended(&match_result.id).await.unwrap_or_default(),
-            }
-        } else {
-            match client.get_movie_extended(&match_result.id).await {
-                Ok(m) => m,
-                Err(_) => client.get_series_extended(&match_result.id).await.unwrap_or_default(),
-            }
-        };
+            let search_res = client
+                .search(&search_title, if is_episode { "series" } else { "movie" }, effective_year)
+                .await;
 
-        if meta.overview.is_none() || meta.overview.as_deref() == Some("") {
-            meta.overview = match_result.overview.clone();
-        }
-        if meta.image_url.is_none() || meta.image_url.as_deref() == Some("") {
-            meta.image_url = match_result.image_url.clone();
-        }
+            let match_result = match search_res {
+                Ok(Some(res)) => res,
+                _ => {
+                    // Mark metadata_updated_at so we don't query TVDB on every loop for unmatchable items
+                    if is_episode {
+                        let show_name = item.grandparent_title.as_deref().unwrap_or(&item.title);
+                        let _ = sqlx::query(
+                            "UPDATE scrobbles SET metadata_updated_at = datetime('now') WHERE id = ? OR (grandparent_title IS NOT NULL AND LOWER(TRIM(grandparent_title)) = LOWER(TRIM(?)))"
+                        )
+                        .bind(&item.id)
+                        .bind(show_name)
+                        .execute(&state.pool)
+                        .await;
+                    } else {
+                        let _ = sqlx::query("UPDATE scrobbles SET metadata_updated_at = datetime('now') WHERE id = ?")
+                            .bind(&item.id)
+                            .execute(&state.pool)
+                            .await;
+                    }
+                    failed_lookups.insert(cache_key);
+                    processed_count += 1;
+                    continue;
+                }
+            };
+
+            let match_is_series = match_result.entity_type.as_deref() == Some("series") || is_episode;
+            let mut m = if match_is_series {
+                match client.get_series_extended(&match_result.id).await {
+                    Ok(m) => m,
+                    Err(_) => client.get_movie_extended(&match_result.id).await.unwrap_or_default(),
+                }
+            } else {
+                match client.get_movie_extended(&match_result.id).await {
+                    Ok(m) => m,
+                    Err(_) => client.get_series_extended(&match_result.id).await.unwrap_or_default(),
+                }
+            };
+
+            if m.overview.is_none() || m.overview.as_deref() == Some("") {
+                m.overview = match_result.overview.clone();
+            }
+            if m.image_url.is_none() || m.image_url.as_deref() == Some("") {
+                m.image_url = match_result.image_url.clone();
+            }
+            m
+        };
 
         if is_episode {
             // Update all episodes for this series that have missing fields
@@ -861,6 +895,8 @@ pub async fn process_missing_metadata_batch(
                 SET genres = COALESCE(NULLIF(?, ''), NULLIF(genres, '')),
                     actors = COALESCE(NULLIF(?, ''), NULLIF(actors, '')),
                     directors = COALESCE(NULLIF(?, ''), NULLIF(directors, '')),
+                    director = COALESCE(NULLIF(?, ''), NULLIF(director, '')),
+                    cinematographer = COALESCE(NULLIF(?, ''), NULLIF(cinematographer, '')),
                     overview = CASE WHEN overview IS NULL OR overview = '' THEN ? ELSE overview END,
                     thumb_url = CASE 
                         WHEN (thumb_url IS NULL OR thumb_url = '' OR thumb_url LIKE '/library/%' OR thumb_url LIKE '/photo/%') AND ? IS NOT NULL 
@@ -874,6 +910,8 @@ pub async fn process_missing_metadata_batch(
             .bind(&meta.genres)
             .bind(&meta.actors)
             .bind(&meta.directors)
+            .bind(&meta.director)
+            .bind(&meta.cinematographer)
             .bind(&meta.overview)
             .bind(&meta.image_url)
             .bind(&meta.image_url)
@@ -890,6 +928,8 @@ pub async fn process_missing_metadata_batch(
                 SET genres = COALESCE(NULLIF(?, ''), NULLIF(genres, '')),
                     actors = COALESCE(NULLIF(?, ''), NULLIF(actors, '')),
                     directors = COALESCE(NULLIF(?, ''), NULLIF(directors, '')),
+                    director = COALESCE(NULLIF(?, ''), NULLIF(director, '')),
+                    cinematographer = COALESCE(NULLIF(?, ''), NULLIF(cinematographer, '')),
                     overview = CASE WHEN overview IS NULL OR overview = '' THEN ? ELSE overview END,
                     thumb_url = CASE 
                         WHEN (thumb_url IS NULL OR thumb_url = '' OR thumb_url LIKE '/library/%' OR thumb_url LIKE '/photo/%') AND ? IS NOT NULL 
@@ -903,6 +943,8 @@ pub async fn process_missing_metadata_batch(
             .bind(&meta.genres)
             .bind(&meta.actors)
             .bind(&meta.directors)
+            .bind(&meta.director)
+            .bind(&meta.cinematographer)
             .bind(&meta.overview)
             .bind(&meta.image_url)
             .bind(&meta.image_url)

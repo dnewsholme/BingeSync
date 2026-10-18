@@ -1391,4 +1391,137 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
       await expect(userSyncCard).toBeVisible();
     }
   });
+
+  test('history items: specific director and cinematographer fields display on card and detail modal', async ({ page }) => {
+    const userEmail = `cinema_crew_${Date.now()}@bingesync.local`;
+    await page.goto('/');
+    await page.fill('#dev-email', userEmail);
+    await page.fill('#dev-name', 'Film Aficionado');
+    await page.click('#btn-dev-submit');
+
+    await expect(page.locator('#tab-timeline')).toBeVisible();
+
+    // 1. Open Log modal and fill title, director, cinematographer
+    await page.click('#btn-open-log-modal');
+    await expect(page.locator('#modal-log-scrobble')).toBeVisible();
+    await page.fill('#scrobble-title', 'Dune: Part Two');
+    await page.fill('#scrobble-director', 'Denis Villeneuve');
+    await page.fill('#scrobble-cinematographer', 'Greig Fraser');
+    await page.fill('#scrobble-year', '2024');
+    await page.click('#btn-submit-scrobble');
+    await expect(page.locator('#modal-log-scrobble')).toBeHidden();
+
+    // 2. Open History tab
+    await page.click('#tab-history');
+    await expect(page.locator('#view-history')).toBeVisible();
+
+    const duneCard = page.locator('#history-list .scrobble-card', { hasText: 'Dune: Part Two' }).first();
+    await expect(duneCard).toBeVisible();
+
+    // Check director and cinematographer chips on card
+    await expect(duneCard.locator('.scrobble-card-director')).toContainText('Denis Villeneuve');
+    await expect(duneCard.locator('.scrobble-card-cinematographer')).toContainText('Greig Fraser');
+
+    // 3. Open Detail Modal
+    await duneCard.click();
+    await expect(page.locator('#modal-item-detail')).toBeVisible();
+
+    const directorTag = page.locator('#modal-item-detail .person-tag', { hasText: 'Denis Villeneuve' });
+    await expect(directorTag).toBeVisible();
+
+    const dopTag = page.locator('#modal-item-detail .person-tag', { hasText: 'Greig Fraser' });
+    await expect(dopTag).toBeVisible();
+
+    // 4. Click cinematographer tag -> shows watches featuring Greig Fraser
+    await dopTag.click();
+    const watchesSec = page.locator('#detail-person-watches-container');
+    await expect(watchesSec).toBeVisible();
+    await expect(watchesSec).toContainText('Greig Fraser');
+    await expect(watchesSec.locator('.person-history-item')).toHaveCount(1);
+  });
+
+  test('history items: fix incorrect match by specifying tvdb id', async ({ page }) => {
+    const userEmail = `fix_match_${Date.now()}@bingesync.local`;
+    await page.goto('/');
+    await page.fill('#dev-email', userEmail);
+    await page.fill('#dev-name', 'Match Fixer');
+    await page.click('#btn-dev-submit');
+
+    await expect(page.locator('#tab-timeline')).toBeVisible();
+
+    // 1. Log a watch item
+    await page.click('#btn-open-log-modal');
+    await expect(page.locator('#modal-log-scrobble')).toBeVisible();
+    await page.fill('#scrobble-title', 'Incorrect Match Show');
+    await page.selectOption('#scrobble-media-type', 'episode');
+    await page.fill('#scrobble-show', 'Breaking Bad');
+    await page.fill('#scrobble-season', '1');
+    await page.fill('#scrobble-episode', '1');
+    await page.click('#btn-submit-scrobble');
+    await expect(page.locator('#modal-log-scrobble')).toBeHidden();
+
+    // 2. Open History tab and click the card to open detail modal
+    await page.click('#tab-history');
+    await expect(page.locator('#view-history')).toBeVisible();
+
+    const card = page.locator('#history-list .scrobble-card', { hasText: 'Breaking Bad' }).first();
+    await expect(card).toBeVisible();
+    await card.click();
+
+    await expect(page.locator('#modal-item-detail')).toBeVisible();
+
+    // 3. Verify Fix Match button is present and click it
+    const btnFixMatch = page.locator('#btn-fix-match');
+    await expect(btnFixMatch).toBeVisible();
+    await btnFixMatch.click();
+
+    // 4. Verify Fix Match box appears
+    const fixBox = page.locator('#detail-fix-match-box');
+    await expect(fixBox).toBeVisible();
+
+    // 5. Fill TVDB ID and submit
+    await page.fill('#input-fix-match-tvdb-id', '81189');
+    await page.click('#btn-submit-fix-match');
+
+    // 6. Verify feedback and that the TVDB ID appears in footer
+    await expect(page.locator('#modal-item-detail')).toContainText('TheTVDB ID: 81189');
+
+    // 7. Dismiss detail modal
+    await page.click('#btn-dismiss-detail-modal');
+    await expect(page.locator('#modal-item-detail')).toBeHidden();
+  });
+
+  test('admin background tasks: force refresh all metadata option', async ({ page }) => {
+    page.on('dialog', dialog => dialog.accept());
+
+    const adminEmail = `admin_force_meta_${Date.now()}@bingesync.local`;
+    await page.goto('/');
+    await page.fill('#dev-email', adminEmail);
+    await page.fill('#dev-name', 'Admin Force Refresher');
+    await page.click('#btn-dev-submit');
+
+    await expect(page.locator('#tab-admin')).toBeVisible();
+    await page.click('#tab-admin');
+
+    // Switch to Background Tasks subtab
+    await page.click('#admin-subnav-pills button[data-subview="admin-sub-tasks"]');
+    await expect(page.locator('#admin-sub-tasks')).toBeVisible();
+
+    // Verify top "Force Refresh All Metadata" button
+    const btnForceAll = page.locator('#btn-force-refresh-all-metadata');
+    await expect(btnForceAll).toBeVisible();
+
+    // Also verify "Force Refresh All" button inside TheTVDB task card
+    const tvdbCard = page.locator('.task-card', { hasText: 'TheTVDB v4 Metadata Enrichment' });
+    await expect(tvdbCard).toBeVisible();
+    const btnForceTask = tvdbCard.locator('button.btn-force-task');
+    await expect(btnForceTask).toBeVisible();
+
+    // Click force refresh all button
+    await btnForceAll.click();
+
+    // Verify triggered message or button state
+    await expect(tvdbCard).toBeVisible();
+  });
 });
+

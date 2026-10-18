@@ -282,6 +282,8 @@ async fn process_webhook(
         let tags: Vec<String> = list.iter().filter_map(|t| t.tag.clone()).collect();
         if tags.is_empty() { None } else { Some(tags.join(", ")) }
     });
+    let director = directors.as_ref().and_then(|d| d.split(',').next().map(|s| s.trim().to_string()));
+    let cinematographer: Option<String> = None;
     let actors = metadata.role.as_ref().and_then(|list| {
         let tags: Vec<String> = list.iter().filter_map(|t| t.tag.clone()).collect();
         if tags.is_empty() { None } else { Some(tags.join(", ")) }
@@ -396,6 +398,7 @@ async fn process_webhook(
                 thumb_url = COALESCE(thumb_url, ?),
                 genres = COALESCE(genres, ?),
                 directors = COALESCE(directors, ?),
+                director = COALESCE(director, ?),
                 actors = COALESCE(actors, ?)
             WHERE id = ?
             "#
@@ -407,6 +410,7 @@ async fn process_webhook(
         .bind(&thumb_url)
         .bind(&genres)
         .bind(&directors)
+        .bind(&director)
         .bind(&actors)
         .bind(&existing.id)
         .execute(&state.pool)
@@ -431,9 +435,9 @@ async fn process_webhook(
                 id, user_id, title, media_type, grandparent_title, parent_title,
                 season_number, episode_number, year, overview, thumb_url,
                 rating_key, guid, duration_ms, user_rating,
-                genres, directors, actors, watch_status, progress_percent, view_offset_ms,
+                genres, directors, director, cinematographer, actors, watch_status, progress_percent, view_offset_ms,
                 metadata_updated_at, watched_at, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             "#,
         )
         .bind(&new_id)
@@ -453,6 +457,8 @@ async fn process_webhook(
         .bind(None::<i32>)
         .bind(&genres)
         .bind(&directors)
+        .bind(&director)
+        .bind(&cinematographer)
         .bind(&actors)
         .bind(watch_status)
         .bind(progress_percent)
@@ -1014,9 +1020,9 @@ async fn process_jellyfin_webhook(
                 id, user_id, title, media_type, grandparent_title, parent_title,
                 season_number, episode_number, year, overview, thumb_url,
                 rating_key, guid, duration_ms, user_rating,
-                genres, directors, actors, watch_status, progress_percent, view_offset_ms,
+                genres, directors, director, cinematographer, actors, watch_status, progress_percent, view_offset_ms,
                 metadata_updated_at, watched_at, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             "#,
         )
         .bind(&new_id)
@@ -1036,6 +1042,8 @@ async fn process_jellyfin_webhook(
         .bind(None::<i32>)
         .bind(&genres)
         .bind(None::<String>) // directors
+        .bind(None::<String>) // director
+        .bind(None::<String>) // cinematographer
         .bind(None::<String>) // actors
         .bind(watch_status)
         .bind(progress_percent)

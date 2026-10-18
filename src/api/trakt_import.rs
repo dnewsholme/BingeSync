@@ -205,40 +205,43 @@ pub async fn import_trakt_handler(
 
         // Insert new record with exact Trakt watched_at timestamp and rating
         let scrobble_id = Uuid::new_v4().to_string();
-        let insert_res = sqlx::query(
-            r#"
-            INSERT INTO scrobbles (
-                id, user_id, title, media_type, grandparent_title, parent_title,
-                season_number, episode_number, year, overview, thumb_url,
-                rating_key, guid, duration_ms, user_rating,
-                genres, directors, actors, watch_status,
-                watched_at, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            "#,
-        )
-        .bind(&scrobble_id)
-        .bind(&auth.user_id)
-        .bind(&item.title)
-        .bind(&item.media_type)
-        .bind(&item.grandparent_title)
-        .bind(&item.parent_title)
-        .bind(item.season_number)
-        .bind(item.episode_number)
-        .bind(item.year)
-        .bind(None::<String>) // overview
-        .bind(None::<String>) // thumb_url
-        .bind(None::<String>) // rating_key
-        .bind(&item.guid)     // guid (e.g. imdb://tt1234567)
-        .bind(None::<i64>)    // duration_ms
-        .bind(item.user_rating)
-        .bind(&item.genres)
-        .bind(&item.directors)
-        .bind(&item.actors)
-        .bind("completed")
-        .bind(&item.watched_at)
-        .bind(&now)
-        .execute(&mut *tx)
-        .await;
+            let item_director = item.directors.as_ref().and_then(|d| d.split(',').next().map(|s| s.trim().to_string()));
+            let insert_res = sqlx::query(
+                r#"
+                INSERT INTO scrobbles (
+                    id, user_id, title, media_type, grandparent_title, parent_title,
+                    season_number, episode_number, year, overview, thumb_url,
+                    rating_key, guid, duration_ms, user_rating,
+                    genres, directors, director, cinematographer, actors, watch_status,
+                    watched_at, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                "#,
+            )
+            .bind(&scrobble_id)
+            .bind(&auth.user_id)
+            .bind(&item.title)
+            .bind(&item.media_type)
+            .bind(&item.grandparent_title)
+            .bind(&item.parent_title)
+            .bind(item.season_number)
+            .bind(item.episode_number)
+            .bind(item.year)
+            .bind(None::<String>) // overview
+            .bind(None::<String>) // thumb_url
+            .bind(None::<String>) // rating_key
+            .bind(&item.guid)     // guid (e.g. imdb://tt1234567)
+            .bind(None::<i64>)    // duration_ms
+            .bind(item.user_rating)
+            .bind(&item.genres)
+            .bind(&item.directors)
+            .bind(&item_director)
+            .bind(None::<String>) // cinematographer
+            .bind(&item.actors)
+            .bind("completed")
+            .bind(&item.watched_at)
+            .bind(&now)
+            .execute(&mut *tx)
+            .await;
 
         if insert_res.is_ok() {
             imported_count += 1;

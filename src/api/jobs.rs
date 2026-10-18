@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
     Json,
@@ -255,10 +255,16 @@ pub async fn get_admin_tasks_handler(
     })))
 }
 
+#[derive(Debug, Deserialize, Default)]
+pub struct TriggerTaskQuery {
+    pub force: Option<bool>,
+}
+
 pub async fn trigger_admin_task_handler(
     State(state): State<AppState>,
     auth: AuthUser,
     Path(task_id): Path<String>,
+    Query(query): Query<TriggerTaskQuery>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
     if auth.role != "admin" {
         return Err((
@@ -280,22 +286,47 @@ pub async fn trigger_admin_task_handler(
             })))
         }
         "tvdb_metadata" | "tvdb" => {
-            // Reset metadata_updated_at for scrobbles still missing core metadata so they get re-evaluated
-            let _ = sqlx::query(
-                "UPDATE scrobbles SET metadata_updated_at = NULL WHERE (overview IS NULL OR overview = '') OR (genres IS NULL OR genres = '') OR (actors IS NULL OR actors = '')"
-            )
-            .execute(&state.pool)
-            .await;
+            let is_forced = query.force.unwrap_or(false);
+            if is_forced {
+                let _ = sqlx::query("UPDATE scrobbles SET metadata_updated_at = NULL")
+                    .execute(&state.pool)
+                    .await;
+                state.task_tracker.set_tvdb_running("Forced full metadata refresh triggered...").await;
+                state.metadata_notify.notify_waiters();
+                state.metadata_notify.notify_one();
+                state.log_buffer.push(
+                    "INFO",
+                    "bingesync::tasks",
+                    "Forced full metadata refresh triggered: cleared metadata timestamps for all scrobbles",
+                );
+                Ok(Json(serde_json::json!({
+                    "status": "triggered",
+                    "task_id": "tvdb_metadata",
+                    "forced": true,
+                    "message": "TheTVDB metadata worker signaled to re-download metadata for all records"
+                })))
+            } else {
+                // Reset metadata_updated_at for scrobbles still missing core metadata so they get re-evaluated
+                let _ = sqlx::query(
+                    "UPDATE scrobbles SET metadata_updated_at = NULL WHERE (overview IS NULL OR overview = '') OR (genres IS NULL OR genres = '') OR (actors IS NULL OR actors = '')"
+                )
+                .execute(&state.pool)
+                .await;
 
-            state.task_tracker.set_tvdb_running("Manual run triggered...").await;
-            state.metadata_notify.notify_waiters();
-            state.metadata_notify.notify_one();
-            state.log_buffer.push("INFO", "bingesync::tasks", "Manual run triggered for TheTVDB Metadata worker");
-            Ok(Json(serde_json::json!({
-                "status": "triggered",
-                "task_id": "tvdb_metadata",
-                "message": "TheTVDB metadata enrichment worker has been signaled to run immediately"
-            })))
+                state.task_tracker.set_tvdb_running("Manual run triggered...").await;
+                state.metadata_notify.notify_waiters();
+                state.metadata_notify.notify_one();
+                state.log_buffer.push("INFO", "bingesync::tasks", "Manual run triggered for TheTVDB Metadata worker");
+                Ok(Json(serde_json::json!({
+                    "status": "triggered",
+                    "task_id": "tvdb_metadata",
+                    "forced": false,
+                    "message": "TheTVDB metadata enrichment worker has been signaled to run immediately"
+                })))
+            }
+        }
+        "force_metadata_refresh" => {
+            force_refresh_all_metadata_internal(&state).await
         }
         "user_sync" | "users" | "plex_users" => {
             state.task_tracker.set_user_sync_running("Manual run triggered...").await;
@@ -313,6 +344,51 @@ pub async fn trigger_admin_task_handler(
             Json(serde_json::json!({ "error": format!("Unknown background task: {}", task_id) })),
         )),
     }
+}
+
+async fn force_refresh_all_metadata_internal(
+    state: &AppState,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let res = sqlx::query("UPDATE scrobbles SET metadata_updated_at = NULL")
+        .execute(&state.pool)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": format!("Database error resetting metadata timestamps: {}", e) })),
+            )
+        })?;
+
+    let count = res.rows_affected();
+    state.task_tracker.set_tvdb_running("Forced full metadata refresh triggered...").await;
+    state.metadata_notify.notify_waiters();
+    state.metadata_notify.notify_one();
+    state.log_buffer.push(
+        "INFO",
+        "bingesync::tasks",
+        &format!("Forced full metadata refresh triggered: reset {} records", count),
+    );
+
+    Ok(Json(serde_json::json!({
+        "status": "triggered",
+        "task_id": "tvdb_metadata",
+        "records_reset": count,
+        "forced": true,
+        "message": format!("Metadata reset for {} records; TVDB background worker signaled to re-download all metadata", count)
+    })))
+}
+
+pub async fn force_refresh_all_metadata_handler(
+    State(state): State<AppState>,
+    auth: AuthUser,
+) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
+    if auth.role != "admin" {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(serde_json::json!({ "error": "Admin privileges required to force refresh metadata" })),
+        ));
+    }
+    force_refresh_all_metadata_internal(&state).await
 }
 
 #[derive(Debug, Deserialize)]

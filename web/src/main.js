@@ -79,6 +79,16 @@ function getImdbUrl(item) {
 
 // Helper: TheTVDB URL generator
 function getTvdbUrl(item) {
+  if (item.tvdb_id) {
+    const cleanId = String(item.tvdb_id).replace(/^(series-|movie-)/i, '').trim();
+    if (cleanId) {
+      if (item.media_type === 'movie') {
+        return `https://thetvdb.com/dereferrer/movie/${cleanId}`;
+      } else {
+        return `https://thetvdb.com/dereferrer/series/${cleanId}`;
+      }
+    }
+  }
   if (item.guid) {
     const match = item.guid.match(/(?:the)?tvdb:\/\/(?:series\/|movie\/)?(\d+)/i);
     if (match) {
@@ -292,6 +302,7 @@ const el = {
   btnDismissDetailModal: document.getElementById('btn-dismiss-detail-modal'),
   btnDeleteDetailItem: document.getElementById('btn-delete-detail-item'),
   btnRefreshDetailMetadata: document.getElementById('btn-refresh-detail-metadata'),
+  btnFixMatch: document.getElementById('btn-fix-match'),
   detailTitle: document.getElementById('detail-title'),
   detailBody: document.getElementById('detail-body'),
   detailImdbLink: document.getElementById('detail-imdb-link'),
@@ -322,6 +333,7 @@ const el = {
 
   // Admin Background Tasks
   btnRefreshAdminTasks: document.getElementById('btn-refresh-admin-tasks'),
+  btnForceRefreshAllMetadata: document.getElementById('btn-force-refresh-all-metadata'),
   adminTasksContainer: document.getElementById('admin-tasks-container'),
 
   // Admin Application Logs
@@ -1371,7 +1383,8 @@ function renderScrobbleCard(item, isHistory = false) {
       </div>
       <div class="scrobble-card-title">${escapeHtml(item.title)}</div>
       ${subTitle ? `<div class="scrobble-card-sub">${escapeHtml(subTitle)}</div>` : ''}
-      ${item.directors ? `<div class="scrobble-card-director" onclick="event.stopPropagation()"><span style="font-size:0.72rem;color:var(--text-dim);">Dir:</span> <button type="button" class="person-tag-card" data-person="${escapeHtml(item.directors.split(',')[0].trim())}" title="Show history with ${escapeHtml(item.directors.split(',')[0].trim())}">${escapeHtml(item.directors.split(',')[0].trim())}</button></div>` : ''}
+      ${(item.director || item.directors) ? `<div class="scrobble-card-director" onclick="event.stopPropagation()"><span style="font-size:0.72rem;color:var(--text-dim);">Dir:</span> <button type="button" class="person-tag-card" data-person="${escapeHtml((item.director || item.directors).split(',')[0].trim())}" title="Show history with ${escapeHtml((item.director || item.directors).split(',')[0].trim())}">${escapeHtml((item.director || item.directors).split(',')[0].trim())}</button></div>` : ''}
+      ${item.cinematographer ? `<div class="scrobble-card-cinematographer" onclick="event.stopPropagation()"><span style="font-size:0.72rem;color:var(--text-dim);">Cinematography:</span> <button type="button" class="person-tag-card" data-person="${escapeHtml(item.cinematographer.split(',')[0].trim())}" title="Show history with ${escapeHtml(item.cinematographer.split(',')[0].trim())}">${escapeHtml(item.cinematographer.split(',')[0].trim())}</button></div>` : ''}
       <div class="scrobble-card-meta">
         <span>${formatTime(item.watched_at)}</span>
         <span>${durationMin}</span>
@@ -2320,6 +2333,16 @@ el.formManualScrobble.addEventListener('submit', async (e) => {
     overview: document.getElementById('scrobble-overview').value.trim() || null,
   };
 
+  const directorVal = document.getElementById('scrobble-director')?.value?.trim();
+  const cinematographerVal = document.getElementById('scrobble-cinematographer')?.value?.trim();
+  if (directorVal) {
+    payload.director = directorVal;
+    payload.directors = directorVal;
+  }
+  if (cinematographerVal) {
+    payload.cinematographer = cinematographerVal;
+  }
+
   try {
     await api.createScrobble(payload);
     el.modalLogScrobble.style.display = 'none';
@@ -2711,8 +2734,12 @@ async function openDetailModal(item) {
   const genresBadge = item.genres
     ? `<div style="font-size:0.85rem;color:var(--text-dim);">Genres: <strong style="color:#fff;">${escapeHtml(item.genres)}</strong></div>`
     : '';
-  const directorBadge = item.directors
-    ? `<div class="detail-person-row" style="font-size:0.85rem;color:var(--text-dim);display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-top:2px;"><span>Director:</span> <div class="person-tag-list">${formatPersonLinks(item.directors, 'director')}</div></div>`
+  const directorVal = item.director || item.directors;
+  const directorBadge = directorVal
+    ? `<div class="detail-person-row" style="font-size:0.85rem;color:var(--text-dim);display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-top:2px;"><span>Director:</span> <div class="person-tag-list">${formatPersonLinks(directorVal, 'director')}</div></div>`
+    : '';
+  const cinematographerBadge = item.cinematographer
+    ? `<div class="detail-person-row" style="font-size:0.85rem;color:var(--text-dim);display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-top:2px;"><span>Cinematographer:</span> <div class="person-tag-list">${formatPersonLinks(item.cinematographer, 'cinematographer')}</div></div>`
     : '';
   const actorsBadge = item.actors
     ? `<div class="detail-person-row" style="font-size:0.85rem;color:var(--text-dim);display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-top:2px;"><span>Cast:</span> <div class="person-tag-list">${formatPersonLinks(item.actors, 'actor')}</div></div>`
@@ -2740,6 +2767,7 @@ async function openDetailModal(item) {
           ${ratingBadge}
           ${genresBadge}
           ${directorBadge}
+          ${cinematographerBadge}
           ${actorsBadge}
         </div>
         ${item.overview ? `<p style="font-size:0.92rem;line-height:1.6;color:var(--text-main);">${escapeHtml(item.overview)}</p>` : '<p style="color:var(--text-dim);font-style:italic;">No plot overview available.</p>'}
@@ -2765,11 +2793,22 @@ async function openDetailModal(item) {
       </div>
       <span id="detail-rating-feedback" style="font-size:0.82rem;font-weight:500;display:none;"></span>
     </div>
+    <div id="detail-fix-match-box" class="fix-match-box" style="display:none;margin:14px 0;padding:12px 14px;background:rgba(59,130,246,0.06);border:1px solid rgba(59,130,246,0.25);border-radius:8px;">
+      <div style="font-weight:600;font-size:0.88rem;color:#93c5fd;margin-bottom:6px;">${t('modal.fix_match_title')}</div>
+      <p style="font-size:0.82rem;color:var(--text-dim);margin-bottom:10px;">${t('modal.fix_match_desc')}</p>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <input type="text" id="input-fix-match-tvdb-id" class="form-control font-mono" placeholder="${t('modal.fix_match_placeholder')}" value="${escapeHtml(item.tvdb_id || '')}" style="width:200px;padding:6px 10px;font-size:0.85rem;" />
+        <button type="button" class="btn btn-primary btn-sm" id="btn-submit-fix-match">${t('modal.fix_match_apply')}</button>
+        <button type="button" class="btn btn-outline btn-sm" id="btn-cancel-fix-match">${t('modal.cancel')}</button>
+      </div>
+      <div id="fix-match-feedback" style="margin-top:8px;font-size:0.82rem;display:none;"></div>
+    </div>
     <div id="detail-arr-container"></div>
     <div id="detail-person-watches-container" class="person-watches-section" style="display:none;"></div>
     <div id="detail-watches-container" class="detail-watches-section"></div>
     <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.78rem;font-family:monospace;color:var(--text-dim);background:#080c14;padding:8px 12px;border-radius:6px;margin-top:14px;flex-wrap:wrap;gap:8px;">
       <span>Scrobble ID: ${item.id}</span>
+      ${item.tvdb_id ? `<span style="color:#60a5fa;">TheTVDB ID: ${escapeHtml(item.tvdb_id)}</span>` : ''}
       <span class="detail-tvdb-attribution">Metadata & cast via <a href="https://thetvdb.com" target="_blank" rel="noopener noreferrer">TheTVDB</a></span>
     </div>
   `;
@@ -2811,6 +2850,57 @@ async function openDetailModal(item) {
         }
       } finally {
         btnSaveRating.disabled = false;
+      }
+    };
+  }
+
+  const btnCancelFixMatch = document.getElementById('btn-cancel-fix-match');
+  if (btnCancelFixMatch) {
+    btnCancelFixMatch.onclick = () => {
+      const box = document.getElementById('detail-fix-match-box');
+      if (box) box.style.display = 'none';
+    };
+  }
+
+  const btnSubmitFixMatch = document.getElementById('btn-submit-fix-match');
+  if (btnSubmitFixMatch) {
+    btnSubmitFixMatch.onclick = async () => {
+      const inp = document.getElementById('input-fix-match-tvdb-id');
+      const feedback = document.getElementById('fix-match-feedback');
+      const tvdbId = inp ? inp.value.trim() : '';
+      if (!tvdbId) {
+        if (feedback) {
+          feedback.textContent = 'Please enter a valid TheTVDB ID';
+          feedback.style.color = '#ef4444';
+          feedback.style.display = 'block';
+        }
+        return;
+      }
+      btnSubmitFixMatch.disabled = true;
+      if (feedback) {
+        feedback.textContent = 'Fixing match and fetching metadata from TheTVDB...';
+        feedback.style.color = '#60a5fa';
+        feedback.style.display = 'block';
+      }
+      try {
+        const res = await api.fixMatch(item.id, tvdbId);
+        if (feedback) {
+          feedback.textContent = 'Match updated successfully!';
+          feedback.style.color = '#34d399';
+        }
+        if (res && res.scrobble) {
+          state.selectedItem = res.scrobble;
+          await openDetailModal(res.scrobble);
+        }
+        loadTimeline();
+        loadHistory();
+      } catch (err) {
+        if (feedback) {
+          feedback.textContent = `Error: ${err.message}`;
+          feedback.style.color = '#ef4444';
+        }
+      } finally {
+        btnSubmitFixMatch.disabled = false;
       }
     };
   }
@@ -3182,6 +3272,22 @@ if (el.btnRefreshDetailMetadata) {
     } finally {
       el.btnRefreshDetailMetadata.disabled = false;
       el.btnRefreshDetailMetadata.innerHTML = originalText;
+    }
+  });
+}
+
+if (el.btnFixMatch) {
+  el.btnFixMatch.addEventListener('click', () => {
+    const box = document.getElementById('detail-fix-match-box');
+    if (!box) return;
+    const isHidden = box.style.display === 'none' || !box.style.display;
+    box.style.display = isHidden ? 'block' : 'none';
+    if (isHidden) {
+      const inp = document.getElementById('input-fix-match-tvdb-id');
+      if (inp) {
+        inp.focus();
+        inp.select();
+      }
     }
   });
 }
@@ -3579,10 +3685,15 @@ function renderAdminTasks(tasks) {
           </div>
         </div>
 
-        <div style="margin-top: 8px;">
+        <div style="margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap;">
           <button class="btn btn-outline btn-sm btn-trigger-task" data-task-id="${t.id}">
             ${isRunning ? 'Running... (Run Again)' : 'Run Now'}
           </button>
+          ${t.id === 'tvdb_metadata' ? `
+            <button class="btn btn-outline btn-sm btn-force-task" data-task-id="${t.id}" title="Re-download metadata for all records regardless of existing metadata">
+              Force Refresh All
+            </button>
+          ` : ''}
         </div>
       </div>
     `;
@@ -3625,10 +3736,55 @@ function renderAdminTasks(tasks) {
       }
     });
   });
+
+  el.adminTasksContainer.querySelectorAll('.btn-force-task').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (!confirm('Force refresh metadata for ALL items? This will reset metadata timestamps and re-download all metadata from TheTVDB.')) {
+        return;
+      }
+      btn.disabled = true;
+      btn.textContent = 'Triggering...';
+      try {
+        await api.forceRefreshMetadata();
+        btn.textContent = 'Triggered!';
+        setTimeout(() => loadAdminTasks(), 500);
+        setTimeout(() => loadAdminTasks(), 1500);
+        setTimeout(() => loadAdminTasks(), 3000);
+      } catch (err) {
+        alert('Failed to force refresh metadata: ' + err.message);
+        btn.disabled = false;
+        btn.textContent = 'Force Refresh All';
+      }
+    });
+  });
 }
 
 if (el.btnRefreshAdminTasks) {
   el.btnRefreshAdminTasks.addEventListener('click', () => loadAdminTasks());
+}
+
+if (el.btnForceRefreshAllMetadata) {
+  el.btnForceRefreshAllMetadata.addEventListener('click', async () => {
+    if (!confirm('Force refresh metadata for ALL items? This will reset metadata timestamps and re-download all metadata from TheTVDB.')) {
+      return;
+    }
+    el.btnForceRefreshAllMetadata.disabled = true;
+    const originalText = el.btnForceRefreshAllMetadata.textContent;
+    el.btnForceRefreshAllMetadata.textContent = 'Triggering...';
+    try {
+      await api.forceRefreshMetadata();
+      el.btnForceRefreshAllMetadata.textContent = 'Triggered!';
+      setTimeout(() => {
+        el.btnForceRefreshAllMetadata.disabled = false;
+        el.btnForceRefreshAllMetadata.textContent = originalText;
+        loadAdminTasks();
+      }, 1500);
+    } catch (err) {
+      alert('Failed to force refresh metadata: ' + err.message);
+      el.btnForceRefreshAllMetadata.disabled = false;
+      el.btnForceRefreshAllMetadata.textContent = originalText;
+    }
+  });
 }
 
 // Admin: Application Logs

@@ -39,6 +39,9 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
             user_rating INTEGER,
             genres TEXT,
             directors TEXT,
+            director TEXT,
+            cinematographer TEXT,
+            tvdb_id TEXT,
             actors TEXT,
             watch_status TEXT NOT NULL DEFAULT 'completed',
             progress_percent INTEGER DEFAULT NULL,
@@ -116,6 +119,15 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
     let _ = sqlx::query("ALTER TABLE scrobbles ADD COLUMN directors TEXT")
         .execute(pool)
         .await;
+    let _ = sqlx::query("ALTER TABLE scrobbles ADD COLUMN director TEXT")
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("ALTER TABLE scrobbles ADD COLUMN cinematographer TEXT")
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("UPDATE scrobbles SET director = directors WHERE (director IS NULL OR director = '') AND directors IS NOT NULL")
+        .execute(pool)
+        .await;
     let _ = sqlx::query("ALTER TABLE scrobbles ADD COLUMN actors TEXT")
         .execute(pool)
         .await;
@@ -129,6 +141,12 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
         .execute(pool)
         .await;
     let _ = sqlx::query("ALTER TABLE scrobbles ADD COLUMN metadata_updated_at TEXT DEFAULT NULL")
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("ALTER TABLE scrobbles ADD COLUMN tvdb_id TEXT")
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_scrobbles_tvdb_id ON scrobbles(tvdb_id)")
         .execute(pool)
         .await;
     let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_scrobbles_metadata_updated ON scrobbles(metadata_updated_at)")
