@@ -1491,7 +1491,7 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     await expect(page.locator('#modal-item-detail')).toBeHidden();
   });
 
-  test('admin background tasks: force refresh all metadata option', async ({ page }) => {
+  test('admin background tasks: force refresh metadata, poster cache, and user sync tasks', async ({ page }) => {
     page.on('dialog', dialog => dialog.accept());
 
     const adminEmail = `admin_force_meta_${Date.now()}@bingesync.local`;
@@ -1511,16 +1511,34 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     const btnForceAll = page.locator('#btn-force-refresh-all-metadata');
     await expect(btnForceAll).toBeVisible();
 
-    // Also verify "Force Refresh All" button inside TheTVDB task card
+    // Verify "Force Refresh All" button inside TheTVDB task card
     const tvdbCard = page.locator('.task-card', { hasText: 'TheTVDB v4 Metadata Enrichment' });
     await expect(tvdbCard).toBeVisible();
-    const btnForceTask = tvdbCard.locator('button.btn-force-task');
-    await expect(btnForceTask).toBeVisible();
+    const btnForceTvdb = tvdbCard.locator('button.btn-force-task');
+    await expect(btnForceTvdb).toBeVisible();
 
-    // Click force refresh all button
+    // Verify "Force Refresh All" button inside Media Poster Caching card
+    const posterCard = page.locator('.task-card', { hasText: 'Media Poster & Thumbnail Caching' });
+    await expect(posterCard).toBeVisible();
+    const btnForcePoster = posterCard.locator('button.btn-force-task');
+    await expect(btnForcePoster).toBeVisible();
+
+    // Verify "Force Refresh All" button inside User Cache Sync card
+    const userSyncCard = page.locator('.task-card', { hasText: 'Plex & Media Server User Cache Sync' });
+    await expect(userSyncCard).toBeVisible();
+    const btnForceUserSync = userSyncCard.locator('button.btn-force-task');
+    await expect(btnForceUserSync).toBeVisible();
+
+    // Click force refresh poster button
+    await btnForcePoster.click();
+    await expect(btnForcePoster).toHaveText(/Triggering|Triggered|Force Refresh All/);
+
+    // Click force refresh user sync button
+    await btnForceUserSync.click();
+    await expect(btnForceUserSync).toHaveText(/Triggering|Triggered|Force Refresh All/);
+
+    // Click force refresh metadata button
     await btnForceAll.click();
-
-    // Verify triggered message or button state
     await expect(tvdbCard).toBeVisible();
   });
 

@@ -275,15 +275,24 @@ pub async fn trigger_admin_task_handler(
 
     match task_id.as_str() {
         "image_cache" | "images" => {
-            state.task_tracker.set_image_running("Manual run triggered...").await;
-            state.image_notify.notify_waiters();
-            state.image_notify.notify_one();
-            state.log_buffer.push("INFO", "bingesync::tasks", "Manual run triggered for Image Caching worker");
-            Ok(Json(serde_json::json!({
-                "status": "triggered",
-                "task_id": "image_cache",
-                "message": "Image cache worker has been signaled to run immediately"
-            })))
+            let is_forced = query.force.unwrap_or(false);
+            if is_forced {
+                force_refresh_all_images_internal(&state).await
+            } else {
+                state.task_tracker.set_image_running("Manual run triggered...").await;
+                state.image_notify.notify_waiters();
+                state.image_notify.notify_one();
+                state.log_buffer.push("INFO", "bingesync::tasks", "Manual run triggered for Image Caching worker");
+                Ok(Json(serde_json::json!({
+                    "status": "triggered",
+                    "task_id": "image_cache",
+                    "forced": false,
+                    "message": "Image cache worker has been signaled to run immediately"
+                })))
+            }
+        }
+        "force_images_refresh" => {
+            force_refresh_all_images_internal(&state).await
         }
         "tvdb_metadata" | "tvdb" => {
             let is_forced = query.force.unwrap_or(false);
@@ -329,21 +338,120 @@ pub async fn trigger_admin_task_handler(
             force_refresh_all_metadata_internal(&state).await
         }
         "user_sync" | "users" | "plex_users" => {
-            state.task_tracker.set_user_sync_running("Manual run triggered...").await;
-            state.user_sync_notify.notify_waiters();
-            state.user_sync_notify.notify_one();
-            state.log_buffer.push("INFO", "bingesync::tasks", "Manual run triggered for User Cache Sync worker");
-            Ok(Json(serde_json::json!({
-                "status": "triggered",
-                "task_id": "user_sync",
-                "message": "User cache sync worker has been signaled to run immediately"
-            })))
+            let is_forced = query.force.unwrap_or(false);
+            if is_forced {
+                force_refresh_user_cache_internal(&state).await
+            } else {
+                state.task_tracker.set_user_sync_running("Manual run triggered...").await;
+                state.user_sync_notify.notify_waiters();
+                state.user_sync_notify.notify_one();
+                state.log_buffer.push("INFO", "bingesync::tasks", "Manual run triggered for User Cache Sync worker");
+                Ok(Json(serde_json::json!({
+                    "status": "triggered",
+                    "task_id": "user_sync",
+                    "forced": false,
+                    "message": "User cache sync worker has been signaled to run immediately"
+                })))
+            }
+        }
+        "force_user_sync_refresh" => {
+            force_refresh_user_cache_internal(&state).await
         }
         _ => Err((
             StatusCode::NOT_FOUND,
             Json(serde_json::json!({ "error": format!("Unknown background task: {}", task_id) })),
         )),
     }
+}
+
+pub async fn force_refresh_all_images_internal(
+    state: &AppState,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let res = sqlx::query("UPDATE scrobbles SET thumb_url = NULL")
+        .execute(&state.pool)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": format!("Database error resetting poster thumbnails: {}", e) })),
+            )
+        })?;
+
+    let count = res.rows_affected();
+    state.task_tracker.set_image_running("Forced full poster refresh triggered...").await;
+    state.image_notify.notify_waiters();
+    state.image_notify.notify_one();
+    state.log_buffer.push(
+        "INFO",
+        "bingesync::tasks",
+        &format!("Forced full poster refresh triggered: reset {} records", count),
+    );
+
+    Ok(Json(serde_json::json!({
+        "status": "triggered",
+        "task_id": "image_cache",
+        "records_reset": count,
+        "forced": true,
+        "message": format!("Thumbnails reset for {} records; image cache worker signaled to re-download all posters", count)
+    })))
+}
+
+pub async fn force_refresh_all_images_handler(
+    State(state): State<AppState>,
+    auth: AuthUser,
+) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
+    if auth.role != "admin" {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(serde_json::json!({ "error": "Admin privileges required to force refresh poster images" })),
+        ));
+    }
+    force_refresh_all_images_internal(&state).await
+}
+
+pub async fn force_refresh_user_cache_internal(
+    state: &AppState,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let res = sqlx::query("DELETE FROM plex_user_cache")
+        .execute(&state.pool)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": format!("Database error clearing user cache: {}", e) })),
+            )
+        })?;
+
+    let count = res.rows_affected();
+    state.task_tracker.set_user_sync_running("Forced user cache refresh triggered...").await;
+    state.user_sync_notify.notify_waiters();
+    state.user_sync_notify.notify_one();
+    state.log_buffer.push(
+        "INFO",
+        "bingesync::tasks",
+        &format!("Forced user cache refresh triggered: cleared {} cached user mappings", count),
+    );
+
+    Ok(Json(serde_json::json!({
+        "status": "triggered",
+        "task_id": "user_sync",
+        "records_reset": count,
+        "forced": true,
+        "message": format!("User cache cleared ({} records deleted); user sync worker signaled to re-sync all users", count)
+    })))
+}
+
+pub async fn force_refresh_user_cache_handler(
+    State(state): State<AppState>,
+    auth: AuthUser,
+) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
+    if auth.role != "admin" {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(serde_json::json!({ "error": "Admin privileges required to force refresh user cache" })),
+        ));
+    }
+    force_refresh_user_cache_internal(&state).await
 }
 
 async fn force_refresh_all_metadata_internal(

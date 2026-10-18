@@ -129,7 +129,7 @@ Plex webhooks send:
 ```bash
 cargo test
 ```
-Tests in `tests/api_tests.rs` (30 integration tests) cover:
+Tests in `tests/api_tests.rs` (36 integration tests) cover:
 - Dev login and `/api/v1/auth/me`
 - Plex movie and TV episode scrobbling
 - Multi-user isolation (User A cannot see User B's data)
@@ -162,6 +162,8 @@ Tests in `tests/api_tests.rs` (30 integration tests) cover:
 - Specific director and cinematographer history fields, filters, and crew metadata enrichment
 - Option to force refresh metadata for all records resetting metadata timestamps and triggering TVDB sync
 - Fix match option on history items specifying TheTVDB ID with sibling episode matching and multi-user isolation
+- Force refresh poster images resetting thumbnail URLs and triggering image cache worker
+- Force refresh user cache clearing cached Plex and Jellyfin user mappings and triggering user sync worker
 
 ### Run Playwright E2E UI Tests
 ```bash

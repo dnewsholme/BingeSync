@@ -3689,11 +3689,15 @@ function renderAdminTasks(tasks) {
           <button class="btn btn-outline btn-sm btn-trigger-task" data-task-id="${t.id}">
             ${isRunning ? 'Running... (Run Again)' : 'Run Now'}
           </button>
-          ${t.id === 'tvdb_metadata' ? `
-            <button class="btn btn-outline btn-sm btn-force-task" data-task-id="${t.id}" title="Re-download metadata for all records regardless of existing metadata">
-              Force Refresh All
-            </button>
-          ` : ''}
+          <button class="btn btn-outline btn-sm btn-force-task" data-task-id="${t.id}" title="${
+            t.id === 'image_cache'
+              ? 'Reset poster thumbnails and re-download posters for all records'
+              : t.id === 'user_sync'
+              ? 'Clear user cache and re-sync all user mappings'
+              : 'Re-download metadata for all records regardless of existing metadata'
+          }">
+            Force Refresh All
+          </button>
         </div>
       </div>
     `;
@@ -3739,19 +3743,37 @@ function renderAdminTasks(tasks) {
 
   el.adminTasksContainer.querySelectorAll('.btn-force-task').forEach(btn => {
     btn.addEventListener('click', async () => {
-      if (!confirm('Force refresh metadata for ALL items? This will reset metadata timestamps and re-download all metadata from TheTVDB.')) {
+      const taskId = btn.dataset.taskId;
+      let confirmMsg = 'Force refresh all items for this background task?';
+      if (taskId === 'tvdb_metadata') {
+        confirmMsg = 'Force refresh metadata for ALL items? This will reset metadata timestamps and re-download all metadata from TheTVDB.';
+      } else if (taskId === 'image_cache') {
+        confirmMsg = 'Force refresh poster images for ALL items? This will reset poster thumbnails and re-download artwork for all scrobbles.';
+      } else if (taskId === 'user_sync') {
+        confirmMsg = 'Force refresh user cache? This will clear all cached Plex and Jellyfin user mappings and re-sync them afresh.';
+      }
+
+      if (!confirm(confirmMsg)) {
         return;
       }
       btn.disabled = true;
       btn.textContent = 'Triggering...';
       try {
-        await api.forceRefreshMetadata();
+        if (taskId === 'tvdb_metadata') {
+          await api.forceRefreshMetadata();
+        } else if (taskId === 'image_cache') {
+          await api.forceRefreshPosters();
+        } else if (taskId === 'user_sync') {
+          await api.forceRefreshUserCache();
+        } else {
+          await api.triggerAdminTask(taskId, true);
+        }
         btn.textContent = 'Triggered!';
         setTimeout(() => loadAdminTasks(), 500);
         setTimeout(() => loadAdminTasks(), 1500);
         setTimeout(() => loadAdminTasks(), 3000);
       } catch (err) {
-        alert('Failed to force refresh metadata: ' + err.message);
+        alert('Failed to force refresh: ' + err.message);
         btn.disabled = false;
         btn.textContent = 'Force Refresh All';
       }

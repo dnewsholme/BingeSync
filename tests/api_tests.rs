@@ -4492,3 +4492,182 @@ async fn test_fix_incorrect_match_with_tvdb_id() {
     assert!(items.iter().any(|it| it["id"] == scrobble_e1 && it["tvdb_id"] == "81189"));
 }
 
+#[tokio::test]
+async fn test_force_refresh_posters_and_user_cache() {
+    let (app, pool, config) = setup_test_app().await;
+
+    // 1. Create Admin and Standard User
+    let admin_id = "admin_force_worker_test";
+    let admin_jwt = create_jwt(admin_id, "admin@worker.local", &config.jwt_secret).unwrap();
+    sqlx::query("INSERT INTO users (id, email, display_name, webhook_token, role) VALUES (?, ?, ?, ?, 'admin')")
+        .bind(admin_id)
+        .bind("admin@worker.local")
+        .bind("Admin Worker")
+        .bind("admin_token_worker")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let standard_id = "user_force_worker_test";
+    let standard_jwt = create_jwt(standard_id, "user@worker.local", &config.jwt_secret).unwrap();
+    sqlx::query("INSERT INTO users (id, email, display_name, webhook_token, role) VALUES (?, ?, ?, ?, 'user')")
+        .bind(standard_id)
+        .bind("user@worker.local")
+        .bind("User Worker")
+        .bind("user_token_worker")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    // 2. Insert scrobbles with thumb_url set
+    for i in 1..=2 {
+        sqlx::query(
+            "INSERT INTO scrobbles (id, user_id, title, media_type, watched_at, thumb_url) VALUES (?, ?, ?, 'movie', datetime('now'), ?)"
+        )
+        .bind(format!("scrobble_poster_{}", i))
+        .bind(admin_id)
+        .bind(format!("Movie {}", i))
+        .bind(format!("/images/cached_{}.jpg", i))
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+
+    let count_posters: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE thumb_url IS NOT NULL")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(count_posters, 2);
+
+    // 3. Insert user cache rows
+    for i in 1..=2 {
+        sqlx::query(
+            "INSERT INTO plex_user_cache (plex_id, username, friendly_name, source) VALUES (?, ?, ?, 'plex')"
+        )
+        .bind(format!("plex_id_{}", i))
+        .bind(format!("plex_user_{}", i))
+        .bind(format!("PlexUser{}", i))
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+
+    let count_users: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM plex_user_cache")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(count_users, 2);
+
+    // 4. Test non-admin permissions for images/force-refresh
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/admin/images/force-refresh")
+        .header(header::AUTHORIZATION, format!("Bearer {}", standard_jwt))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+
+    // 5. Test non-admin permissions for users-cache/force-refresh
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/admin/users-cache/force-refresh")
+        .header(header::AUTHORIZATION, format!("Bearer {}", standard_jwt))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+
+    // 6. Admin triggers force refresh posters via /admin/images/force-refresh
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/admin/images/force-refresh")
+        .header(header::AUTHORIZATION, format!("Bearer {}", admin_jwt))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let res: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    assert_eq!(res["status"], "triggered");
+    assert_eq!(res["forced"], true);
+    assert_eq!(res["records_reset"], 2);
+
+    let count_posters_null: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE thumb_url IS NULL")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(count_posters_null, 2);
+
+    // 7. Admin triggers force refresh posters via /admin/tasks/image_cache/run?force=true
+    sqlx::query("UPDATE scrobbles SET thumb_url = '/images/cached.jpg'")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/admin/tasks/image_cache/run?force=true")
+        .header(header::AUTHORIZATION, format!("Bearer {}", admin_jwt))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let res: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    assert_eq!(res["status"], "triggered");
+    assert_eq!(res["forced"], true);
+
+    let count_posters_null2: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE thumb_url IS NULL")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(count_posters_null2, 2);
+
+    // 8. Admin triggers force refresh user cache via /admin/users-cache/force-refresh
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/admin/users-cache/force-refresh")
+        .header(header::AUTHORIZATION, format!("Bearer {}", admin_jwt))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let res: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    assert_eq!(res["status"], "triggered");
+    assert_eq!(res["forced"], true);
+    assert_eq!(res["records_reset"], 2);
+
+    let count_users_cleared: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM plex_user_cache")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(count_users_cleared, 0);
+
+    // 9. Re-insert user and trigger via /admin/tasks/user_sync/run?force=true
+    sqlx::query("INSERT INTO plex_user_cache (plex_id, username, friendly_name, source) VALUES ('p1', 'u1', 'UserOne', 'tautulli')")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/admin/tasks/user_sync/run?force=true")
+        .header(header::AUTHORIZATION, format!("Bearer {}", admin_jwt))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let res: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    assert_eq!(res["status"], "triggered");
+    assert_eq!(res["forced"], true);
+
+    let count_users_cleared2: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM plex_user_cache")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(count_users_cleared2, 0);
+}
+

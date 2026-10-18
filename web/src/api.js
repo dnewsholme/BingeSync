@@ -225,6 +225,8 @@ export const api = {
   triggerAdminTask: (taskId, force = false) =>
     request(`/admin/tasks/${taskId}/run${force ? '?force=true' : ''}`, { method: 'POST' }),
   forceRefreshMetadata: () => request('/admin/metadata/force-refresh', { method: 'POST' }),
+  forceRefreshPosters: () => request('/admin/images/force-refresh', { method: 'POST' }),
+  forceRefreshUserCache: () => request('/admin/users-cache/force-refresh', { method: 'POST' }),
   updateAdminTaskSchedule: (taskId, intervalHours) =>
     request(`/admin/tasks/${taskId}/schedule`, {
       method: 'POST',
