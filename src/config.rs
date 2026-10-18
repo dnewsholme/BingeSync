@@ -63,8 +63,19 @@ impl Config {
             raw_base.trim_end_matches('/').to_string()
         };
 
-        let jwt_secret = env::var("JWT_SECRET")
-            .unwrap_or_else(|_| "bingesync-super-secret-key-change-in-production-123456789".to_string());
+        let jwt_secret = match env::var("JWT_SECRET") {
+            Ok(s) if !s.trim().is_empty() && s != "bingesync-super-secret-key-change-in-production-123456789" => s,
+            _ => {
+                use rand::RngCore;
+                use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+                use base64::Engine;
+                let mut random_bytes = [0u8; 32];
+                rand::thread_rng().fill_bytes(&mut random_bytes);
+                let generated = URL_SAFE_NO_PAD.encode(random_bytes);
+                tracing::warn!("JWT_SECRET environment variable is not configured or uses an insecure default! Generated an ephemeral secret for this session. Please set a secure JWT_SECRET in production to persist user sessions across restarts.");
+                generated
+            }
+        };
 
         let oidc_issuer_url = env::var("OIDC_ISSUER_URL").ok().filter(|s| !s.trim().is_empty());
         let oidc_client_id = env::var("OIDC_CLIENT_ID").ok().filter(|s| !s.trim().is_empty());

@@ -105,17 +105,17 @@ pub async fn get_user_settings_handler(
         radarr_url,
         radarr_api_key_configured: radarr_api_key.as_ref().map(|k| !k.trim().is_empty()).unwrap_or(false),
         radarr_api_key_masked: radarr_api_key.as_deref().map(mask_secret),
-        radarr_api_key: radarr_api_key.clone(),
+        radarr_api_key: None,
 
         sonarr_url,
         sonarr_api_key_configured: sonarr_api_key.as_ref().map(|k| !k.trim().is_empty()).unwrap_or(false),
         sonarr_api_key_masked: sonarr_api_key.as_deref().map(mask_secret),
-        sonarr_api_key: sonarr_api_key.clone(),
+        sonarr_api_key: None,
 
         tautulli_url,
         tautulli_api_key_configured: tautulli_api_key.as_ref().map(|k| !k.trim().is_empty()).unwrap_or(false),
         tautulli_api_key_masked: tautulli_api_key.as_deref().map(mask_secret),
-        tautulli_api_key: tautulli_api_key.clone(),
+        tautulli_api_key: None,
     };
 
     Ok(Json(resp))
@@ -135,7 +135,16 @@ pub async fn update_user_settings_handler(
     }
 
     if let Some(ref val) = payload.radarr_url {
-        let _ = set_user_setting(&state.pool, &auth.user_id, "radarr_url", val.trim()).await;
+        let trimmed = val.trim();
+        if !trimmed.is_empty() {
+            crate::api::ssrf::validate_integration_url(trimmed).map_err(|e| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({ "error": format!("Invalid Radarr URL: {}", e) })),
+                )
+            })?;
+        }
+        let _ = set_user_setting(&state.pool, &auth.user_id, "radarr_url", trimmed).await;
     }
     if let Some(ref val) = payload.radarr_api_key {
         if !val.contains('•') {
@@ -144,7 +153,16 @@ pub async fn update_user_settings_handler(
     }
 
     if let Some(ref val) = payload.sonarr_url {
-        let _ = set_user_setting(&state.pool, &auth.user_id, "sonarr_url", val.trim()).await;
+        let trimmed = val.trim();
+        if !trimmed.is_empty() {
+            crate::api::ssrf::validate_integration_url(trimmed).map_err(|e| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({ "error": format!("Invalid Sonarr URL: {}", e) })),
+                )
+            })?;
+        }
+        let _ = set_user_setting(&state.pool, &auth.user_id, "sonarr_url", trimmed).await;
     }
     if let Some(ref val) = payload.sonarr_api_key {
         if !val.contains('•') {
@@ -153,7 +171,16 @@ pub async fn update_user_settings_handler(
     }
 
     if let Some(ref val) = payload.tautulli_url {
-        let _ = set_user_setting(&state.pool, &auth.user_id, "tautulli_url", val.trim()).await;
+        let trimmed = val.trim();
+        if !trimmed.is_empty() {
+            crate::api::ssrf::validate_integration_url(trimmed).map_err(|e| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({ "error": format!("Invalid Tautulli URL: {}", e) })),
+                )
+            })?;
+        }
+        let _ = set_user_setting(&state.pool, &auth.user_id, "tautulli_url", trimmed).await;
     }
     if let Some(ref val) = payload.tautulli_api_key {
         if !val.contains('•') {

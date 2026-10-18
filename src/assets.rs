@@ -25,6 +25,9 @@ pub async fn static_handler(uri: Uri) -> Response {
             Response::builder()
                 .status(StatusCode::OK)
                 .header(header::CONTENT_TYPE, HeaderValue::from_str(mime.as_ref()).unwrap())
+                .header("X-Content-Type-Options", "nosniff")
+                .header("X-Frame-Options", "SAMEORIGIN")
+                .header("Referrer-Policy", "strict-origin-when-cross-origin")
                 .body(Body::from(content.data.into_owned()))
                 .unwrap_or_else(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Error").into_response())
         }
@@ -34,12 +37,20 @@ pub async fn static_handler(uri: Uri) -> Response {
                 Response::builder()
                     .status(StatusCode::OK)
                     .header(header::CONTENT_TYPE, HeaderValue::from_static("text/html; charset=utf-8"))
+                    .header("X-Content-Type-Options", "nosniff")
+                    .header("X-Frame-Options", "SAMEORIGIN")
+                    .header("Referrer-Policy", "strict-origin-when-cross-origin")
                     .body(Body::from(content.data.into_owned()))
                     .unwrap_or_else(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Error").into_response())
             } else {
                 (
                     StatusCode::OK,
-                    [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
+                    [
+                        (header::CONTENT_TYPE, "text/html; charset=utf-8"),
+                        (header::HeaderName::from_static("x-content-type-options"), "nosniff"),
+                        (header::HeaderName::from_static("x-frame-options"), "SAMEORIGIN"),
+                        (header::HeaderName::from_static("referrer-policy"), "strict-origin-when-cross-origin"),
+                    ],
                     r#"<!DOCTYPE html><html><head><title>BingeSync</title></head><body style="font-family:sans-serif;background:#0f172a;color:#f8fafc;padding:40px;"><h1>BingeSync</h1><p>Frontend assets are building or not yet bundled.</p></body></html>"#,
                 ).into_response()
             }

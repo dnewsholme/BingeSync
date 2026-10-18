@@ -128,7 +128,7 @@ pub async fn get_admin_settings_handler(
     let view = SystemSettingsView {
         tvdb_api_key_configured: tvdb_api_key.is_some() && !tvdb_api_key.as_deref().unwrap_or("").is_empty(),
         tvdb_api_key_masked: tvdb_api_key.as_deref().map(mask_api_key),
-        tvdb_api_key: tvdb_api_key.clone(),
+        tvdb_api_key: None,
         tvdb_pin,
         tvdb_base_url,
 
@@ -137,7 +137,7 @@ pub async fn get_admin_settings_handler(
         oidc_client_id,
         oidc_client_secret_configured: oidc_client_secret.is_some() && !oidc_client_secret.as_deref().unwrap_or("").is_empty(),
         oidc_client_secret_masked: oidc_client_secret.as_deref().map(mask_api_key),
-        oidc_client_secret: oidc_client_secret.clone(),
+        oidc_client_secret: None,
         oidc_redirect_url,
         scrobble_threshold_percent: state.get_effective_scrobble_threshold().await,
         task_image_interval_hours: state.get_task_interval_hours("image_cache").await,

@@ -73,6 +73,15 @@ pub async fn get_tautulli_users_handler(
         },
     };
 
+    crate::api::ssrf::validate_integration_url(&url).map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "error": format!("Invalid Tautulli URL: {}", e)
+            })),
+        )
+    })?;
+
     let api_key = match query.api_key.filter(|s| !s.trim().is_empty()) {
         Some(k) => k,
         None => match crate::api::user_settings::get_user_setting(&state.pool, &auth.user_id, "tautulli_api_key").await {
@@ -256,6 +265,15 @@ pub async fn import_tautulli_handler(
                 }
             },
         };
+
+        crate::api::ssrf::validate_integration_url(&resolved_url).map_err(|e| {
+            (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({
+                    "error": format!("Invalid Tautulli URL: {}", e)
+                })),
+            )
+        })?;
 
         let resolved_key = match api_key.filter(|s| !s.trim().is_empty()) {
             Some(k) => k,

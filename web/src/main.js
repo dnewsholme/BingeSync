@@ -3151,10 +3151,13 @@ if (el.adminSubnavPills) {
 // Helper to configure masked API key inputs with show/hide toggle
 function applySecretField(inputEl, rawKey, maskedKey) {
   if (!inputEl) return;
-  inputEl.dataset.raw = rawKey || '';
+  const existingRaw = inputEl.dataset.raw || '';
+  const currentVal = inputEl.value ? inputEl.value.trim() : '';
+  const effectiveRaw = rawKey || (currentVal && !currentVal.includes('•') ? currentVal : existingRaw);
+  inputEl.dataset.raw = effectiveRaw;
   inputEl.dataset.masked = maskedKey || '';
   inputEl.dataset.revealed = 'false';
-  inputEl.value = maskedKey || rawKey || '';
+  inputEl.value = maskedKey || effectiveRaw || '';
 
   const parent = inputEl.closest('.input-secret-wrapper');
   if (parent) {
@@ -3202,6 +3205,10 @@ document.addEventListener('click', (e) => {
     btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`;
   } else {
     // Reveal full key
+    if (!raw) {
+      alert('For security reasons, existing configured keys cannot be revealed in plaintext. You can enter a new key to update it.');
+      return;
+    }
     input.value = raw;
     input.dataset.revealed = 'true';
     btn.title = 'Hide / Redact key';

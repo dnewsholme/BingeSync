@@ -419,20 +419,11 @@ impl OidcClient {
             }
         }
 
-        // 3. Fallback for mock/test/unsecured tokens if discovery/jwks could not verify signature
+        // 3. Token signature verification is mandatory
         let claims = match verified_claims {
             Some(c) => c,
             None => {
-                let parts: Vec<&str> = token.split('.').collect();
-                if parts.len() >= 2 {
-                    let decoded_bytes = URL_SAFE_NO_PAD
-                        .decode(parts[1])
-                        .map_err(|e| format!("Failed to base64url decode token payload: {}", e))?;
-                    serde_json::from_slice::<LogoutTokenClaims>(&decoded_bytes)
-                        .map_err(|e| format!("Failed to parse logout token claims: {}", e))?
-                } else {
-                    return Err("Malformed logout token format".to_string());
-                }
+                return Err("Logout token signature verification failed: token must be signed by IdP JWKS or configured client secret".to_string());
             }
         };
 

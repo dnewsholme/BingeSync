@@ -16,6 +16,8 @@ pub mod tvdb;
 pub mod user;
 pub mod user_settings;
 pub mod webhooks;
+pub mod ssrf;
+pub mod rate_limit;
 
 use axum::{
     routing::{delete, get, post},
@@ -104,27 +106,83 @@ impl AppState {
     }
 }
 
+async fn security_headers_middleware(
+    req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    let mut resp = next.run(req).await;
+    let headers = resp.headers_mut();
+    headers.insert(
+        axum::http::header::HeaderName::from_static("x-content-type-options"),
+        axum::http::HeaderValue::from_static("nosniff"),
+    );
+    headers.insert(
+        axum::http::header::HeaderName::from_static("x-frame-options"),
+        axum::http::HeaderValue::from_static("SAMEORIGIN"),
+    );
+    headers.insert(
+        axum::http::header::HeaderName::from_static("referrer-policy"),
+        axum::http::HeaderValue::from_static("strict-origin-when-cross-origin"),
+    );
+    resp
+}
+
 pub fn create_api_router(state: AppState) -> Router {
     let cors = CorsLayer::new()
         .allow_origin(Any)
-        .allow_methods(Any)
-        .allow_headers(Any);
+        .allow_methods([
+            axum::http::Method::GET,
+            axum::http::Method::POST,
+            axum::http::Method::PUT,
+            axum::http::Method::DELETE,
+            axum::http::Method::OPTIONS,
+        ])
+        .allow_headers([
+            axum::http::header::AUTHORIZATION,
+            axum::http::header::CONTENT_TYPE,
+            axum::http::header::ACCEPT,
+            axum::http::header::HeaderName::from_static("x-api-key"),
+        ]);
+
+    let auth_routes = Router::new()
+        .route("/status", get(auth::get_auth_status))
+        .route("/login", get(auth::login_handler))
+        .route("/callback", get(auth::callback_handler))
+        .route("/dev-login", post(auth::dev_login_handler))
+        .route("/me", get(auth::get_me_handler))
+        .route("/logout", post(auth::logout_handler))
+        .route("/backchannel-logout", post(auth::backchannel_logout_handler))
+        .route("/backchannel_logout", post(auth::backchannel_logout_handler))
+        .layer(axum::middleware::from_fn(rate_limit::auth_rate_limit_middleware));
+
+    let webhook_routes = Router::new()
+        .route("/plex", post(webhooks::handle_plex_webhook_query))
+        .route("/plex/{token}", post(webhooks::handle_plex_webhook_path))
+        .route("/jellyfin", post(webhooks::handle_jellyfin_webhook_query))
+        .route("/jellyfin/{token}", post(webhooks::handle_jellyfin_webhook_path))
+        .layer(axum::middleware::from_fn(rate_limit::webhook_rate_limit_middleware));
+
+    let import_routes = Router::new()
+        .route(
+            "/trakt",
+            post(trakt_import::import_trakt_handler)
+                .layer(axum::extract::DefaultBodyLimit::max(100 * 1024 * 1024)),
+        )
+        .route(
+            "/tautulli",
+            post(tautulli_import::import_tautulli_handler)
+                .layer(axum::extract::DefaultBodyLimit::max(100 * 1024 * 1024)),
+        )
+        .route("/tautulli/users", get(tautulli_import::get_tautulli_users_handler))
+        .layer(axum::middleware::from_fn(rate_limit::import_rate_limit_middleware));
 
     Router::new()
-        // Auth
-        .route("/api/v1/auth/status", get(auth::get_auth_status))
-        .route("/api/v1/auth/login", get(auth::login_handler))
-        .route("/api/v1/auth/callback", get(auth::callback_handler))
-        .route("/api/v1/auth/dev-login", post(auth::dev_login_handler))
-        .route("/api/v1/auth/me", get(auth::get_me_handler))
-        .route("/api/v1/auth/logout", post(auth::logout_handler))
-        .route("/api/v1/auth/backchannel-logout", post(auth::backchannel_logout_handler))
-        .route("/api/v1/auth/backchannel_logout", post(auth::backchannel_logout_handler))
-        // Webhooks (Per-user Plex and Jellyfin endpoints)
-        .route("/api/v1/webhooks/plex", post(webhooks::handle_plex_webhook_query))
-        .route("/api/v1/webhooks/plex/{token}", post(webhooks::handle_plex_webhook_path))
-        .route("/api/v1/webhooks/jellyfin", post(webhooks::handle_jellyfin_webhook_query))
-        .route("/api/v1/webhooks/jellyfin/{token}", post(webhooks::handle_jellyfin_webhook_path))
+        // Auth with rate limiting
+        .nest("/api/v1/auth", auth_routes)
+        // Webhooks with rate limiting
+        .nest("/api/v1/webhooks", webhook_routes)
+        // Imports with rate limiting
+        .nest("/api/v1/import", import_routes)
         // History & Scrobble
         .route("/api/v1/history", get(history::list_history).post(history::create_scrobble))
         .route("/api/v1/history/by-show", delete(history::delete_by_show))
@@ -143,19 +201,6 @@ pub fn create_api_router(state: AppState) -> Router {
         .route("/api/v1/user/webhook", get(user::get_webhook_info))
         .route("/api/v1/user/regenerate-token", post(user::regenerate_webhook_token))
         .route("/api/v1/user/settings", get(user_settings::get_user_settings_handler).post(user_settings::update_user_settings_handler).put(user_settings::update_user_settings_handler))
-        // Trakt import (supports up to 100MB zip exports)
-        .route(
-            "/api/v1/import/trakt",
-            post(trakt_import::import_trakt_handler)
-                .layer(axum::extract::DefaultBodyLimit::max(100 * 1024 * 1024)),
-        )
-        // Tautulli import & users
-        .route(
-            "/api/v1/import/tautulli",
-            post(tautulli_import::import_tautulli_handler)
-                .layer(axum::extract::DefaultBodyLimit::max(100 * 1024 * 1024)),
-        )
-        .route("/api/v1/import/tautulli/users", get(tautulli_import::get_tautulli_users_handler))
         // Image cache (serves cached posters from disk)
         .route("/api/v1/images/{filename}", get(images::get_image_handler))
         // Radarr / Sonarr Integrations (Cleanup after watching)
@@ -175,6 +220,7 @@ pub fn create_api_router(state: AppState) -> Router {
         .route("/api/v1/openapi.json", get(openapi::get_openapi_json))
         .route("/docs", get(openapi::get_swagger_ui))
         .route("/swagger", get(openapi::get_swagger_ui))
+        .layer(axum::middleware::from_fn(security_headers_middleware))
         .layer(cors)
         .layer(Extension(state.clone()))
         .with_state(state)

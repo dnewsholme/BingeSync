@@ -337,6 +337,10 @@ pub fn parse_trakt_zip(zip_bytes: &[u8]) -> Result<Vec<TraktWatchItem>, String> 
     let mut csv_files: Vec<(String, String)> = Vec::new();
     let mut other_json_files: Vec<(String, String)> = Vec::new();
 
+    const MAX_FILE_DECOMPRESSED_BYTES: u64 = 25 * 1024 * 1024; // 25 MB per file
+    const MAX_TOTAL_DECOMPRESSED_BYTES: usize = 100 * 1024 * 1024; // 100 MB total archive
+    let mut total_decompressed_bytes: usize = 0;
+
     for i in 0..archive.len() {
         let mut file = match archive.by_index(i) {
             Ok(f) => f,
@@ -361,9 +365,25 @@ pub fn parse_trakt_zip(zip_bytes: &[u8]) -> Result<Vec<TraktWatchItem>, String> 
             .unwrap_or(&full_name)
             .to_lowercase();
 
-        let mut content = String::new();
-        if file.read_to_string(&mut content).is_err() {
+        // ZIP bomb / memory exhaustion defense
+        if file.size() > MAX_FILE_DECOMPRESSED_BYTES {
+            tracing::warn!("Skipping ZIP entry {}: uncompressed size {} exceeds 25 MB limit", full_name, file.size());
             continue;
+        }
+
+        let mut content = String::new();
+        let mut limited = (&mut file).take(MAX_FILE_DECOMPRESSED_BYTES + 1);
+        if limited.read_to_string(&mut content).is_err() {
+            continue;
+        }
+        if content.len() as u64 > MAX_FILE_DECOMPRESSED_BYTES {
+            tracing::warn!("Skipping ZIP entry {}: decompressed size exceeds 25 MB limit", full_name);
+            continue;
+        }
+
+        total_decompressed_bytes = total_decompressed_bytes.saturating_add(content.len());
+        if total_decompressed_bytes > MAX_TOTAL_DECOMPRESSED_BYTES {
+            return Err("Decompressed archive size exceeds maximum limit of 100 MB".to_string());
         }
 
         if base_name.contains("rating") && base_name.ends_with(".json") && !base_name.starts_with("notes-") {

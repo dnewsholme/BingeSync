@@ -64,7 +64,8 @@ pub async fn check_media_in_library(
         let user_radarr_url = crate::api::user_settings::get_user_setting(&state.pool, &auth.user_id, "radarr_url").await;
         let user_radarr_key = crate::api::user_settings::get_user_setting(&state.pool, &auth.user_id, "radarr_api_key").await;
         if let (Some(ref radarr_url), Some(ref api_key)) = (user_radarr_url, user_radarr_key) {
-            let lookup_url = format!("{}/api/v3/movie/lookup", radarr_url.trim_end_matches('/'));
+            if let Ok(safe_url) = crate::api::ssrf::validate_integration_url(radarr_url) {
+                let lookup_url = format!("{}/api/v3/movie/lookup", safe_url.as_str().trim_end_matches('/'));
             let res = client
                 .get(&lookup_url)
                 .header("X-Api-Key", api_key)
@@ -100,6 +101,7 @@ pub async fn check_media_in_library(
                 }
             }
         }
+    }
 
         return Ok(Json(serde_json::json!({ "found": false, "service": "radarr" })));
     } else {
@@ -107,27 +109,29 @@ pub async fn check_media_in_library(
         let user_sonarr_url = crate::api::user_settings::get_user_setting(&state.pool, &auth.user_id, "sonarr_url").await;
         let user_sonarr_key = crate::api::user_settings::get_user_setting(&state.pool, &auth.user_id, "sonarr_api_key").await;
         if let (Some(ref sonarr_url), Some(ref api_key)) = (user_sonarr_url, user_sonarr_key) {
-            let search_term = query.grandparent_title.as_deref().unwrap_or(&query.title);
-            let lookup_url = format!("{}/api/v3/series/lookup", sonarr_url.trim_end_matches('/'));
-            let res = client
-                .get(&lookup_url)
-                .header("X-Api-Key", api_key)
-                .query(&[("term", search_term)])
-                .send()
-                .await;
+            if let Ok(safe_url) = crate::api::ssrf::validate_integration_url(sonarr_url) {
+                let search_term = query.grandparent_title.as_deref().unwrap_or(&query.title);
+                let lookup_url = format!("{}/api/v3/series/lookup", safe_url.as_str().trim_end_matches('/'));
+                let res = client
+                    .get(&lookup_url)
+                    .header("X-Api-Key", api_key)
+                    .query(&[("term", search_term)])
+                    .send()
+                    .await;
 
-            if let Ok(resp) = res {
-                if resp.status().is_success() {
-                    if let Ok(series_list) = resp.json::<Vec<serde_json::Value>>().await {
-                        for s in series_list {
-                            let s_id = s.get("id").and_then(|v| v.as_i64()).unwrap_or(0);
-                            if s_id > 0 {
-                                return Ok(Json(serde_json::json!({
-                                    "found": true,
-                                    "service": "sonarr",
-                                    "series_id": s_id,
-                                    "title": s.get("title"),
-                                })));
+                if let Ok(resp) = res {
+                    if resp.status().is_success() {
+                        if let Ok(series_list) = resp.json::<Vec<serde_json::Value>>().await {
+                            for s in series_list {
+                                let s_id = s.get("id").and_then(|v| v.as_i64()).unwrap_or(0);
+                                if s_id > 0 {
+                                    return Ok(Json(serde_json::json!({
+                                        "found": true,
+                                        "service": "sonarr",
+                                        "series_id": s_id,
+                                        "title": s.get("title"),
+                                    })));
+                                }
                             }
                         }
                     }
@@ -156,11 +160,17 @@ pub async fn delete_from_radarr(
         }
     };
     let api_key = api_key_val.as_str();
+    let safe_url = crate::api::ssrf::validate_integration_url(&radarr_url).map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": format!("Invalid Radarr URL: {}", e) })),
+        )
+    })?;
 
     let delete_files = payload.delete_files.unwrap_or(true);
     let target_url = format!(
         "{}/api/v3/movie/{}?deleteFiles={}&addImportExclusion=false",
-        radarr_url.trim_end_matches('/'),
+        safe_url.as_str().trim_end_matches('/'),
         payload.movie_id,
         delete_files
     );
@@ -210,12 +220,18 @@ pub async fn delete_from_sonarr(
         }
     };
     let api_key = api_key_val.as_str();
+    let safe_url = crate::api::ssrf::validate_integration_url(&sonarr_url).map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": format!("Invalid Sonarr URL: {}", e) })),
+        )
+    })?;
 
     let client = Client::builder()
         .timeout(std::time::Duration::from_secs(30))
         .build()
         .unwrap_or_default();
-    let base_url = sonarr_url.trim_end_matches('/');
+    let base_url = safe_url.as_str().trim_end_matches('/');
     let action = payload.action.as_deref().unwrap_or("delete_series");
 
     match action {

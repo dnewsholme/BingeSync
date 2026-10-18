@@ -3496,7 +3496,7 @@ async fn test_user_settings_isolation_and_credentials() {
     assert!(settings_a.radarr_api_key_configured);
     assert!(settings_a.radarr_api_key_masked.as_deref().unwrap().starts_with("us"));
     assert!(settings_a.radarr_api_key_masked.as_deref().unwrap().contains('•'));
-    assert_eq!(settings_a.radarr_api_key.as_deref(), Some("user_a_radarr_secret_key"));
+    assert!(settings_a.radarr_api_key.is_none());
 
     assert_eq!(settings_a.sonarr_url.as_deref(), Some("http://user-a-sonarr:8989"));
     assert!(settings_a.sonarr_api_key_configured);
