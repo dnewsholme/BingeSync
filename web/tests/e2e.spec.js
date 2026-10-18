@@ -1586,5 +1586,157 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     await page.click('#btn-close-log-modal');
     await expect(page.locator('#modal-log-scrobble')).toBeHidden();
   });
+
+  test('library cleanup: list watched items on radarr/sonarr, view reclaimable space, filter, and execute cleanup action', async ({ page }) => {
+    let lastRadarrDelete = null;
+    let lastSonarrDelete = null;
+
+    // Route /api/v1/integrations/cleanup
+    await page.route('**/api/v1/integrations/cleanup', async route => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          radarr_configured: true,
+          sonarr_configured: true,
+          radarr_error: null,
+          sonarr_error: null,
+          total_items: 2,
+          total_size_bytes: 32212254720,
+          total_size_formatted: '30.0 GB',
+          items: [
+            {
+              id: 'radarr:101',
+              media_type: 'movie',
+              service: 'radarr',
+              service_id: 101,
+              title: 'Inception',
+              year: 2010,
+              size_on_disk: 10737418240,
+              size_formatted: '10.0 GB',
+              has_file: true,
+              monitored: true,
+              poster_url: null,
+              last_watched_at: '2026-10-15T18:00:00Z',
+              watch_count: 1,
+              episode_file_count: null,
+              total_episode_count: null,
+              watched_episodes_count: null,
+              seasons: []
+            },
+            {
+              id: 'sonarr:201',
+              media_type: 'series',
+              service: 'sonarr',
+              service_id: 201,
+              title: 'Breaking Bad',
+              year: 2008,
+              size_on_disk: 21474836480,
+              size_formatted: '20.0 GB',
+              has_file: true,
+              monitored: true,
+              poster_url: null,
+              last_watched_at: '2026-10-17T20:00:00Z',
+              watch_count: 7,
+              episode_file_count: 62,
+              total_episode_count: 62,
+              watched_episodes_count: 7,
+              seasons: [
+                {
+                  season_number: 1,
+                  monitored: true,
+                  episode_file_count: 7,
+                  watched: true
+                }
+              ]
+            }
+          ]
+        }),
+      });
+    });
+
+    // Route Radarr delete
+    await page.route('**/api/v1/integrations/radarr/delete', async route => {
+      lastRadarrDelete = route.request().postDataJSON();
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ status: 'deleted', movie_id: 101 }),
+      });
+    });
+
+    // Route Sonarr delete
+    await page.route('**/api/v1/integrations/sonarr/delete-series', async route => {
+      lastSonarrDelete = route.request().postDataJSON();
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ status: 'deleted', series_id: 201 }),
+      });
+    });
+
+    const userEmail = `cleanup_ui_${Date.now()}@bingesync.local`;
+    await page.goto('/');
+    await page.fill('#dev-email', userEmail);
+    await page.fill('#dev-name', 'Cleanup Tester');
+    await page.click('#btn-dev-submit');
+
+    // 1. Click Cleanup Tab
+    await expect(page.locator('#tab-cleanup')).toBeVisible();
+    await page.click('#tab-cleanup');
+    await expect(page.locator('#view-cleanup')).toBeVisible();
+
+    // 2. Verify summary metrics
+    await expect(page.locator('#cleanup-total-size')).toHaveText('30.0 GB');
+    await expect(page.locator('#cleanup-radarr-count')).toHaveText('1');
+    await expect(page.locator('#cleanup-sonarr-count')).toHaveText('1');
+
+    // 3. Verify cards
+    const cards = page.locator('#cleanup-items-grid .cleanup-card');
+    await expect(cards).toHaveCount(2);
+    await expect(page.locator('#cleanup-items-grid')).toContainText('Inception');
+    await expect(page.locator('#cleanup-items-grid')).toContainText('Breaking Bad');
+
+    // 4. Test filter chips
+    await page.click('#btn-cleanup-filter-movies');
+    await expect(page.locator('#cleanup-items-grid .cleanup-card')).toHaveCount(1);
+    await expect(page.locator('#cleanup-items-grid')).toContainText('Inception');
+
+    await page.click('#btn-cleanup-filter-series');
+    await expect(page.locator('#cleanup-items-grid .cleanup-card')).toHaveCount(1);
+    await expect(page.locator('#cleanup-items-grid')).toContainText('Breaking Bad');
+
+    await page.click('#btn-cleanup-filter-all');
+    await expect(page.locator('#cleanup-items-grid .cleanup-card')).toHaveCount(2);
+
+    // 5. Test Radarr modal & action
+    await page.locator('.cleanup-card', { hasText: 'Inception' }).click();
+    await expect(page.locator('#modal-cleanup-action')).toBeVisible();
+    await expect(page.locator('#cleanup-modal-item-title')).toContainText('Inception');
+    await expect(page.locator('#opt-radarr-delete-both')).toBeVisible();
+    await expect(page.locator('#opt-radarr-delete-entry-only')).toBeVisible();
+
+    page.once('dialog', dialog => dialog.accept());
+    await page.click('#opt-radarr-delete-both');
+    expect(lastRadarrDelete).toEqual({
+      movie_id: 101,
+      delete_files: true,
+    });
+
+    // 6. Test Sonarr modal & action
+    await page.locator('.cleanup-card', { hasText: 'Breaking Bad' }).click();
+    await expect(page.locator('#modal-cleanup-action')).toBeVisible();
+    await expect(page.locator('#cleanup-modal-item-title')).toContainText('Breaking Bad');
+    await expect(page.locator('#opt-sonarr-delete-series')).toBeVisible();
+    await expect(page.locator('#opt-sonarr-delete-all-files')).toBeVisible();
+
+    page.once('dialog', dialog => dialog.accept());
+    await page.click('#opt-sonarr-delete-series');
+    expect(lastSonarrDelete).toEqual({
+      series_id: 201,
+      action: 'delete_series',
+      delete_files: true,
+    });
+  });
 });
 

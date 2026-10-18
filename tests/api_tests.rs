@@ -4671,3 +4671,201 @@ async fn test_force_refresh_posters_and_user_cache() {
     assert_eq!(count_users_cleared2, 0);
 }
 
+#[tokio::test]
+async fn test_library_cleanup_endpoint() {
+    let (app, pool, config) = setup_test_app().await;
+
+    // 1. Setup mock Radarr server
+    let mock_radarr_router = axum::Router::new().route(
+        "/api/v3/movie",
+        axum::routing::get(|| async {
+            axum::Json(serde_json::json!([
+                {
+                    "id": 101,
+                    "title": "Inception",
+                    "year": 2010,
+                    "sizeOnDisk": 10737418240i64,
+                    "hasFile": true,
+                    "monitored": true,
+                    "images": [
+                        { "coverType": "poster", "remoteUrl": "https://image.tmdb.org/t/p/w500/inception.jpg" }
+                    ]
+                },
+                {
+                    "id": 102,
+                    "title": "Unwatched Movie",
+                    "year": 2022,
+                    "sizeOnDisk": 5368709120i64,
+                    "hasFile": true,
+                    "monitored": true,
+                    "images": []
+                }
+            ]))
+        }),
+    );
+    let radarr_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let radarr_addr = radarr_listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(radarr_listener, mock_radarr_router).await.unwrap();
+    });
+
+    // 2. Setup mock Sonarr server
+    let mock_sonarr_router = axum::Router::new().route(
+        "/api/v3/series",
+        axum::routing::get(|| async {
+            axum::Json(serde_json::json!([
+                {
+                    "id": 201,
+                    "title": "Breaking Bad",
+                    "year": 2008,
+                    "monitored": true,
+                    "statistics": {
+                        "sizeOnDisk": 21474836480i64,
+                        "episodeFileCount": 62,
+                        "totalEpisodeCount": 62
+                    },
+                    "images": [
+                        { "coverType": "poster", "remoteUrl": "https://image.tmdb.org/t/p/w500/bb.jpg" }
+                    ],
+                    "seasons": [
+                        {
+                            "seasonNumber": 1,
+                            "monitored": true,
+                            "statistics": { "episodeFileCount": 7 }
+                        },
+                        {
+                            "seasonNumber": 2,
+                            "monitored": true,
+                            "statistics": { "episodeFileCount": 13 }
+                        }
+                    ]
+                },
+                {
+                    "id": 202,
+                    "title": "Unwatched Series",
+                    "year": 2023,
+                    "monitored": true,
+                    "statistics": {
+                        "sizeOnDisk": 10737418240i64,
+                        "episodeFileCount": 10,
+                        "totalEpisodeCount": 10
+                    },
+                    "images": [],
+                    "seasons": []
+                }
+            ]))
+        }),
+    );
+    let sonarr_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let sonarr_addr = sonarr_listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(sonarr_listener, mock_sonarr_router).await.unwrap();
+    });
+
+    // 3. Create User A and User B
+    let user_a_id = "user_a_cleanup";
+    let token_a = create_jwt(user_a_id, "user_a_cleanup@test.local", &config.jwt_secret).unwrap();
+    sqlx::query("INSERT INTO users (id, email, display_name, webhook_token, role) VALUES (?, ?, ?, ?, 'user')")
+        .bind(user_a_id)
+        .bind("user_a_cleanup@test.local")
+        .bind("User A Cleanup")
+        .bind("token_cleanup_a")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let user_b_id = "user_b_cleanup";
+    let token_b = create_jwt(user_b_id, "user_b_cleanup@test.local", &config.jwt_secret).unwrap();
+    sqlx::query("INSERT INTO users (id, email, display_name, webhook_token, role) VALUES (?, ?, ?, ?, 'user')")
+        .bind(user_b_id)
+        .bind("user_b_cleanup@test.local")
+        .bind("User B Cleanup")
+        .bind("token_cleanup_b")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    // 4. Configure Radarr and Sonarr for User A
+    bingesync::api::user_settings::set_user_setting(&pool, user_a_id, "radarr_url", &format!("http://{}", radarr_addr)).await.unwrap();
+    bingesync::api::user_settings::set_user_setting(&pool, user_a_id, "radarr_api_key", "mock_radarr_key").await.unwrap();
+    bingesync::api::user_settings::set_user_setting(&pool, user_a_id, "sonarr_url", &format!("http://{}", sonarr_addr)).await.unwrap();
+    bingesync::api::user_settings::set_user_setting(&pool, user_a_id, "sonarr_api_key", "mock_sonarr_key").await.unwrap();
+
+    // 5. Insert scrobbles for User A (watched Inception and Breaking Bad S01)
+    sqlx::query(
+        "INSERT INTO scrobbles (id, user_id, title, media_type, year, watched_at) VALUES ('m_inc', ?, 'Inception', 'movie', 2010, datetime('now', '-3 days'))"
+    )
+    .bind(user_a_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    sqlx::query(
+        "INSERT INTO scrobbles (id, user_id, title, media_type, grandparent_title, season_number, episode_number, watched_at) VALUES ('ep_bb1', ?, 'Pilot', 'episode', 'Breaking Bad', 1, 1, datetime('now', '-1 day'))"
+    )
+    .bind(user_a_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    // 6. User B calls cleanup endpoint -> services not configured for User B
+    let req_b = Request::builder()
+        .method("GET")
+        .uri("/api/v1/integrations/cleanup")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token_b))
+        .body(Body::empty())
+        .unwrap();
+    let resp_b = app.clone().oneshot(req_b).await.unwrap();
+    assert_eq!(resp_b.status(), StatusCode::OK);
+    let body_bytes_b = axum::body::to_bytes(resp_b.into_body(), usize::MAX).await.unwrap();
+    let json_b: serde_json::Value = serde_json::from_slice(&body_bytes_b).unwrap();
+    assert_eq!(json_b["radarr_configured"], false);
+    assert_eq!(json_b["sonarr_configured"], false);
+    assert_eq!(json_b["total_items"], 0);
+    assert_eq!(json_b["items"].as_array().unwrap().len(), 0);
+
+    // 7. User A calls cleanup endpoint -> finds Inception and Breaking Bad
+    let req_a = Request::builder()
+        .method("GET")
+        .uri("/api/v1/integrations/cleanup")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token_a))
+        .body(Body::empty())
+        .unwrap();
+    let resp_a = app.clone().oneshot(req_a).await.unwrap();
+    assert_eq!(resp_a.status(), StatusCode::OK);
+    let body_bytes_a = axum::body::to_bytes(resp_a.into_body(), usize::MAX).await.unwrap();
+    let json_a: serde_json::Value = serde_json::from_slice(&body_bytes_a).unwrap();
+
+    assert_eq!(json_a["radarr_configured"], true);
+    assert_eq!(json_a["sonarr_configured"], true);
+    assert_eq!(json_a["total_items"], 2);
+    assert_eq!(json_a["total_size_bytes"], 32212254720i64);
+    assert_eq!(json_a["total_size_formatted"], "30.0 GB");
+
+    let items = json_a["items"].as_array().unwrap();
+    assert_eq!(items.len(), 2);
+
+    // Most recently watched first (Breaking Bad was -1 day, Inception was -3 days)
+    let first = &items[0];
+    assert_eq!(first["service"], "sonarr");
+    assert_eq!(first["title"], "Breaking Bad");
+    assert_eq!(first["media_type"], "series");
+    assert_eq!(first["service_id"], 201);
+    assert_eq!(first["size_formatted"], "20.0 GB");
+    assert_eq!(first["episode_file_count"], 62);
+    let seasons = first["seasons"].as_array().unwrap();
+    assert_eq!(seasons.len(), 2);
+    let s1 = seasons.iter().find(|s| s["season_number"] == 1).unwrap();
+    assert_eq!(s1["watched"], true);
+    let s2 = seasons.iter().find(|s| s["season_number"] == 2).unwrap();
+    assert_eq!(s2["watched"], false);
+
+    let second = &items[1];
+    assert_eq!(second["service"], "radarr");
+    assert_eq!(second["title"], "Inception");
+    assert_eq!(second["media_type"], "movie");
+    assert_eq!(second["service_id"], 101);
+    assert_eq!(second["size_formatted"], "10.0 GB");
+    assert_eq!(second["has_file"], true);
+}
+

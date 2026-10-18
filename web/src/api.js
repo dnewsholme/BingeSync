@@ -183,6 +183,7 @@ export const api = {
       method: 'DELETE',
     }),
   getIntegrationsStatus: () => request('/integrations/status'),
+  getCleanupItems: () => request('/integrations/cleanup'),
   checkMediaInLibrary: (params) => {
     let url = `/integrations/check?title=${encodeURIComponent(params.title)}&media_type=${encodeURIComponent(params.media_type)}`;
     if (params.year) url += `&year=${params.year}`;

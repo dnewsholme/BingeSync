@@ -59,6 +59,14 @@ const state = {
     timeRange: 'all',
     data: null,
   },
+  cleanup: {
+    items: [],
+    filter: 'all',
+    search: '',
+    sort: 'recent',
+    selectedItem: null,
+    isLoading: false,
+  },
   selectedItem: null,
   nowPlayingTimer: null,
 };
@@ -342,6 +350,34 @@ const el = {
   adminLogsViewer: document.getElementById('admin-logs-viewer'),
   adminLogsFilterLevel: document.getElementById('admin-logs-filter-level'),
   adminLogsAutorefresh: document.getElementById('admin-logs-autorefresh'),
+
+  // Library Cleanup (Radarr / Sonarr)
+  tabCleanup: document.getElementById('tab-cleanup'),
+  viewCleanup: document.getElementById('view-cleanup'),
+  btnRefreshCleanup: document.getElementById('btn-refresh-cleanup'),
+  cleanupTotalSize: document.getElementById('cleanup-total-size'),
+  cleanupTotalCount: document.getElementById('cleanup-total-count'),
+  cleanupRadarrCount: document.getElementById('cleanup-radarr-count'),
+  cleanupRadarrSize: document.getElementById('cleanup-radarr-size'),
+  cleanupSonarrCount: document.getElementById('cleanup-sonarr-count'),
+  cleanupSonarrSize: document.getElementById('cleanup-sonarr-size'),
+  cleanupSearchInput: document.getElementById('cleanup-search-input'),
+  cleanupSortSelect: document.getElementById('cleanup-sort-select'),
+  cleanupAlertBanner: document.getElementById('cleanup-alert-banner'),
+  cleanupItemsGrid: document.getElementById('cleanup-items-grid'),
+  modalCleanupAction: document.getElementById('modal-cleanup-action'),
+  btnCloseCleanupModal: document.getElementById('btn-close-cleanup-modal'),
+  btnCancelCleanupModal: document.getElementById('btn-cancel-cleanup-modal'),
+  cleanupModalTitle: document.getElementById('cleanup-modal-title'),
+  cleanupModalSubtitle: document.getElementById('cleanup-modal-subtitle'),
+  cleanupModalPoster: document.getElementById('cleanup-modal-poster'),
+  cleanupModalItemTitle: document.getElementById('cleanup-modal-item-title'),
+  cleanupModalServiceBadge: document.getElementById('cleanup-modal-service-badge'),
+  cleanupModalSize: document.getElementById('cleanup-modal-size'),
+  cleanupModalWatched: document.getElementById('cleanup-modal-watched'),
+  cleanupModalExtraInfo: document.getElementById('cleanup-modal-extra-info'),
+  cleanupModalOptions: document.getElementById('cleanup-modal-options'),
+  cleanupModalStatus: document.getElementById('cleanup-modal-status'),
 };
 
 // Initialization
@@ -491,6 +527,7 @@ function switchTab(targetViewId) {
   if (targetViewId === 'view-timeline') loadTimeline();
   if (targetViewId === 'view-history') loadHistory();
   if (targetViewId === 'view-stats') loadStats();
+  if (targetViewId === 'view-cleanup') loadCleanupItems();
   if (targetViewId === 'view-settings') {
     loadWebhookInfo();
     loadUserSettings();
@@ -3897,6 +3934,448 @@ if (el.btnClearAdminLogs) {
         alert('Failed to clear logs: ' + err.message);
       }
     }
+  });
+}
+
+// ==========================================
+// LIBRARY CLEANUP (Radarr & Sonarr)
+// ==========================================
+
+async function loadCleanupItems() {
+  if (!el.cleanupItemsGrid) return;
+  state.cleanup.isLoading = true;
+  el.cleanupItemsGrid.innerHTML = `
+    <div style="grid-column: 1 / -1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px; color: var(--text-muted); gap: 12px;">
+      <div class="spinner"></div>
+      <p>Scanning Radarr and Sonarr libraries for watched media...</p>
+    </div>
+  `;
+
+  try {
+    const res = await api.getCleanupItems();
+    state.cleanup.items = res.items || [];
+
+    // Update summary metrics
+    if (el.cleanupTotalSize) el.cleanupTotalSize.textContent = res.total_size_formatted || '0 B';
+    if (el.cleanupTotalCount) {
+      el.cleanupTotalCount.textContent = `${res.total_items} watched item${res.total_items === 1 ? '' : 's'} across libraries`;
+    }
+
+    const radarrItems = state.cleanup.items.filter(i => i.service === 'radarr');
+    const radarrSize = radarrItems.reduce((acc, i) => acc + (i.size_on_disk || 0), 0);
+    if (el.cleanupRadarrCount) el.cleanupRadarrCount.textContent = radarrItems.length;
+    if (el.cleanupRadarrSize) el.cleanupRadarrSize.textContent = `${formatBytesClient(radarrSize)} on disk`;
+
+    const sonarrItems = state.cleanup.items.filter(i => i.service === 'sonarr');
+    const sonarrSize = sonarrItems.reduce((acc, i) => acc + (i.size_on_disk || 0), 0);
+    if (el.cleanupSonarrCount) el.cleanupSonarrCount.textContent = sonarrItems.length;
+    if (el.cleanupSonarrSize) el.cleanupSonarrSize.textContent = `${formatBytesClient(sonarrSize)} on disk`;
+
+    // Filter counts
+    const chipAll = document.getElementById('count-chip-all');
+    const chipMovies = document.getElementById('count-chip-movies');
+    const chipSeries = document.getElementById('count-chip-series');
+    if (chipAll) chipAll.textContent = state.cleanup.items.length;
+    if (chipMovies) chipMovies.textContent = radarrItems.length;
+    if (chipSeries) chipSeries.textContent = sonarrItems.length;
+
+    // Handle alert banner for unconfigured or error states
+    if (el.cleanupAlertBanner) {
+      if (!res.radarr_configured && !res.sonarr_configured) {
+        el.cleanupAlertBanner.style.display = 'block';
+        el.cleanupAlertBanner.className = 'alert-box alert-warning';
+        el.cleanupAlertBanner.innerHTML = `
+          <strong>Radarr & Sonarr Not Configured:</strong> To scan your media libraries and delete watched files, please enter your server URL and API key in <a href="#" id="link-cleanup-goto-settings" style="color:var(--accent-primary);text-decoration:underline;">Settings</a>.
+        `;
+        const link = document.getElementById('link-cleanup-goto-settings');
+        if (link) link.addEventListener('click', (e) => { e.preventDefault(); switchTab('view-settings'); });
+      } else if (res.radarr_error || res.sonarr_error) {
+        el.cleanupAlertBanner.style.display = 'block';
+        el.cleanupAlertBanner.className = 'alert-box alert-warning';
+        const msgs = [];
+        if (res.radarr_error) msgs.push(`Radarr: ${escapeHtml(res.radarr_error)}`);
+        if (res.sonarr_error) msgs.push(`Sonarr: ${escapeHtml(res.sonarr_error)}`);
+        el.cleanupAlertBanner.innerHTML = `<strong>Library connection warning:</strong> ${msgs.join(' | ')}`;
+      } else {
+        el.cleanupAlertBanner.style.display = 'none';
+      }
+    }
+
+    renderCleanupItems();
+  } catch (err) {
+    if (el.cleanupItemsGrid) {
+      el.cleanupItemsGrid.innerHTML = `
+        <div style="grid-column: 1 / -1; text-align: center; padding: 40px; color: var(--text-muted);">
+          <p style="color: #f87171; font-weight: 500;">Failed to scan libraries: ${escapeHtml(err.message)}</p>
+          <button class="btn btn-outline btn-sm" onclick="loadCleanupItems()" style="margin-top: 12px;">Try Again</button>
+        </div>
+      `;
+    }
+  } finally {
+    state.cleanup.isLoading = false;
+  }
+}
+
+function formatBytesClient(bytes) {
+  if (!bytes || bytes <= 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let i = 0;
+  let val = bytes;
+  while (val >= 1024 && i < units.length - 1) {
+    val /= 1024;
+    i++;
+  }
+  return `${val.toFixed(1)} ${units[i]}`;
+}
+
+function renderCleanupItems() {
+  if (!el.cleanupItemsGrid) return;
+
+  let filtered = [...state.cleanup.items];
+
+  // 1. Filter by mediaType
+  if (state.cleanup.filter === 'movie') {
+    filtered = filtered.filter(i => i.media_type === 'movie');
+  } else if (state.cleanup.filter === 'series') {
+    filtered = filtered.filter(i => i.media_type === 'series');
+  }
+
+  // 2. Search
+  if (state.cleanup.search.trim()) {
+    const q = state.cleanup.search.trim().toLowerCase();
+    filtered = filtered.filter(i => i.title.toLowerCase().includes(q));
+  }
+
+  // 3. Sort
+  if (state.cleanup.sort === 'size') {
+    filtered.sort((a, b) => (b.size_on_disk || 0) - (a.size_on_disk || 0));
+  } else if (state.cleanup.sort === 'title') {
+    filtered.sort((a, b) => a.title.localeCompare(b.title));
+  } else {
+    // recent
+    filtered.sort((a, b) => String(b.last_watched_at).localeCompare(String(a.last_watched_at)));
+  }
+
+  if (filtered.length === 0) {
+    el.cleanupItemsGrid.innerHTML = `
+      <div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px; color: var(--text-muted); background: var(--bg-card); border-radius: 12px; border: 1px dashed var(--border-color);">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-bottom: 12px; opacity: 0.6;"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+        <h3 style="font-size: 1.15rem; color: var(--text-main); margin-bottom: 6px;">All Clean!</h3>
+        <p style="font-size: 0.9rem; max-width: 450px; margin: 0 auto;">No watched films or TV shows currently match your filter criteria in Radarr or Sonarr.</p>
+      </div>
+    `;
+    return;
+  }
+
+  el.cleanupItemsGrid.innerHTML = filtered.map(item => {
+    const isMovie = item.media_type === 'movie';
+    const serviceBadgeClass = item.service === 'radarr' ? 'badge-radarr' : 'badge-sonarr';
+    const serviceName = item.service === 'radarr' ? 'Radarr' : 'Sonarr';
+    const watchedDateStr = item.last_watched_at ? new Date(item.last_watched_at).toLocaleDateString() : 'Watched';
+    const posterImg = resolveImageUrl(item.poster_url) || './favicon.svg';
+
+    let extraBadge = '';
+    if (!isMovie) {
+      const epCount = item.episode_file_count != null ? item.episode_file_count : 0;
+      extraBadge = `<span class="badge-pill" style="background: rgba(255,255,255,0.06); color: var(--text-muted);">${epCount} Episode File${epCount === 1 ? '' : 's'}</span>`;
+    }
+
+    return `
+      <div class="cleanup-card" data-item-id="${escapeHtml(item.id)}">
+        <div class="cleanup-card-body">
+          <img src="${escapeHtml(posterImg)}" alt="${escapeHtml(item.title)}" class="cleanup-card-poster" loading="lazy" onerror="this.src='./favicon.svg'" />
+          <div class="cleanup-card-info">
+            <div>
+              <div class="cleanup-card-title">${escapeHtml(item.title)}${item.year ? ` <span style="font-size:0.8rem;color:var(--text-dim);">(${item.year})</span>` : ''}</div>
+              <div class="cleanup-card-meta">
+                <span>Last watched: <strong style="color:var(--text-main);">${escapeHtml(watchedDateStr)}</strong></span>
+                <span>Times watched: <strong style="color:var(--text-main);">${item.watch_count || 1}</strong></span>
+              </div>
+            </div>
+
+            <div class="cleanup-card-badges">
+              <span class="badge-pill ${serviceBadgeClass}">${serviceName}</span>
+              <span class="badge-pill badge-size">${escapeHtml(item.size_formatted || '0 B')}</span>
+              ${extraBadge}
+            </div>
+          </div>
+        </div>
+        <div class="cleanup-card-footer">
+          <span style="font-size: 0.78rem; color: var(--text-dim);">Storage reclaimable</span>
+          <button type="button" class="btn btn-outline btn-sm btn-cleanup-item" data-item-id="${escapeHtml(item.id)}" style="padding: 4px 10px; font-size: 0.82rem; border-color: rgba(244,63,94,0.4); color: #fb7185;">
+            Cleanup...
+          </button>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  // Attach click listeners to cards and buttons
+  el.cleanupItemsGrid.querySelectorAll('.cleanup-card').forEach(card => {
+    card.addEventListener('click', () => {
+      const itemId = card.dataset.itemId;
+      const item = state.cleanup.items.find(i => i.id === itemId);
+      if (item) openCleanupModal(item);
+    });
+  });
+}
+
+function openCleanupModal(item) {
+  if (!el.modalCleanupAction) return;
+  state.cleanup.selectedItem = item;
+
+  if (el.cleanupModalItemTitle) el.cleanupModalItemTitle.textContent = item.title + (item.year ? ` (${item.year})` : '');
+  if (el.cleanupModalPoster) {
+    el.cleanupModalPoster.src = resolveImageUrl(item.poster_url) || './favicon.svg';
+  }
+  if (el.cleanupModalServiceBadge) {
+    el.cleanupModalServiceBadge.textContent = item.service === 'radarr' ? 'Radarr' : 'Sonarr';
+    el.cleanupModalServiceBadge.className = `badge-pill ${item.service === 'radarr' ? 'badge-radarr' : 'badge-sonarr'}`;
+  }
+  if (el.cleanupModalSize) el.cleanupModalSize.textContent = item.size_formatted || '0 B';
+  if (el.cleanupModalWatched) {
+    el.cleanupModalWatched.textContent = item.last_watched_at ? new Date(item.last_watched_at).toLocaleDateString() : 'Watched';
+  }
+  if (el.cleanupModalStatus) {
+    el.cleanupModalStatus.style.display = 'none';
+    el.cleanupModalStatus.textContent = '';
+  }
+
+  // Populate extra info & options based on media type
+  if (item.service === 'radarr') {
+    if (el.cleanupModalExtraInfo) {
+      el.cleanupModalExtraInfo.textContent = `Film stored in Radarr library • ${item.has_file ? 'Video file exists on disk' : 'No file on disk'}`;
+    }
+    if (el.cleanupModalOptions) {
+      el.cleanupModalOptions.innerHTML = `
+        <div class="cleanup-action-opt opt-danger" id="opt-radarr-delete-both">
+          <div class="cleanup-action-header">
+            <span class="cleanup-action-title" style="color: #f87171;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+              Delete Files & Remove from Radarr
+            </span>
+            <span class="badge-pill" style="background: rgba(239, 68, 68, 0.2); color: #f87171;">Reclaim ${escapeHtml(item.size_formatted)}</span>
+          </div>
+          <div class="cleanup-action-desc">
+            Deletes media files from disk to reclaim space and permanently removes movie from Radarr monitoring.
+          </div>
+        </div>
+
+        <div class="cleanup-action-opt" id="opt-radarr-delete-entry-only">
+          <div class="cleanup-action-header">
+            <span class="cleanup-action-title">
+              Remove from Radarr Only (Keep Files)
+            </span>
+            <span class="badge-pill" style="background: rgba(255, 255, 255, 0.08); color: var(--text-muted);">Keep Media</span>
+          </div>
+          <div class="cleanup-action-desc">
+            Removes movie from Radarr library but leaves downloaded video files untouched on your storage.
+          </div>
+        </div>
+      `;
+
+      document.getElementById('opt-radarr-delete-both').addEventListener('click', () => executeRadarrCleanup(item, true));
+      document.getElementById('opt-radarr-delete-entry-only').addEventListener('click', () => executeRadarrCleanup(item, false));
+    }
+  } else {
+    // Sonarr TV Show
+    const epFiles = item.episode_file_count || 0;
+    if (el.cleanupModalExtraInfo) {
+      el.cleanupModalExtraInfo.textContent = `Series in Sonarr • ${epFiles} episode file${epFiles === 1 ? '' : 's'} on disk • ${item.watched_episodes_count || 0} episodes watched`;
+    }
+
+    let seasonsHtml = '';
+    if (item.seasons && item.seasons.length > 0) {
+      const activeSeasons = item.seasons.filter(s => s.season_number > 0 && (s.episode_file_count > 0 || s.watched));
+      if (activeSeasons.length > 0) {
+        seasonsHtml = `
+          <div style="margin-top: 10px; border-top: 1px solid var(--border-color); padding-top: 10px;">
+            <div style="font-size: 0.82rem; font-weight: 600; color: var(--text-muted); margin-bottom: 6px;">Delete Individual Seasons & Unmonitor:</div>
+            <div style="display: flex; flex-direction: column; gap: 6px; max-height: 180px; overflow-y: auto;">
+              ${activeSeasons.map(s => `
+                <div class="season-cleanup-row">
+                  <div>
+                    <strong>Season ${s.season_number}</strong>
+                    <span style="font-size: 0.78rem; color: var(--text-dim); margin-left: 6px;">(${s.episode_file_count} file${s.episode_file_count === 1 ? '' : 's'})</span>
+                    ${s.watched ? '<span class="badge-pill" style="font-size:0.68rem;background:rgba(52,211,153,0.15);color:#34d399;margin-left:4px;">Watched</span>' : ''}
+                  </div>
+                  <button type="button" class="btn btn-outline btn-sm btn-delete-season" data-season="${s.season_number}" style="padding: 2px 8px; font-size: 0.75rem; color: #fb923c; border-color: rgba(251,146,60,0.4);">
+                    Delete Season Files
+                  </button>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `;
+      }
+    }
+
+    if (el.cleanupModalOptions) {
+      el.cleanupModalOptions.innerHTML = `
+        <div class="cleanup-action-opt opt-danger" id="opt-sonarr-delete-series">
+          <div class="cleanup-action-header">
+            <span class="cleanup-action-title" style="color: #f87171;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+              Delete Entire Series & All Files
+            </span>
+            <span class="badge-pill" style="background: rgba(239, 68, 68, 0.2); color: #f87171;">Reclaim ${escapeHtml(item.size_formatted)}</span>
+          </div>
+          <div class="cleanup-action-desc">
+            Completely removes series from Sonarr and deletes all episode files from disk.
+          </div>
+        </div>
+
+        <div class="cleanup-action-opt opt-warning" id="opt-sonarr-delete-all-files">
+          <div class="cleanup-action-header">
+            <span class="cleanup-action-title" style="color: #fb923c;">
+              Delete All Files & Unmonitor All Seasons
+            </span>
+            <span class="badge-pill" style="background: rgba(251, 146, 60, 0.15); color: #fb923c;">Reclaim ${escapeHtml(item.size_formatted)}</span>
+          </div>
+          <div class="cleanup-action-desc">
+            Keeps the series in Sonarr, but deletes all downloaded episode files to reclaim space and sets all seasons to unmonitored.
+          </div>
+        </div>
+
+        ${seasonsHtml}
+      `;
+
+      document.getElementById('opt-sonarr-delete-series').addEventListener('click', () => {
+        executeSonarrCleanup(item, { action: 'delete_series', delete_files: true });
+      });
+
+      document.getElementById('opt-sonarr-delete-all-files').addEventListener('click', () => {
+        executeSonarrCleanup(item, { action: 'delete_all_files_unmonitor', delete_files: true });
+      });
+
+      el.cleanupModalOptions.querySelectorAll('.btn-delete-season').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const seasonNum = parseInt(btn.dataset.season, 10);
+          executeSonarrCleanup(item, { action: 'delete_season', season_number: seasonNum, delete_files: true });
+        });
+      });
+    }
+  }
+
+  el.modalCleanupAction.style.display = 'flex';
+}
+
+function closeCleanupModal() {
+  if (el.modalCleanupAction) el.modalCleanupAction.style.display = 'none';
+  state.cleanup.selectedItem = null;
+}
+
+async function executeRadarrCleanup(item, deleteFiles) {
+  if (!confirm(`Are you sure you want to ${deleteFiles ? 'DELETE the media files and remove' : 'remove'} "${item.title}" from Radarr?`)) {
+    return;
+  }
+
+  if (el.cleanupModalStatus) {
+    el.cleanupModalStatus.style.display = 'block';
+    el.cleanupModalStatus.className = 'import-status-box';
+    el.cleanupModalStatus.textContent = 'Contacting Radarr to remove movie...';
+  }
+
+  try {
+    await api.deleteFromRadarr(item.service_id, deleteFiles);
+    if (el.cleanupModalStatus) {
+      el.cleanupModalStatus.className = 'import-status-box success';
+      el.cleanupModalStatus.textContent = `Successfully removed "${item.title}" from Radarr!`;
+    }
+
+    state.cleanup.items = state.cleanup.items.filter(i => i.id !== item.id);
+    setTimeout(() => {
+      closeCleanupModal();
+      loadCleanupItems();
+    }, 1200);
+  } catch (err) {
+    if (el.cleanupModalStatus) {
+      el.cleanupModalStatus.className = 'import-status-box error';
+      el.cleanupModalStatus.textContent = `Radarr delete failed: ${err.message}`;
+    }
+  }
+}
+
+async function executeSonarrCleanup(item, options) {
+  let confirmMsg = `Are you sure you want to clean up "${item.title}" in Sonarr?`;
+  if (options.action === 'delete_series') {
+    confirmMsg = `Are you sure you want to delete the ENTIRE series "${item.title}" and ALL its episode files from Sonarr?`;
+  } else if (options.action === 'delete_all_files_unmonitor') {
+    confirmMsg = `Are you sure you want to delete all episode files for "${item.title}" and unmonitor all seasons?`;
+  } else if (options.action === 'delete_season') {
+    confirmMsg = `Are you sure you want to delete episode files for Season ${options.season_number} of "${item.title}" and unmonitor the season?`;
+  }
+
+  if (!confirm(confirmMsg)) return;
+
+  if (el.cleanupModalStatus) {
+    el.cleanupModalStatus.style.display = 'block';
+    el.cleanupModalStatus.className = 'import-status-box';
+    el.cleanupModalStatus.textContent = 'Contacting Sonarr to perform cleanup action...';
+  }
+
+  try {
+    await api.deleteFromSonarr(item.service_id, options);
+    if (el.cleanupModalStatus) {
+      el.cleanupModalStatus.className = 'import-status-box success';
+      el.cleanupModalStatus.textContent = `Successfully updated "${item.title}" in Sonarr!`;
+    }
+
+    if (options.action === 'delete_series') {
+      state.cleanup.items = state.cleanup.items.filter(i => i.id !== item.id);
+    }
+
+    setTimeout(() => {
+      closeCleanupModal();
+      loadCleanupItems();
+    }, 1200);
+  } catch (err) {
+    if (el.cleanupModalStatus) {
+      el.cleanupModalStatus.className = 'import-status-box error';
+      el.cleanupModalStatus.textContent = `Sonarr action failed: ${err.message}`;
+    }
+  }
+}
+
+if (el.btnRefreshCleanup) {
+  el.btnRefreshCleanup.addEventListener('click', () => loadCleanupItems());
+}
+
+if (el.btnCloseCleanupModal) {
+  el.btnCloseCleanupModal.addEventListener('click', () => closeCleanupModal());
+}
+
+if (el.btnCancelCleanupModal) {
+  el.btnCancelCleanupModal.addEventListener('click', () => closeCleanupModal());
+}
+
+if (el.modalCleanupAction) {
+  el.modalCleanupAction.addEventListener('click', (e) => {
+    if (e.target === el.modalCleanupAction) closeCleanupModal();
+  });
+}
+
+document.querySelectorAll('#cleanup-filter-chips .filter-chip').forEach(chip => {
+  chip.addEventListener('click', () => {
+    document.querySelectorAll('#cleanup-filter-chips .filter-chip').forEach(c => c.classList.remove('active'));
+    chip.classList.add('active');
+    state.cleanup.filter = chip.dataset.filter || 'all';
+    renderCleanupItems();
+  });
+});
+
+if (el.cleanupSearchInput) {
+  el.cleanupSearchInput.addEventListener('input', (e) => {
+    state.cleanup.search = e.target.value;
+    renderCleanupItems();
+  });
+}
+
+if (el.cleanupSortSelect) {
+  el.cleanupSortSelect.addEventListener('change', (e) => {
+    state.cleanup.sort = e.target.value;
+    renderCleanupItems();
   });
 }
 

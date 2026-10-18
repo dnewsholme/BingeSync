@@ -211,6 +211,7 @@ pub fn create_api_router(state: AppState) -> Router {
         // Radarr / Sonarr Integrations (Cleanup after watching)
         .route("/api/v1/integrations/status", get(integrations::get_integrations_status))
         .route("/api/v1/integrations/check", get(integrations::check_media_in_library))
+        .route("/api/v1/integrations/cleanup", get(integrations::get_cleanup_items))
         .route("/api/v1/integrations/radarr/delete", post(integrations::delete_from_radarr))
         .route("/api/v1/integrations/sonarr/delete-series", post(integrations::delete_from_sonarr))
         // Admin management: Users, Settings, Logs, and Tasks

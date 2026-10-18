@@ -480,6 +480,17 @@ pub const OPENAPI_SPEC_JSON: &str = r###"{
                     }
                 }
             },
+            "/api/v1/integrations/cleanup": {
+                "get": {
+                    "tags": ["Integrations"],
+                    "summary": "List watched films and TV shows that still exist in Radarr/Sonarr libraries",
+                    "description": "Cross-references user watch history with Radarr and Sonarr instances to identify cleanup candidates and reclaimable disk space.",
+                    "security": [{ "BearerAuth": [] }],
+                    "responses": {
+                        "200": { "description": "List of cleanup candidates with file sizes and season details" }
+                    }
+                }
+            },
             "/api/v1/integrations/check": {
                 "get": {
                     "tags": ["Integrations"],

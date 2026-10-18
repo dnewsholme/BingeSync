@@ -17,8 +17,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
   <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
-  <script type="module" crossorigin src="./assets/index-DWU-2z6Z.js"></script>
-  <link rel="stylesheet" crossorigin href="./assets/index-YrutD9Ni.css">
+  <script type="module" crossorigin src="./assets/index-DqhQ9ait.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-BojTAgeS.css">
 </head>
 <body>
   <div id="app">
@@ -50,6 +50,10 @@
           <button class="nav-tab" id="tab-stats" data-target="view-stats">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
             <span data-i18n="nav.stats">Stats</span>
+          </button>
+          <button class="nav-tab" id="tab-cleanup" data-target="view-cleanup">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+            <span data-i18n="nav.cleanup">Cleanup</span>
           </button>
           <button class="nav-tab" id="tab-settings" data-target="view-settings">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
@@ -486,6 +490,90 @@
             <div id="top-movies-list" class="top-shows-list">
               <!-- Top movies injected here -->
             </div>
+          </div>
+        </section>
+
+        <!-- View: Library Cleanup (Radarr & Sonarr) -->
+        <section id="view-cleanup" class="app-view" style="display: none;">
+          <div class="view-header">
+            <div>
+              <h1 class="view-title" data-i18n="cleanup.title">Library Cleanup</h1>
+              <p class="view-subtitle" data-i18n="cleanup.subtitle">Identify watched films and TV series still taking up disk space in Radarr and Sonarr, and clean them up with one click.</p>
+            </div>
+            <div class="view-actions">
+              <button class="btn btn-primary btn-sm" id="btn-refresh-cleanup">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                <span data-i18n="cleanup.scan_libraries">Scan Libraries</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Summary Metric Cards -->
+          <div class="stats-cards-grid" id="cleanup-summary-cards" style="margin-bottom: 20px;">
+            <div class="stat-card">
+              <div class="stat-icon" style="background: rgba(239, 68, 68, 0.15); color: #f87171;">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+              </div>
+              <div class="stat-content">
+                <div class="stat-label" data-i18n="cleanup.reclaimable_space">Reclaimable Storage</div>
+                <div class="stat-value" id="cleanup-total-size">0 B</div>
+                <div class="stat-subtext" id="cleanup-total-count" data-i18n="cleanup.across_libraries">Across all watched items</div>
+              </div>
+            </div>
+
+            <div class="stat-card">
+              <div class="stat-icon" style="background: rgba(14, 165, 233, 0.15); color: #38bdf8;">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="m9 8 6 4-6 4Z"/></svg>
+              </div>
+              <div class="stat-content">
+                <div class="stat-label" data-i18n="cleanup.radarr_movies">Radarr Movies</div>
+                <div class="stat-value" id="cleanup-radarr-count">0</div>
+                <div class="stat-subtext" id="cleanup-radarr-size">0 B on disk</div>
+              </div>
+            </div>
+
+            <div class="stat-card">
+              <div class="stat-icon" style="background: rgba(99, 102, 241, 0.15); color: #818cf8;">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="20" height="15" x="2" y="7" rx="2" ry="2"/><polyline points="17 2 12 7 7 2"/></svg>
+              </div>
+              <div class="stat-content">
+                <div class="stat-label" data-i18n="cleanup.sonarr_shows">Sonarr Shows</div>
+                <div class="stat-value" id="cleanup-sonarr-count">0</div>
+                <div class="stat-subtext" id="cleanup-sonarr-size">0 B on disk</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Filter & Search Controls Bar -->
+          <div class="history-controls-bar" style="margin-bottom: 16px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between;">
+            <div style="display: flex; gap: 8px; flex-wrap: wrap;" id="cleanup-filter-chips">
+              <button class="filter-chip active" id="btn-cleanup-filter-all" data-filter="all">
+                <span data-i18n="common.all">All</span> (<span id="count-chip-all">0</span>)
+              </button>
+              <button class="filter-chip" id="btn-cleanup-filter-movies" data-filter="movie">
+                <span data-i18n="stats.movies">Movies</span> (<span id="count-chip-movies">0</span>)
+              </button>
+              <button class="filter-chip" id="btn-cleanup-filter-series" data-filter="series">
+                <span data-i18n="stats.tv_shows">TV Shows</span> (<span id="count-chip-series">0</span>)
+              </button>
+            </div>
+
+            <div style="display: flex; gap: 8px; flex: 1; max-width: 450px; justify-content: flex-end;">
+              <input type="text" id="cleanup-search-input" class="form-control" placeholder="Search watched media in library..." style="padding: 6px 12px; font-size: 0.85rem;" />
+              <select id="cleanup-sort-select" class="form-control" style="width: auto; padding: 6px 10px; font-size: 0.85rem;">
+                <option value="recent">Recently Watched</option>
+                <option value="size">Largest Size</option>
+                <option value="title">Title (A-Z)</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Alert/Banner for unconfigured or error state -->
+          <div id="cleanup-alert-banner" class="alert-box" style="display: none; margin-bottom: 16px;"></div>
+
+          <!-- Cleanup Items Grid Container -->
+          <div id="cleanup-items-grid" class="cleanup-grid">
+            <!-- Dynamically injected cleanup cards -->
           </div>
         </section>
 
@@ -1221,6 +1309,53 @@
             <button class="btn btn-danger btn-sm" id="btn-delete-detail-item" data-i18n="modal.delete_scrobble">Delete Scrobble</button>
             <button class="btn btn-outline btn-sm" id="btn-dismiss-detail-modal" data-i18n="modal.close">Close</button>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal: Cleanup Action Confirmation (Radarr/Sonarr) -->
+    <div id="modal-cleanup-action" class="modal-backdrop" style="display: none;">
+      <div class="modal-dialog" style="max-width: 560px;">
+        <div class="modal-header">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <div class="modal-icon-badge" style="background: rgba(239, 68, 68, 0.15); color: #f87171; width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+            </div>
+            <div>
+              <h3 class="modal-title" id="cleanup-modal-title">Delete Media from Library</h3>
+              <p class="modal-subtitle" id="cleanup-modal-subtitle">Choose cleanup options for this item</p>
+            </div>
+          </div>
+          <button type="button" class="btn-close" id="btn-close-cleanup-modal">&times;</button>
+        </div>
+
+        <div class="modal-body" id="cleanup-modal-body" style="padding: 16px 20px;">
+          <!-- Item info card preview -->
+          <div id="cleanup-modal-item-preview" style="display: flex; gap: 14px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; margin-bottom: 18px;">
+            <img id="cleanup-modal-poster" src="" alt="Poster" style="width: 55px; height: 82px; object-fit: cover; border-radius: 6px; background: var(--bg-card);" />
+            <div style="flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 4px;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <h4 id="cleanup-modal-item-title" style="margin: 0; font-size: 1.05rem; font-weight: 600;">Item Title</h4>
+                <span class="badge-pill" id="cleanup-modal-service-badge" style="font-size: 0.72rem;">Radarr</span>
+              </div>
+              <div style="font-size: 0.85rem; color: var(--text-muted); display: flex; gap: 12px; flex-wrap: wrap;">
+                <span>Size: <strong id="cleanup-modal-size" style="color: #38bdf8;">12.4 GB</strong></span>
+                <span>Watched: <strong id="cleanup-modal-watched">Oct 12, 2026</strong></span>
+              </div>
+              <div id="cleanup-modal-extra-info" style="font-size: 0.8rem; color: var(--text-dim);"></div>
+            </div>
+          </div>
+
+          <!-- Options Container -->
+          <div id="cleanup-modal-options" style="display: flex; flex-direction: column; gap: 10px;">
+            <!-- Injected options depending on movie vs series -->
+          </div>
+
+          <div id="cleanup-modal-status" style="margin-top: 14px; display: none;" class="import-status-box"></div>
+        </div>
+
+        <div class="modal-footer" style="padding: 12px 20px; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end;">
+          <button type="button" class="btn btn-outline" id="btn-cancel-cleanup-modal">Close</button>
         </div>
       </div>
     </div>

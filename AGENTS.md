@@ -129,7 +129,7 @@ Plex webhooks send:
 ```bash
 cargo test
 ```
-Tests in `tests/api_tests.rs` (36 integration tests) cover:
+Tests in `tests/api_tests.rs` (37 integration tests) cover:
 - Dev login and `/api/v1/auth/me`
 - Plex movie and TV episode scrobbling
 - Multi-user isolation (User A cannot see User B's data)
@@ -164,6 +164,7 @@ Tests in `tests/api_tests.rs` (36 integration tests) cover:
 - Fix match option on history items specifying TheTVDB ID with sibling episode matching and multi-user isolation
 - Force refresh poster images resetting thumbnail URLs and triggering image cache worker
 - Force refresh user cache clearing cached Plex and Jellyfin user mappings and triggering user sync worker
+- Watched library cleanup candidates cross-referencing Radarr/Sonarr with disk space calculation and season details
 
 ### Run Playwright E2E UI Tests
 ```bash
@@ -171,7 +172,7 @@ cd web
 npm install
 npx playwright test
 ```
-Playwright tests in `web/tests/e2e.spec.js` (30 browser E2E tests) cover:
+Playwright tests in `web/tests/e2e.spec.js` (31 browser E2E tests) cover:
 - User sign-in flow, "+ Log Watch" modal, and timeline rendering
 - Multi-user separation in the web UI
 - Trakt history and rating import flow in the web UI (pasted JSON)
@@ -202,6 +203,7 @@ Playwright tests in `web/tests/e2e.spec.js` (30 browser E2E tests) cover:
 - Fix incorrect match on history items by specifying TheTVDB ID
 - Admin background tasks: force refresh all metadata option
 - Mobile responsive layout: bottom app navigation bar, stacked touch forms, and responsive modals on phone viewports
+- Library cleanup view: list watched items on Radarr & Sonarr, view reclaimable disk space, filter by type, and execute cleanup action modals
 
 ### Run the App Locally
 ```bash
