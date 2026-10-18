@@ -1,4 +1,5 @@
 import { api, API_BASE } from './api.js';
+import { initI18n, setLanguage, getLanguage, t } from './i18n.js';
 
 export const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -218,6 +219,9 @@ const el = {
   webhookUrlInput: document.getElementById('webhook-url-input'),
   btnCopyWebhook: document.getElementById('btn-copy-webhook'),
   copyStatus: document.getElementById('copy-status'),
+  jellyfinWebhookUrlInput: document.getElementById('jellyfin-webhook-url-input'),
+  btnCopyJellyfinWebhook: document.getElementById('btn-copy-jellyfin-webhook'),
+  jellyfinCopyStatus: document.getElementById('jellyfin-copy-status'),
   btnRegenToken: document.getElementById('btn-regen-token'),
 
   // Modals
@@ -261,7 +265,10 @@ const el = {
   formUserSettings: document.getElementById('form-user-settings'),
   btnSaveUserSettings: document.getElementById('btn-save-user-settings'),
   userSettingsStatus: document.getElementById('user-settings-status'),
+  userSettingLanguage: document.getElementById('user-setting-language'),
+  navLanguageSelect: document.getElementById('nav-language-select'),
   userSettingPlexUsername: document.getElementById('user-setting-plex-username'),
+  userSettingJellyfinUsername: document.getElementById('user-setting-jellyfin-username'),
   userSettingRadarrUrl: document.getElementById('user-setting-radarr-url'),
   userSettingRadarrApiKey: document.getElementById('user-setting-radarr-api-key'),
   userSettingSonarrUrl: document.getElementById('user-setting-sonarr-url'),
@@ -316,6 +323,14 @@ const el = {
 
 // Initialization
 async function init() {
+  initI18n();
+
+  document.querySelectorAll('.language-select').forEach((sel) => {
+    sel.addEventListener('change', (e) => {
+      setLanguage(e.target.value);
+    });
+  });
+
   try {
     // 1. Fetch auth status
     state.authStatus = await api.getAuthStatus();
@@ -369,9 +384,12 @@ function onUserAuthenticated(user) {
   el.userDisplayName.textContent = user.display_name;
   el.userAvatar.textContent = (user.display_name || user.email || 'U').charAt(0).toUpperCase();
 
-  // Populate webhook input
+  // Populate webhook inputs
   if (user.webhook_url) {
     el.webhookUrlInput.value = user.webhook_url;
+  }
+  if (el.jellyfinWebhookUrlInput) {
+    el.jellyfinWebhookUrlInput.value = user.jellyfin_webhook_url || (user.webhook_url ? user.webhook_url.replace('/webhooks/plex/', '/webhooks/jellyfin/') : '');
   }
 
   // Show Admin tab if user has admin role
@@ -1968,6 +1986,9 @@ async function loadWebhookInfo() {
   try {
     const info = await api.getWebhookInfo();
     el.webhookUrlInput.value = info.webhook_url;
+    if (el.jellyfinWebhookUrlInput) {
+      el.jellyfinWebhookUrlInput.value = info.jellyfin_webhook_url || info.webhook_url.replace('/webhooks/plex/', '/webhooks/jellyfin/');
+    }
   } catch (err) {
     console.error('Error loading webhook info:', err);
   }
@@ -2011,11 +2032,37 @@ el.btnCopyWebhook.addEventListener('click', async () => {
   }
 });
 
+if (el.btnCopyJellyfinWebhook && el.jellyfinWebhookUrlInput) {
+  el.btnCopyJellyfinWebhook.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(el.jellyfinWebhookUrlInput.value);
+      if (el.jellyfinCopyStatus) {
+        el.jellyfinCopyStatus.style.display = 'block';
+        setTimeout(() => {
+          if (el.jellyfinCopyStatus) el.jellyfinCopyStatus.style.display = 'none';
+        }, 2500);
+      }
+    } catch (err) {
+      el.jellyfinWebhookUrlInput.select();
+      document.execCommand('copy');
+      if (el.jellyfinCopyStatus) {
+        el.jellyfinCopyStatus.style.display = 'block';
+        setTimeout(() => {
+          if (el.jellyfinCopyStatus) el.jellyfinCopyStatus.style.display = 'none';
+        }, 2500);
+      }
+    }
+  });
+}
+
 el.btnRegenToken.addEventListener('click', async () => {
-  if (confirm('Are you sure you want to regenerate your webhook token? You will need to update the webhook URL in Plex.')) {
+  if (confirm('Are you sure you want to regenerate your webhook token? You will need to update the webhook URLs in Plex and Jellyfin.')) {
     try {
       const res = await api.regenerateWebhookToken();
       el.webhookUrlInput.value = res.webhook_url;
+      if (el.jellyfinWebhookUrlInput) {
+        el.jellyfinWebhookUrlInput.value = res.jellyfin_webhook_url || res.webhook_url.replace('/webhooks/plex/', '/webhooks/jellyfin/');
+      }
       alert('Webhook token regenerated successfully!');
     } catch (err) {
       alert(`Error regenerating token: ${err.message}`);
@@ -2023,12 +2070,14 @@ el.btnRegenToken.addEventListener('click', async () => {
   }
 });
 
-// User Settings (Connected Services: Plex, Radarr, Sonarr, Tautulli)
+// User Settings (Connected Services: Plex, Jellyfin, Radarr, Sonarr, Tautulli)
 async function loadUserSettings() {
   if (!el.formUserSettings) return;
   try {
     const s = await api.getUserSettings();
+    if (el.userSettingLanguage) el.userSettingLanguage.value = getLanguage();
     if (el.userSettingPlexUsername) el.userSettingPlexUsername.value = s.plex_username || '';
+    if (el.userSettingJellyfinUsername) el.userSettingJellyfinUsername.value = s.jellyfin_username || '';
 
     if (el.userSettingRadarrUrl) el.userSettingRadarrUrl.value = s.radarr_url || '';
     applySecretField(el.userSettingRadarrApiKey, s.radarr_api_key, s.radarr_api_key_masked);
@@ -2059,6 +2108,7 @@ if (el.formUserSettings) {
     try {
       const payload = {
         plex_username: el.userSettingPlexUsername ? el.userSettingPlexUsername.value.trim() : null,
+        jellyfin_username: el.userSettingJellyfinUsername ? el.userSettingJellyfinUsername.value.trim() : null,
         radarr_url: el.userSettingRadarrUrl ? el.userSettingRadarrUrl.value.trim() : null,
         radarr_api_key: getSecretValue(el.userSettingRadarrApiKey),
         sonarr_url: el.userSettingSonarrUrl ? el.userSettingSonarrUrl.value.trim() : null,

@@ -120,9 +120,11 @@ pub fn create_api_router(state: AppState) -> Router {
         .route("/api/v1/auth/logout", post(auth::logout_handler))
         .route("/api/v1/auth/backchannel-logout", post(auth::backchannel_logout_handler))
         .route("/api/v1/auth/backchannel_logout", post(auth::backchannel_logout_handler))
-        // Webhooks (Per-user Plex endpoints)
+        // Webhooks (Per-user Plex and Jellyfin endpoints)
         .route("/api/v1/webhooks/plex", post(webhooks::handle_plex_webhook_query))
         .route("/api/v1/webhooks/plex/{token}", post(webhooks::handle_plex_webhook_path))
+        .route("/api/v1/webhooks/jellyfin", post(webhooks::handle_jellyfin_webhook_query))
+        .route("/api/v1/webhooks/jellyfin/{token}", post(webhooks::handle_jellyfin_webhook_path))
         // History & Scrobble
         .route("/api/v1/history", get(history::list_history).post(history::create_scrobble))
         .route("/api/v1/history/by-show", delete(history::delete_by_show))

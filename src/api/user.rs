@@ -34,10 +34,13 @@ pub async fn get_webhook_info(
 
     let trimmed = state.config.app_url.trim_end_matches('/');
     let webhook_url = format!("{}/api/v1/webhooks/plex/{}", trimmed, user.webhook_token);
+    let jellyfin_webhook_url = format!("{}/api/v1/webhooks/jellyfin/{}", trimmed, user.webhook_token);
 
     Ok(Json(serde_json::json!({
         "webhook_token": user.webhook_token,
         "webhook_url": webhook_url,
+        "plex_webhook_url": webhook_url,
+        "jellyfin_webhook_url": jellyfin_webhook_url,
     })))
 }
 
@@ -61,10 +64,13 @@ pub async fn regenerate_webhook_token(
 
     let trimmed = state.config.app_url.trim_end_matches('/');
     let webhook_url = format!("{}/api/v1/webhooks/plex/{}", trimmed, new_token);
+    let jellyfin_webhook_url = format!("{}/api/v1/webhooks/jellyfin/{}", trimmed, new_token);
 
     Ok(Json(serde_json::json!({
         "webhook_token": new_token,
         "webhook_url": webhook_url,
+        "plex_webhook_url": webhook_url,
+        "jellyfin_webhook_url": jellyfin_webhook_url,
         "message": "Webhook token successfully regenerated"
     })))
 }

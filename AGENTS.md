@@ -65,7 +65,7 @@ BingeSync/
 │       ├── admin.rs         # /api/v1/admin/users user management and cascade deletion
 │       └── user.rs          # /api/v1/user/webhook & token regeneration
 ├── tests/
-│   └── api_tests.rs         # Integration test suite (13 tests covering full API)
+│   └── api_tests.rs         # Integration test suite (31 tests covering full API)
 └── web/
     ├── package.json         # Frontend dependencies (Vite, Playwright)
     ├── vite.config.js       # Vite configuration with base: './' for subpath support
@@ -158,6 +158,7 @@ Tests in `tests/api_tests.rs` (30 integration tests) cover:
 - User settings isolation and credential storage
 - Plex webhook username and ID filtering
 - Search across all history regardless of date and return all matching results
+- Jellyfin webhook scrobbles for movies and TV episodes, active sessions, and username filtering
 
 ### Run Playwright E2E UI Tests
 ```bash
@@ -165,7 +166,7 @@ cd web
 npm install
 npx playwright test
 ```
-Playwright tests in `web/tests/e2e.spec.js` (22 browser E2E tests) cover:
+Playwright tests in `web/tests/e2e.spec.js` (24 browser E2E tests) cover:
 - User sign-in flow, "+ Log Watch" modal, and timeline rendering
 - Multi-user separation in the web UI
 - Trakt history and rating import flow in the web UI (pasted JSON)
@@ -188,6 +189,8 @@ Playwright tests in `web/tests/e2e.spec.js` (22 browser E2E tests) cover:
 - Rating watched items in detail modal, update, and unrating
 - Swagger UI interactive documentation at `/docs` and OpenAPI JSON endpoint
 - User settings: configure personal radarr, sonarr, and tautulli with secret redaction
+- Jellyfin webhooks: displays Jellyfin webhook URL, supports username filtering, and processes scrobbles
+- Multilingual support: switch between English, Spanish, German, and French with dynamic UI updates and persistence
 
 ### Run the App Locally
 ```bash

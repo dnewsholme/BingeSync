@@ -1176,8 +1176,112 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     await toggleTautulli.click();
     await expect(page.locator('#user-setting-tautulli-api-key')).toHaveValue(/^my.*•/);
   });
+
+  test('jellyfin webhooks: displays Jellyfin webhook URL, supports username filtering, and processes scrobbles', async ({ page }) => {
+    const userEmail = `jellyfin_ui_${Date.now()}@bingesync.local`;
+    await page.goto('/');
+    await page.fill('#dev-email', userEmail);
+    await page.fill('#dev-name', 'Jellyfin User');
+    await page.click('#btn-dev-submit');
+
+    // 1. Navigate to Settings and verify Jellyfin Webhook URL and Guide
+    await page.click('#tab-settings');
+    await expect(page.locator('#view-settings')).toBeVisible();
+    await expect(page.locator('#jellyfin-webhook-url-input')).toBeVisible();
+
+    const jellyfinUrl = await page.locator('#jellyfin-webhook-url-input').inputValue();
+    expect(jellyfinUrl).toContain('/api/v1/webhooks/jellyfin/');
+    const token = jellyfinUrl.split('/').pop();
+
+    // Verify copy button exists and is clickable
+    await expect(page.locator('#btn-copy-jellyfin-webhook')).toBeVisible();
+
+    // Configure Jellyfin username filter
+    await page.fill('#user-setting-jellyfin-username', 'jellystreamer');
+    await page.click('#btn-save-user-settings');
+    await expect(page.locator('#user-settings-status')).toContainText('Settings saved successfully!');
+    await expect(page.locator('#user-setting-jellyfin-username')).toHaveValue('jellystreamer');
+
+    // 2. Post a Jellyfin scrobble matching username filter
+    const movieTitle = `Jellyfin Hit ${Date.now()}`;
+    const scrobbleRes = await page.request.post(`/api/v1/webhooks/jellyfin/${token}`, {
+      data: {
+        NotificationType: 'PlaybackStop',
+        ItemType: 'Movie',
+        Name: movieTitle,
+        Year: 2024,
+        PlayedToCompletion: true,
+        NotificationUsername: 'jellystreamer',
+        RunTimeTicks: 72000000000,
+        PlaybackPositionTicks: 72000000000,
+        Provider_imdb: 'tt9999999',
+      }
+    });
+    expect(scrobbleRes.status()).toBe(201);
+    const scrobbleJson = await scrobbleRes.json();
+    expect(scrobbleJson.status).toBe('scrobbled');
+
+    // 3. Post a Jellyfin webhook with a mismatched username -> should be ignored
+    const ignoreRes = await page.request.post(`/api/v1/webhooks/jellyfin/${token}`, {
+      data: {
+        NotificationType: 'PlaybackStop',
+        ItemType: 'Movie',
+        Name: 'Ignored Other User Movie',
+        PlayedToCompletion: true,
+        NotificationUsername: 'another_user',
+        RunTimeTicks: 72000000000,
+        PlaybackPositionTicks: 72000000000,
+      }
+    });
+    expect(ignoreRes.status()).toBe(200);
+    const ignoreJson = await ignoreRes.json();
+    expect(ignoreJson.status).toBe('ignored');
+    expect(ignoreJson.reason).toBe('username_mismatch');
+
+    // 4. Verify movie appears in Timeline
+    await page.click('#tab-timeline');
+    const movieCard = page.locator('#timeline-container .scrobble-card', { hasText: movieTitle });
+    await expect(movieCard).toBeVisible();
+  });
+
+  test('multilingual support: switch between English, Spanish, German, and French', async ({ page }) => {
+    const userEmail = `i18n_ui_${Date.now()}@bingesync.local`;
+    await page.goto('/');
+    await page.fill('#dev-email', userEmail);
+    await page.fill('#dev-name', 'Polyglot User');
+    await page.click('#btn-dev-submit');
+
+    await expect(page.locator('#tab-timeline')).toBeVisible();
+
+    // Default is English
+    await expect(page.locator('#tab-timeline')).toContainText('Timeline');
+    await expect(page.locator('#tab-history')).toContainText('History');
+    await expect(page.locator('#tab-stats')).toContainText('Stats');
+
+    // Switch to Spanish (es)
+    await page.selectOption('#nav-language-select', 'es');
+    await expect(page.locator('#tab-timeline')).toContainText('Cronología');
+    await expect(page.locator('#tab-history')).toContainText('Historial');
+    await expect(page.locator('#tab-stats')).toContainText('Estadísticas');
+    await expect(page.locator('#btn-open-log-modal')).toContainText('Registrar');
+
+    // Switch to German (de)
+    await page.selectOption('#nav-language-select', 'de');
+    await expect(page.locator('#tab-timeline')).toContainText('Zeitachse');
+    await expect(page.locator('#tab-history')).toContainText('Verlauf');
+    await expect(page.locator('#tab-stats')).toContainText('Statistiken');
+    await expect(page.locator('#btn-open-log-modal')).toContainText('Eintrag anlegen');
+
+    // Switch to French (fr)
+    await page.selectOption('#nav-language-select', 'fr');
+    await expect(page.locator('#tab-timeline')).toContainText('Chronologie');
+    await expect(page.locator('#tab-history')).toContainText('Historique');
+    await expect(page.locator('#tab-stats')).toContainText('Statistiques');
+    await expect(page.locator('#btn-open-log-modal')).toContainText('Enregistrer');
+
+    // Switch back to English (en)
+    await page.selectOption('#nav-language-select', 'en');
+    await expect(page.locator('#tab-timeline')).toContainText('Timeline');
+    await expect(page.locator('#tab-history')).toContainText('History');
+  });
 });
-
-
-
-

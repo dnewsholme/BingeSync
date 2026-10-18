@@ -13,8 +13,9 @@ Designed for self-hosters and families, BingeSync features **multi-user support*
 
 ## ✨ Features
 
-- 🔄 **Real-Time Plex Scrobbling**: Supports standard Plex `multipart/form-data` and JSON webhook payloads. Automatically captures `media.scrobble`, `media.play`, `media.pause`, `media.resume`, and `media.stop` events.
-- 👥 **Multi-User Isolation**: Every user receives their own isolated watch history and a unique Plex Webhook URL.
+- 🔄 **Real-Time Plex & Jellyfin Scrobbling**: Supports standard Plex (`multipart/form-data` and JSON) and Jellyfin Webhook payloads. Automatically captures playback progress, pause/resume, and completed watch events.
+- 👥 **Multi-User Isolation**: Every user receives their own isolated watch history and unique Plex and Jellyfin Webhook URLs.
+- 🌐 **Multilingual Support (i18n)**: Full native internationalization supporting English, Spanish (Español), German (Deutsch), and French (Français) with instant in-app switching and persistent preferences.
 - 📅 **Interactive Watch Timeline**: Grouped daily records with date filtering, genre filtering, director/actor search, star rating filter, and one-click daily watch history deletion.
 - 🔍 **Search & Filters**: Instant full-text search across movie and TV show titles with an option to search across all history regardless of date, plus multi-select batch deletion.
 - 📺 **Show-Wide Deletion**: One-click action on show detail pages to purge all logged scrobbles for that series.
@@ -34,7 +35,7 @@ Designed for self-hosters and families, BingeSync features **multi-user support*
 - 🔐 **OpenID Connect (OIDC) SSO**: Enterprise-grade authentication compatible with Authentik, Keycloak, Authelia, Okta, and Google (with PKCE RFC 7636).
 - ⚡ **Lightweight Single-Binary**: Written in Rust (`axum`, `tokio`, `sqlx`) with the web frontend embedded directly into the binary via `rust-embed`.
 - 🗄️ **Zero-Maintenance SQLite**: Fast, crash-safe embedded database running with Write-Ahead Logging (`WAL`) mode and automatic schema migrations.
-- 🧪 **Thoroughly Tested**: 30 Rust backend integration tests and 22 Playwright browser E2E tests.
+- 🧪 **Thoroughly Tested**: 31 Rust backend integration tests and 24 Playwright browser E2E tests.
 
 ---
 
@@ -138,11 +139,12 @@ All configuration options can be passed via environment variables:
 
 ---
 
-## 🔌 Connecting Plex Webhooks
+## 🔌 Connecting Media Servers
 
+### Plex Webhooks
 1. Log in to your BingeSync dashboard.
-2. Click on the **Webhook** tab in the navigation bar.
-3. Click **Copy URL** to copy your unique webhook endpoint:
+2. Click on the **Settings** tab in the navigation bar.
+3. Click **Copy URL** under **Plex Webhook URL**:
    ```
    http://<bingesync-ip>:8080/api/v1/webhooks/plex/<your_unique_token>
    ```
@@ -152,6 +154,22 @@ All configuration options can be passed via environment variables:
    - Click **Add Webhook**.
    - Paste your BingeSync webhook URL into the URL field.
    - Click **Save Changes**.
+
+### Jellyfin Webhooks
+1. Install the official **Webhook** plugin from the Jellyfin Dashboard (Catalog > Webhook).
+2. Go to **Dashboard > Plugins > Webhook** and click **Add Generic Destination**.
+3. Set Webhook Name to `BingeSync`.
+4. Copy and paste your unique Jellyfin Webhook URL from BingeSync Settings:
+   ```
+   http://<bingesync-ip>:8080/api/v1/webhooks/jellyfin/<your_unique_token>
+   ```
+5. Check the following Notification Type checkboxes:
+   - `Playback Start`
+   - `Playback Progress`
+   - `Playback Stop`
+   - `User Data Saved`
+6. Under **Item Types**, select `Movies` and `Episodes`.
+7. Click **Save**.
 
 ---
 
@@ -164,7 +182,7 @@ BingeSync provides a comprehensive REST API:
 - `GET  /api/v1/auth/login` — Initiates OIDC authorization flow.
 - `GET  /api/v1/auth/callback` — Handles authorization code exchange, evaluates `groups` claim for admin role, and sets session cookie.
 - `POST /api/v1/auth/dev-login` — Logs in with `{ "email": "...", "display_name": "...", "role": "..." }`.
-- `GET  /api/v1/auth/me` — Returns the authenticated user profile and webhook URL.
+- `GET  /api/v1/auth/me` — Returns the authenticated user profile, Plex webhook URL, and Jellyfin webhook URL.
 - `POST /api/v1/auth/logout` — Clears authentication cookie.
 - `POST /api/v1/auth/backchannel-logout` — OpenID Connect Back-Channel Logout 1.0 endpoint. Receives `logout_token` when user access is revoked, terminated, or group membership is removed by the IdP.
 
@@ -179,7 +197,9 @@ BingeSync provides a comprehensive REST API:
 
 ### Webhooks
 - `POST /api/v1/webhooks/plex/:token` — Handles Plex webhook events (multipart or JSON).
-- `POST /api/v1/webhooks/plex?token=:token` — Query-parameter alternative.
+- `POST /api/v1/webhooks/plex?token=:token` — Plex query-parameter alternative.
+- `POST /api/v1/webhooks/jellyfin/:token` — Handles Jellyfin webhook events (`PlaybackStart`, `PlaybackProgress`, `PlaybackStop`, `UserDataSaved`).
+- `POST /api/v1/webhooks/jellyfin?token=:token` — Jellyfin query-parameter alternative.
 
 ### History & Deletion
 - `GET    /api/v1/history` — Paginated scrobble history with query parameters for `page`, `limit`, `media_type`, `search`, `date`, `genre`, `person`, `rating`, `watch_status`, and `all` (search across all history regardless of date and return all matching results).

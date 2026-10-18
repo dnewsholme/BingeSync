@@ -146,6 +146,34 @@ pub const OPENAPI_SPEC_JSON: &str = r###"{
                     }
                 }
             },
+            "/api/v1/webhooks/jellyfin": {
+                "post": {
+                    "tags": ["Webhooks"],
+                    "summary": "Jellyfin webhook endpoint (query param token)",
+                    "parameters": [
+                        { "name": "token", "in": "query", "required": true, "schema": { "type": "string" } }
+                    ],
+                    "responses": {
+                        "200": { "description": "Webhook processed" },
+                        "201": { "description": "Media scrobbled" },
+                        "401": { "description": "Invalid webhook token" }
+                    }
+                }
+            },
+            "/api/v1/webhooks/jellyfin/{token}": {
+                "post": {
+                    "tags": ["Webhooks"],
+                    "summary": "Jellyfin webhook endpoint (path token)",
+                    "parameters": [
+                        { "name": "token", "in": "path", "required": true, "schema": { "type": "string" } }
+                    ],
+                    "responses": {
+                        "200": { "description": "Webhook processed" },
+                        "201": { "description": "Media scrobbled" },
+                        "401": { "description": "Invalid webhook token" }
+                    }
+                }
+            },
             "/api/v1/history": {
                 "get": {
                     "tags": ["History"],

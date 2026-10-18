@@ -2883,5 +2883,38 @@ h1, h2, h3, h4 {
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
+/* Language Selector */
+.lang-selector-wrap {
+  display: flex;
+  align-items: center;
+}
+
+.language-select {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-color);
+  color: var(--text-color);
+  font-size: 0.82rem;
+  font-weight: 500;
+  border-radius: var(--radius-sm);
+  padding: 5px 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  outline: none;
+}
+
+.language-select:hover,
+.language-select:focus {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.25);
+  color: #fff;
+}
+
+.nav-language-select {
+  padding: 4px 6px;
+  font-size: 0.78rem;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+
 
 

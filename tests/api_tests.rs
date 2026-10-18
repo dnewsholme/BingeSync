@@ -3872,3 +3872,188 @@ async fn test_search_all_history_regardless_of_date_and_return_all_results() {
     assert_eq!(history["items"].as_array().unwrap().len(), 3);
     assert_eq!(history["total_pages"], 1);
 }
+
+#[tokio::test]
+async fn test_jellyfin_webhook_scrobble_movie_episode_session_and_filtering() {
+    let (app, _pool, _config) = setup_test_app().await;
+
+    // 1. Dev login to create a user and get webhook_token
+    let login_body = serde_json::json!({
+        "email": "jellyfin_user@example.com",
+        "display_name": "Jellyfin Tester",
+        "role": "user"
+    });
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/auth/dev-login")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(serde_json::to_vec(&login_body).unwrap()))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let val: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let token = val["token"].as_str().unwrap().to_string();
+    let webhook_token = val["user"]["webhook_token"].as_str().unwrap().to_string();
+
+    // 2. Scrobble a movie via Jellyfin Webhook (POST /api/v1/webhooks/jellyfin/{token})
+    let movie_payload = serde_json::json!({
+        "NotificationType": "PlaybackStop",
+        "ItemType": "Movie",
+        "Name": "Interstellar",
+        "Year": 2014,
+        "Overview": "A team of explorers travel through a wormhole in space in an attempt to ensure humanity's survival.",
+        "RunTimeTicks": 101400000000_i64,
+        "PlaybackPositionTicks": 101400000000_i64,
+        "PlayedToCompletion": true,
+        "Genres": ["Adventure", "Drama", "Sci-Fi"],
+        "Provider_imdb": "tt0816692",
+        "ItemId": "jelly-movie-12345"
+    });
+
+    let req = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/webhooks/jellyfin/{}", webhook_token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(serde_json::to_vec(&movie_payload).unwrap()))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+
+    // 3. Scrobble a TV episode via Jellyfin Webhook query param (POST /api/v1/webhooks/jellyfin?token=...)
+    let episode_payload = serde_json::json!({
+        "NotificationType": "PlaybackStop",
+        "ItemType": "Episode",
+        "Name": "Ozymandias",
+        "SeriesName": "Breaking Bad",
+        "SeasonNumber": 5,
+        "EpisodeNumber": 14,
+        "Year": 2013,
+        "RunTimeTicks": 28200000000_i64,
+        "PlaybackPositionTicks": 28200000000_i64,
+        "PlayedToCompletion": true,
+        "Genres": ["Crime", "Drama", "Thriller"],
+        "ProviderIds": {
+            "Imdb": "tt2301451"
+        },
+        "ItemId": "jelly-ep-514"
+    });
+
+    let req = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/webhooks/jellyfin?token={}", webhook_token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(serde_json::to_vec(&episode_payload).unwrap()))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+
+    // 4. Verify scrobbles exist in history
+    let req = Request::builder()
+        .uri("/api/v1/history")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let history: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(history["total"], 2);
+
+    let items = history["items"].as_array().unwrap();
+    let titles: Vec<&str> = items.iter().map(|i| i["title"].as_str().unwrap()).collect();
+    assert!(titles.contains(&"Interstellar"));
+    assert!(titles.contains(&"Ozymandias"));
+
+    // 5. Test Jellyfin playback start & active session
+    let start_payload = serde_json::json!({
+        "NotificationType": "PlaybackStart",
+        "ItemType": "Movie",
+        "Name": "Dune: Part Two",
+        "Year": 2024,
+        "RunTimeTicks": 99600000000_i64,
+        "PlaybackPositionTicks": 6000000000_i64, // ~10 minutes in
+        "PlayedToCompletion": false,
+        "DeviceName": "Living Room TV",
+        "Client": "Jellyfin for Android TV",
+        "ItemId": "jelly-dune-2"
+    });
+    let req = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/webhooks/jellyfin/{}", webhook_token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(serde_json::to_vec(&start_payload).unwrap()))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // Check active session via now-playing
+    let req = Request::builder()
+        .uri("/api/v1/now-playing")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let now_playing: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(now_playing["now_playing"]["title"], "Dune: Part Two");
+    assert_eq!(now_playing["now_playing"]["state"], "playing");
+
+    // 6. Test Jellyfin account username filtering
+    // Set user setting: jellyfin_username = "alice"
+    let settings_payload = serde_json::json!({
+        "jellyfin_username": "alice"
+    });
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/user/settings")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(serde_json::to_vec(&settings_payload).unwrap()))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // Webhook from "bob" should be ignored with 200 OK
+    let bob_payload = serde_json::json!({
+        "NotificationType": "PlaybackStop",
+        "NotificationUsername": "bob",
+        "ItemType": "Movie",
+        "Name": "Gladiator",
+        "PlayedToCompletion": true
+    });
+    let req = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/webhooks/jellyfin/{}", webhook_token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(serde_json::to_vec(&bob_payload).unwrap()))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let ignored_resp: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(ignored_resp["status"], "ignored");
+    assert_eq!(ignored_resp["reason"], "username_mismatch");
+
+    // Webhook from "alice" should be accepted and scrobbled
+    let alice_payload = serde_json::json!({
+        "NotificationType": "PlaybackStop",
+        "NotificationUsername": "alice",
+        "ItemType": "Movie",
+        "Name": "Gladiator",
+        "Year": 2000,
+        "RunTimeTicks": 93000000000_i64,
+        "PlaybackPositionTicks": 93000000000_i64,
+        "PlayedToCompletion": true
+    });
+    let req = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/webhooks/jellyfin/{}", webhook_token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(serde_json::to_vec(&alice_payload).unwrap()))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+}
+

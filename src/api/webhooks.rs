@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 use crate::{
     api::AppState,
-    models::{PlexWebhookPayload, User},
+    models::{JellyfinWebhookPayload, PlexWebhookPayload, User},
 };
 
 #[derive(Debug, Deserialize)]
@@ -41,6 +41,31 @@ pub async fn handle_plex_webhook_query(
     })?;
 
     process_webhook(state, token, multipart_or_body, headers).await
+}
+
+pub async fn handle_jellyfin_webhook_path(
+    State(state): State<AppState>,
+    Path(token): Path<String>,
+    headers: HeaderMap,
+    body_bytes: axum::body::Bytes,
+) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
+    process_jellyfin_webhook(state, token, body_bytes, headers).await
+}
+
+pub async fn handle_jellyfin_webhook_query(
+    State(state): State<AppState>,
+    Query(query): Query<WebhookQuery>,
+    headers: HeaderMap,
+    body_bytes: axum::body::Bytes,
+) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
+    let token = query.token.ok_or_else(|| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": "Missing webhook token in query parameter 'token'" })),
+        )
+    })?;
+
+    process_jellyfin_webhook(state, token, body_bytes, headers).await
 }
 
 async fn process_webhook(
@@ -622,3 +647,441 @@ fn get_default_user_candidates(user: &User) -> Vec<String> {
     }
     candidates
 }
+
+async fn process_jellyfin_webhook(
+    state: AppState,
+    token: String,
+    body_bytes: axum::body::Bytes,
+    _headers: axum::http::HeaderMap,
+) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
+    // 1. Authenticate user by webhook_token
+    let user: User = sqlx::query_as::<_, User>(
+        "SELECT * FROM users WHERE webhook_token = ?"
+    )
+    .bind(&token)
+    .fetch_optional(&state.pool)
+    .await
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": format!("Database error: {}", e) })),
+        )
+    })?
+    .ok_or_else(|| {
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(serde_json::json!({ "error": "Invalid webhook token" })),
+        )
+    })?;
+
+    // 2. Parse JSON payload
+    let payload: JellyfinWebhookPayload = serde_json::from_slice(&body_bytes).map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": format!("Failed to parse JSON Jellyfin payload: {}", e) })),
+        )
+    })?;
+
+    let event_name = payload
+        .notification_type
+        .clone()
+        .unwrap_or_else(|| "PlaybackStop".to_string());
+
+    tracing::info!(
+        user_id = %user.id,
+        event = %event_name,
+        name = ?payload.name.as_deref(),
+        series = ?payload.series_name.as_deref(),
+        "Received Jellyfin webhook"
+    );
+
+    // 3. Filter by Jellyfin account username or User ID if configured or present
+    let notif_user = payload
+        .notification_username
+        .as_deref()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+
+    let notif_id = payload
+        .user_id
+        .as_deref()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+
+    if notif_user.is_some() || notif_id.is_some() {
+        let configured_jellyfin_user =
+            crate::api::user_settings::get_user_setting(&state.pool, &user.id, "jellyfin_username").await;
+        let configured_user = if let Some(j_user) = configured_jellyfin_user {
+            Some(j_user)
+        } else {
+            crate::api::user_settings::get_user_setting(&state.pool, &user.id, "plex_username").await
+        };
+
+        let allowed_usernames: Vec<String> = if let Some(ref cfg) = configured_user {
+            let list: Vec<String> = cfg
+                .split(',')
+                .map(|s| s.trim().to_lowercase())
+                .filter(|s| !s.is_empty())
+                .collect();
+            if list.is_empty() {
+                get_default_user_candidates(&user)
+            } else {
+                list
+            }
+        } else {
+            get_default_user_candidates(&user)
+        };
+
+        let mut candidate_identifiers: Vec<String> = Vec::new();
+        if let Some(ref un) = notif_user {
+            candidate_identifiers.push(un.to_lowercase());
+        }
+        if let Some(ref uid) = notif_id {
+            candidate_identifiers.push(uid.to_lowercase());
+        }
+
+        let matches = candidate_identifiers.iter().any(|c| allowed_usernames.contains(c));
+        if !matches {
+            tracing::info!(
+                user_id = %user.id,
+                notification_username = ?notif_user,
+                jellyfin_user_id = ?notif_id,
+                allowed = ?allowed_usernames,
+                "Ignored Jellyfin webhook: username/ID does not match allowed Jellyfin user(s)"
+            );
+            return Ok((
+                StatusCode::OK,
+                Json(serde_json::json!({
+                    "status": "ignored",
+                    "reason": "username_mismatch",
+                    "account": notif_user,
+                    "account_id": notif_id
+                })),
+            ));
+        }
+    }
+
+    // 4. Resolve media metadata
+    let raw_type = payload.item_type.as_deref().unwrap_or("Movie");
+    let is_episode = raw_type.eq_ignore_ascii_case("Episode");
+    let media_type = if is_episode { "episode".to_string() } else { "movie".to_string() };
+
+    let genres = payload.resolved_genres();
+    let thumb_url = payload.resolved_thumb_url();
+    let rating_key = payload.item_id.clone().or_else(|| payload.resolved_tvdb_id()).or_else(|| payload.resolved_tmdb_id());
+    let guid = if let Some(imdb) = payload.resolved_imdb_id() {
+        Some(format!("imdb://{}", imdb))
+    } else if let Some(ref item_id) = payload.item_id {
+        Some(format!("jellyfin://{}", item_id))
+    } else {
+        None
+    };
+
+    let title = payload.name.unwrap_or_else(|| "Unknown Title".to_string());
+    let grandparent_title = if is_episode { payload.series_name } else { None };
+    let season_number = if is_episode { payload.season_number } else { None };
+    let episode_number = if is_episode { payload.episode_number } else { None };
+    let parent_title = if is_episode {
+        season_number.map(|s| format!("Season {}", s))
+    } else {
+        None
+    };
+
+    let year = payload.year;
+    let overview = payload.overview;
+
+    // Jellyfin ticks: 10,000 ticks = 1 ms
+    let duration_ms = payload.runtime_ticks.map(|t| t / 10_000);
+    let view_offset_val = payload.playback_position_ticks.map(|t| t / 10_000).unwrap_or(0);
+    let duration_val = duration_ms.unwrap_or(0);
+
+    let threshold = state.get_effective_scrobble_threshold().await;
+    let calculated_pct = if duration_val > 0 {
+        ((view_offset_val as f64 / duration_val as f64) * 100.0).round() as i64
+    } else {
+        0
+    };
+
+    let lower_event = event_name.to_lowercase();
+    let is_stop = lower_event.contains("stop");
+    let is_start = lower_event.contains("start");
+    let is_pause = lower_event.contains("pause");
+    let is_progress = lower_event.contains("progress");
+    let is_saved = lower_event.contains("userdatasaved");
+
+    let played_flag = payload.played_to_completion == Some(true) || payload.played == Some(true);
+    let is_completed = played_flag || (is_stop && calculated_pct >= threshold) || (is_saved && played_flag);
+
+    let progress_percent = if is_completed {
+        100.max(calculated_pct)
+    } else {
+        calculated_pct.clamp(0, 100)
+    };
+
+    let watch_status = if is_completed { "completed" } else { "in_progress" };
+    let now_str = Utc::now().to_rfc3339();
+    let today_prefix = if now_str.len() >= 10 { &now_str[..10] } else { "" };
+
+    #[derive(sqlx::FromRow)]
+    struct ScrobbleMatch {
+        id: String,
+        watch_status: Option<String>,
+        progress_percent: Option<i64>,
+        view_offset_ms: Option<i64>,
+    }
+
+    let existing: Option<ScrobbleMatch> = if media_type == "episode" {
+        sqlx::query_as::<_, ScrobbleMatch>(
+            r#"
+            SELECT id, watch_status, progress_percent, view_offset_ms
+            FROM scrobbles
+            WHERE user_id = ?
+              AND media_type = 'episode'
+              AND (
+                  (grandparent_title = ? AND season_number = ? AND episode_number = ?)
+                  OR (guid IS NOT NULL AND guid = ?)
+                  OR (rating_key IS NOT NULL AND rating_key = ?)
+              )
+              AND substr(watched_at, 1, 10) = ?
+            ORDER BY watched_at DESC
+            LIMIT 1
+            "#
+        )
+        .bind(&user.id)
+        .bind(&grandparent_title)
+        .bind(season_number)
+        .bind(episode_number)
+        .bind(&guid)
+        .bind(&rating_key)
+        .bind(today_prefix)
+        .fetch_optional(&state.pool)
+        .await
+        .unwrap_or(None)
+    } else {
+        sqlx::query_as::<_, ScrobbleMatch>(
+            r#"
+            SELECT id, watch_status, progress_percent, view_offset_ms
+            FROM scrobbles
+            WHERE user_id = ?
+              AND media_type = 'movie'
+              AND (
+                  title = ?
+                  OR (guid IS NOT NULL AND guid = ?)
+                  OR (rating_key IS NOT NULL AND rating_key = ?)
+              )
+              AND substr(watched_at, 1, 10) = ?
+            ORDER BY watched_at DESC
+            LIMIT 1
+            "#
+        )
+        .bind(&user.id)
+        .bind(&title)
+        .bind(&guid)
+        .bind(&rating_key)
+        .bind(today_prefix)
+        .fetch_optional(&state.pool)
+        .await
+        .unwrap_or(None)
+    };
+
+    let scrobble_id = if let Some(existing) = existing {
+        let final_status = if existing.watch_status.as_deref() == Some("completed") || is_completed {
+            "completed"
+        } else {
+            "in_progress"
+        };
+        let final_progress = if final_status == "completed" {
+            100.max(progress_percent).max(existing.progress_percent.unwrap_or(0))
+        } else {
+            progress_percent.max(existing.progress_percent.unwrap_or(0))
+        };
+        let final_offset = view_offset_val.max(existing.view_offset_ms.unwrap_or(0));
+
+        sqlx::query(
+            r#"
+            UPDATE scrobbles
+            SET watch_status = ?,
+                progress_percent = ?,
+                view_offset_ms = ?,
+                watched_at = ?,
+                thumb_url = COALESCE(thumb_url, ?),
+                genres = COALESCE(genres, ?)
+            WHERE id = ?
+            "#
+        )
+        .bind(final_status)
+        .bind(final_progress)
+        .bind(final_offset)
+        .bind(&now_str)
+        .bind(&thumb_url)
+        .bind(&genres)
+        .bind(&existing.id)
+        .execute(&state.pool)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": format!("Failed to update scrobble: {}", e) })),
+            )
+        })?;
+
+        existing.id
+    } else {
+        let new_id = Uuid::new_v4().to_string();
+        let has_full_meta = genres.as_deref().map(|g| !g.is_empty()).unwrap_or(false)
+            && overview.as_deref().map(|o| !o.is_empty()).unwrap_or(false);
+        let meta_updated = if has_full_meta { Some(now_str.clone()) } else { None };
+
+        sqlx::query(
+            r#"
+            INSERT INTO scrobbles (
+                id, user_id, title, media_type, grandparent_title, parent_title,
+                season_number, episode_number, year, overview, thumb_url,
+                rating_key, guid, duration_ms, user_rating,
+                genres, directors, actors, watch_status, progress_percent, view_offset_ms,
+                metadata_updated_at, watched_at, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            "#,
+        )
+        .bind(&new_id)
+        .bind(&user.id)
+        .bind(&title)
+        .bind(&media_type)
+        .bind(&grandparent_title)
+        .bind(&parent_title)
+        .bind(season_number)
+        .bind(episode_number)
+        .bind(year)
+        .bind(&overview)
+        .bind(&thumb_url)
+        .bind(&rating_key)
+        .bind(&guid)
+        .bind(duration_ms)
+        .bind(None::<i32>)
+        .bind(&genres)
+        .bind(None::<String>) // directors
+        .bind(None::<String>) // actors
+        .bind(watch_status)
+        .bind(progress_percent)
+        .bind(view_offset_val)
+        .bind(meta_updated)
+        .bind(&now_str)
+        .bind(&now_str)
+        .execute(&state.pool)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": format!("Failed to record scrobble: {}", e) })),
+            )
+        })?;
+
+        if thumb_url.is_none() {
+            state.image_notify.notify_one();
+        }
+        if !has_full_meta {
+            state.metadata_notify.notify_one();
+        }
+
+        new_id
+    };
+
+    // 5. Handle active playback session state
+    if is_stop || (is_saved && is_completed) {
+        let _ = sqlx::query("DELETE FROM active_sessions WHERE user_id = ?")
+            .bind(&user.id)
+            .execute(&state.pool)
+            .await;
+
+        let status_code = if is_completed {
+            StatusCode::CREATED
+        } else {
+            StatusCode::OK
+        };
+
+        Ok((
+            status_code,
+            Json(serde_json::json!({
+                "status": if is_completed { "scrobbled" } else { "stopped" },
+                "id": scrobble_id,
+                "title": title,
+                "media_type": media_type,
+                "watched_at": now_str,
+                "watch_status": watch_status,
+                "progress_percent": progress_percent,
+            })),
+        ))
+    } else if is_start || is_progress || is_pause {
+        let state_str = if is_pause { "paused" } else { "playing" };
+        let session_id = Uuid::new_v4().to_string();
+        let player_title = payload.device_name.clone().or(payload.client.clone());
+
+        let _ = sqlx::query("DELETE FROM active_sessions WHERE user_id = ?")
+            .bind(&user.id)
+            .execute(&state.pool)
+            .await;
+
+        sqlx::query(
+            r#"
+            INSERT INTO active_sessions (
+                id, user_id, player_title, title, media_type, grandparent_title,
+                season_number, episode_number, year, thumb_url, state,
+                view_offset_ms, duration_ms, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            "#,
+        )
+        .bind(&session_id)
+        .bind(&user.id)
+        .bind(&player_title)
+        .bind(&title)
+        .bind(&media_type)
+        .bind(&grandparent_title)
+        .bind(season_number)
+        .bind(episode_number)
+        .bind(year)
+        .bind(&thumb_url)
+        .bind(state_str)
+        .bind(view_offset_val)
+        .bind(duration_val)
+        .bind(&now_str)
+        .execute(&state.pool)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": format!("Failed to update session: {}", e) })),
+            )
+        })?;
+
+        let status_code = if is_completed {
+            StatusCode::CREATED
+        } else {
+            StatusCode::OK
+        };
+
+        Ok((
+            status_code,
+            Json(serde_json::json!({
+                "status": if is_completed { "scrobbled" } else { "session_updated" },
+                "id": scrobble_id,
+                "title": title,
+                "media_type": media_type,
+                "watch_status": watch_status,
+                "progress_percent": progress_percent,
+                "session_state": state_str,
+            })),
+        ))
+    } else {
+        Ok((
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "status": "received",
+                "id": scrobble_id,
+                "event": event_name,
+                "watch_status": watch_status,
+                "progress_percent": progress_percent
+            })),
+        ))
+    }
+}
+

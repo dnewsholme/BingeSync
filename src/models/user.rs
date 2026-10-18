@@ -27,6 +27,8 @@ pub struct UserResponse {
     pub webhook_token: String,
     pub avatar_url: Option<String>,
     pub webhook_url: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub jellyfin_webhook_url: Option<String>,
     pub created_at: String,
 }
 
@@ -56,6 +58,7 @@ impl User {
             webhook_token: self.webhook_token.clone(),
             avatar_url: self.avatar_url.clone(),
             webhook_url: format!("{}/api/v1/webhooks/plex/{}", trimmed_app, self.webhook_token),
+            jellyfin_webhook_url: Some(format!("{}/api/v1/webhooks/jellyfin/{}", trimmed_app, self.webhook_token)),
             created_at: self.created_at.clone(),
         }
     }
