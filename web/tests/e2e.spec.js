@@ -1258,12 +1258,19 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     await expect(page.locator('#tab-history')).toContainText('History');
     await expect(page.locator('#tab-stats')).toContainText('Stats');
 
+    // Verify dark dropdown styling (no white background)
+    const selectBg = await page.locator('#nav-language-select').evaluate(el => window.getComputedStyle(el).backgroundColor);
+    expect(selectBg).not.toBe('rgb(255, 255, 255)');
+
     // Switch to Spanish (es)
     await page.selectOption('#nav-language-select', 'es');
     await expect(page.locator('#tab-timeline')).toContainText('Cronología');
     await expect(page.locator('#tab-history')).toContainText('Historial');
     await expect(page.locator('#tab-stats')).toContainText('Estadísticas');
     await expect(page.locator('#btn-open-log-modal')).toContainText('Registrar');
+    await expect(page.locator('#view-timeline .view-title')).toContainText('Cronología de visualización');
+    await expect(page.locator('#timeline-search')).toHaveAttribute('placeholder', 'Buscar en la cronología...');
+    await expect(page.locator('#timeline-search-all-label')).toContainText('Todo el historial');
 
     // Switch to German (de)
     await page.selectOption('#nav-language-select', 'de');
@@ -1271,6 +1278,8 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     await expect(page.locator('#tab-history')).toContainText('Verlauf');
     await expect(page.locator('#tab-stats')).toContainText('Statistiken');
     await expect(page.locator('#btn-open-log-modal')).toContainText('Eintrag anlegen');
+    await expect(page.locator('#view-timeline .view-title')).toContainText('Wiedergabe-Zeitachse');
+    await expect(page.locator('#timeline-search')).toHaveAttribute('placeholder', 'Zeitachse durchsuchen...');
 
     // Switch to French (fr)
     await page.selectOption('#nav-language-select', 'fr');
@@ -1278,10 +1287,13 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     await expect(page.locator('#tab-history')).toContainText('Historique');
     await expect(page.locator('#tab-stats')).toContainText('Statistiques');
     await expect(page.locator('#btn-open-log-modal')).toContainText('Enregistrer');
+    await expect(page.locator('#view-timeline .view-title')).toContainText('Chronologie de visionnage');
+    await expect(page.locator('#timeline-search')).toHaveAttribute('placeholder', 'Rechercher dans la chronologie...');
 
     // Switch back to English (en)
     await page.selectOption('#nav-language-select', 'en');
     await expect(page.locator('#tab-timeline')).toContainText('Timeline');
     await expect(page.locator('#tab-history')).toContainText('History');
+    await expect(page.locator('#view-timeline .view-title')).toContainText('Watch Timeline');
   });
 });

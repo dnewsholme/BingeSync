@@ -17,8 +17,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
   <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
-  <script type="module" crossorigin src="./assets/index-CFh48EOn.js"></script>
-  <link rel="stylesheet" crossorigin href="./assets/index-Ba6XqYPr.css">
+  <script type="module" crossorigin src="./assets/index-CrqrPZEA.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-8fKFqb5Z.css">
 </head>
 <body>
   <div id="app">
@@ -94,7 +94,7 @@
       <!-- Loading State -->
       <div id="state-loading" class="state-container">
         <div class="spinner"></div>
-        <p>Connecting to BingeSync...</p>
+        <p data-i18n="auth.connecting">Connecting to BingeSync...</p>
       </div>
 
       <!-- Auth State (Sign In) -->
@@ -110,32 +110,32 @@
                 <polygon points="10 8 16 12 10 16 10 8" fill="currentColor" stroke="none"/>
               </svg>
             </div>
-            <h2>Welcome to BingeSync</h2>
-            <p>Self-hosted Trakt.tv alternative with real-time Plex webhooks & watch history</p>
+            <h2 data-i18n="auth.welcome">Welcome to BingeSync</h2>
+            <p data-i18n="auth.desc">Self-hosted Trakt.tv alternative with real-time Plex webhooks & watch history</p>
           </div>
 
           <div class="auth-actions">
             <!-- OIDC Login Button (if enabled) -->
             <a id="btn-oidc-login" href="api/v1/auth/login" class="btn btn-primary btn-block" style="display: none;">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 17V7h4a3 3 0 0 1 0 6H9"/></svg>
-              Sign in with OpenID Connect
+              <span data-i18n="auth.oidc_login">Sign in with OpenID Connect</span>
             </a>
 
             <div id="auth-divider" class="auth-divider" style="display: none;">
-              <span>or local access</span>
+              <span data-i18n="auth.or_dev">or local access</span>
             </div>
 
             <!-- Dev / Local Login Form -->
             <form id="form-dev-login" class="dev-login-form">
               <div class="form-group">
-                <label for="dev-email">Email or Username</label>
+                <label for="dev-email" data-i18n="auth.email">Email or Username</label>
                 <input type="text" id="dev-email" class="form-control" value="admin@bingesync.local" required />
               </div>
               <div class="form-group">
-                <label for="dev-name">Display Name</label>
+                <label for="dev-name" data-i18n="auth.name">Display Name</label>
                 <input type="text" id="dev-name" class="form-control" value="Admin" required />
               </div>
-              <button type="submit" id="btn-dev-submit" class="btn btn-secondary btn-block">
+              <button type="submit" id="btn-dev-submit" class="btn btn-secondary btn-block" data-i18n="auth.sign_in">
                 Sign In
               </button>
             </form>
@@ -149,7 +149,7 @@
         <div id="now-playing-banner" class="now-playing-banner" style="display: none;">
           <div class="now-playing-pulse">
             <span class="pulse-dot"></span>
-            <span class="pulse-text" id="now-playing-state">NOW WATCHING</span>
+            <span class="pulse-text" id="now-playing-state" data-i18n="now_playing.badge">NOW WATCHING</span>
           </div>
           <div class="now-playing-info">
             <span class="now-playing-title" id="now-playing-title">Movie Title</span>
@@ -164,12 +164,12 @@
         <section id="view-timeline" class="app-view active">
           <div class="view-header">
             <div>
-              <h1 class="view-title">Watch Timeline</h1>
-              <p class="view-subtitle">Chronological record of movies and episodes scrobbled from Plex</p>
+              <h1 class="view-title" data-i18n="timeline.title">Watch Timeline</h1>
+              <p class="view-subtitle" data-i18n="timeline.subtitle">Chronological record of movies and episodes scrobbled from Plex</p>
             </div>
             <button class="btn btn-outline btn-sm" id="btn-refresh-timeline">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21h5v-5"/></svg>
-              Refresh
+              <span data-i18n="common.refresh">Refresh</span>
             </button>
           </div>
 
@@ -177,35 +177,35 @@
             <div class="timeline-search-row">
               <div class="search-input-wrap search-expandable" id="timeline-search-wrap" title="Click to search & filter">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                <input type="search" id="timeline-search" class="form-control" placeholder="Search timeline..." />
+                <input type="search" id="timeline-search" class="form-control" placeholder="Search timeline..." data-i18n-placeholder="timeline.search_placeholder" />
               </div>
               <label class="search-all-toggle-label" id="timeline-search-all-label" title="Search across all history regardless of date and return all results">
                 <input type="checkbox" id="timeline-search-all-dates" />
                 <span class="toggle-checkbox-custom"></span>
-                <span class="toggle-text">All History (All Dates)</span>
+                <span class="toggle-text" data-i18n="timeline.search_all_history">All History (All Dates)</span>
               </label>
             </div>
             <div class="timeline-filters-grid" id="timeline-filters-grid" style="display: none;">
               <input type="date" id="timeline-date-filter" class="form-control filter-ctrl" title="Filter by date" />
-              <input type="text" id="timeline-genre-filter" class="form-control filter-ctrl" placeholder="Genre (e.g. Action)" />
-              <input type="text" id="timeline-person-filter" class="form-control filter-ctrl" placeholder="Director / Actor" />
+              <input type="text" id="timeline-genre-filter" class="form-control filter-ctrl" placeholder="Genre (e.g. Action)" data-i18n-placeholder="timeline.filter_genre_placeholder" />
+              <input type="text" id="timeline-person-filter" class="form-control filter-ctrl" placeholder="Director / Actor" data-i18n-placeholder="timeline.filter_person_placeholder" />
               <select id="timeline-rating-filter" class="form-control filter-ctrl">
-                <option value="all">All Ratings</option>
-                <option value="rated">Rated Only</option>
+                <option value="all" data-i18n="timeline.filter_rating">All Ratings</option>
+                <option value="rated" data-i18n="timeline.filter_rated_only">Rated Only</option>
                 <option value="10">★ 10/10</option>
                 <option value="9+">★ 9+ Stars</option>
                 <option value="8+">★ 8+ Stars</option>
                 <option value="7+">★ 7+ Stars</option>
                 <option value="6+">★ 6+ Stars</option>
                 <option value="5+">★ 5+ Stars</option>
-                <option value="unrated">Unrated</option>
+                <option value="unrated" data-i18n="timeline.filter_unrated">Unrated</option>
               </select>
               <select id="timeline-status-filter" class="form-control filter-ctrl">
-                <option value="all">All Status</option>
-                <option value="completed">Completed</option>
-                <option value="in_progress">In Progress</option>
+                <option value="all" data-i18n="timeline.filter_status">All Status</option>
+                <option value="completed" data-i18n="timeline.status_completed">Completed</option>
+                <option value="in_progress" data-i18n="timeline.status_in_progress">In Progress</option>
               </select>
-              <button class="btn btn-outline btn-sm" id="btn-reset-timeline-filters" title="Reset all timeline filters">Clear</button>
+              <button class="btn btn-outline btn-sm" id="btn-reset-timeline-filters" title="Reset all timeline filters" data-i18n="common.clear">Clear</button>
             </div>
           </div>
 
@@ -229,7 +229,7 @@
               <!-- Timeline days injected here -->
             </div>
             <aside id="timeline-scrubber" class="timeline-scrubber" style="display:none;">
-              <div class="scrubber-header">Timeline</div>
+              <div class="scrubber-header" data-i18n="nav.timeline">Timeline</div>
               <div id="timeline-scrubber-list" class="scrubber-list">
                 <!-- Jump dates injected here -->
               </div>
@@ -237,7 +237,7 @@
           </div>
 
           <div id="timeline-load-more-wrap" class="timeline-load-more-wrap" style="display:none;">
-            <button class="btn btn-outline btn-sm" id="btn-timeline-load-more">
+            <button class="btn btn-outline btn-sm" id="btn-timeline-load-more" data-i18n="timeline.load_more">
               Load More Watches
             </button>
             <span id="timeline-pagination-info" class="timeline-pagination-info"></span>
@@ -248,30 +248,30 @@
         <section id="view-history" class="app-view" style="display: none;">
           <div class="view-header">
             <div>
-              <h1 class="view-title">Scrobble History</h1>
-              <p class="view-subtitle">Search and filter your entire scrobble database</p>
+              <h1 class="view-title" data-i18n="history.title">Scrobble History</h1>
+              <p class="view-subtitle" data-i18n="history.subtitle">Search and filter your entire scrobble database</p>
             </div>
           </div>
 
           <div class="filter-bar">
             <div class="search-input-wrap">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-              <input type="search" id="history-search" class="form-control" placeholder="Search by title, show, episode..." />
+              <input type="search" id="history-search" class="form-control" placeholder="Search by title, show, episode..." data-i18n-placeholder="history.search_placeholder" />
             </div>
 
             <label class="search-all-toggle-label" id="history-search-all-label" title="Return all results across all history without pagination">
               <input type="checkbox" id="history-search-all-results" />
               <span class="toggle-checkbox-custom"></span>
-              <span class="toggle-text">All Results</span>
+              <span class="toggle-text" data-i18n="history.all_results">All Results</span>
             </label>
 
             <div class="filter-pills" id="history-filter-pills">
-              <button class="pill active" data-type="all" id="pill-all">All</button>
-              <button class="pill" data-type="movie" id="pill-movies">Movies</button>
-              <button class="pill" data-type="episode" id="pill-episodes">Episodes</button>
+              <button class="pill active" data-type="all" id="pill-all" data-i18n="history.all">All</button>
+              <button class="pill" data-type="movie" id="pill-movies" data-i18n="history.movies">Movies</button>
+              <button class="pill" data-type="episode" id="pill-episodes" data-i18n="history.episodes">Episodes</button>
               <button class="pill pill-action" id="btn-toggle-select-mode">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-                Select
+                <span data-i18n="history.select">Select</span>
               </button>
             </div>
           </div>
@@ -281,15 +281,15 @@
             <div class="bulk-bar-content">
               <label class="bulk-check-label">
                 <input type="checkbox" id="bulk-select-all-checkbox" />
-                <span>Select All on Page</span>
+                <span data-i18n="history.select_all_page">Select All on Page</span>
               </label>
               <span class="bulk-count" id="bulk-selected-count">0 selected</span>
               <div class="bulk-buttons">
                 <button class="btn btn-danger btn-sm" id="btn-delete-selected" disabled>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                  Delete Selected
+                  <span data-i18n="history.delete_selected_btn">Delete Selected</span>
                 </button>
-                <button class="btn btn-ghost btn-sm" id="btn-cancel-select-mode">Cancel</button>
+                <button class="btn btn-ghost btn-sm" id="btn-cancel-select-mode" data-i18n="common.cancel">Cancel</button>
               </div>
             </div>
           </div>
@@ -299,9 +299,9 @@
           </div>
 
           <div class="pagination-bar" id="history-pagination" style="display: none;">
-            <button class="btn btn-outline btn-sm" id="btn-page-prev">Previous</button>
+            <button class="btn btn-outline btn-sm" id="btn-page-prev" data-i18n="common.previous">Previous</button>
             <span class="pagination-info" id="pagination-info">Page 1 of 1</span>
-            <button class="btn btn-outline btn-sm" id="btn-page-next">Next</button>
+            <button class="btn btn-outline btn-sm" id="btn-page-next" data-i18n="common.next">Next</button>
           </div>
         </section>
 
@@ -309,14 +309,14 @@
         <section id="view-stats" class="app-view" style="display: none;">
           <div class="view-header">
             <div>
-              <h1 class="view-title">Binge Statistics</h1>
-              <p class="view-subtitle">Detailed metrics, TV vs movie breakdown, and watching patterns</p>
+              <h1 class="view-title" data-i18n="stats.title">Binge Statistics</h1>
+              <p class="view-subtitle" data-i18n="stats.subtitle">Detailed metrics, TV vs movie breakdown, and watching patterns</p>
             </div>
             <!-- Media Type Filter Pills -->
             <div class="filter-pills" id="stats-filter-pills">
-              <button class="pill active" data-type="all" id="pill-stats-all">All</button>
-              <button class="pill" data-type="movie" id="pill-stats-movies">Movies</button>
-              <button class="pill" data-type="episode" id="pill-stats-episodes">TV Shows</button>
+              <button class="pill active" data-type="all" id="pill-stats-all" data-i18n="stats.tab_all">All</button>
+              <button class="pill" data-type="movie" id="pill-stats-movies" data-i18n="stats.tab_movies">Movies</button>
+              <button class="pill" data-type="episode" id="pill-stats-episodes" data-i18n="stats.tab_shows">TV Shows</button>
             </div>
           </div>
 
@@ -324,61 +324,61 @@
           <div class="stats-controls-bar">
             <div class="stats-range-label">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-              <span>Period:</span>
+              <span data-i18n="stats.period">Period:</span>
             </div>
             <div class="filter-pills stats-range-pills" id="stats-range-pills">
-              <button class="pill active" data-range="all" id="pill-stats-range-all">All Time</button>
-              <button class="pill" data-range="7d" id="pill-stats-range-7d">Last 7 Days</button>
-              <button class="pill" data-range="30d" id="pill-stats-range-30d">Last 30 Days</button>
-              <button class="pill" data-range="90d" id="pill-stats-range-90d">Last 90 Days</button>
-              <button class="pill" data-range="year" id="pill-stats-range-year">Past Year</button>
+              <button class="pill active" data-range="all" id="pill-stats-range-all" data-i18n="stats.range_all">All Time</button>
+              <button class="pill" data-range="7d" id="pill-stats-range-7d" data-i18n="stats.range_7d">Last 7 Days</button>
+              <button class="pill" data-range="30d" id="pill-stats-range-30d" data-i18n="stats.range_30d">Last 30 Days</button>
+              <button class="pill" data-range="90d" id="pill-stats-range-90d" data-i18n="stats.range_90d">Last 90 Days</button>
+              <button class="pill" data-range="year" id="pill-stats-range-year" data-i18n="stats.range_1y">Past Year</button>
             </div>
           </div>
 
           <!-- Expanded Metrics Grid -->
           <div class="stats-grid">
             <div class="stat-card">
-              <div class="stat-label">Total Scrobbles</div>
+              <div class="stat-label" data-i18n="stats.total_scrobbles">Total Scrobbles</div>
               <div class="stat-value" id="stat-scrobbles">0</div>
               <div class="stat-sub" id="stat-scrobbles-sub">Logged items</div>
             </div>
             <div class="stat-card">
-              <div class="stat-label">Total Time</div>
+              <div class="stat-label" data-i18n="stats.total_time">Total Time</div>
               <div class="stat-value" id="stat-hours">0h</div>
               <div class="stat-sub" id="stat-minutes">0 minutes watched</div>
             </div>
             <div class="stat-card">
-              <div class="stat-label">Movies Watched</div>
+              <div class="stat-label" data-i18n="stats.movies_watched">Movies Watched</div>
               <div class="stat-value" id="stat-movies">0</div>
               <div class="stat-sub"><span id="stat-movie-time">0h films</span> <span id="stat-unique-movies-wrap" style="color:var(--text-dim);">(<span id="stat-unique-movies">0</span> unique)</span></div>
             </div>
             <div class="stat-card">
-              <div class="stat-label">Episodes Watched</div>
+              <div class="stat-label" data-i18n="stats.episodes_watched">Episodes Watched</div>
               <div class="stat-value" id="stat-episodes">0</div>
               <div class="stat-sub"><span id="stat-episode-time">0h series</span> <span id="stat-unique-shows-wrap" style="color:var(--text-dim);">(<span id="stat-unique-shows">0</span> shows)</span></div>
             </div>
             <div class="stat-card">
-              <div class="stat-label">Streak Status</div>
+              <div class="stat-label" data-i18n="stats.active_streak">Streak Status</div>
               <div class="stat-value highlight" id="stat-streak">0 🔥</div>
               <div class="stat-sub" id="stat-streak-sub">Consecutive days</div>
             </div>
             <div class="stat-card">
-              <div class="stat-label">Daily Pace</div>
+              <div class="stat-label" data-i18n="stats.daily_pace">Daily Pace</div>
               <div class="stat-value" id="stat-avg-daily">0m</div>
-              <div class="stat-sub">Average per active day</div>
+              <div class="stat-sub" data-i18n="stats.avg_per_day">Average per active day</div>
             </div>
             <div class="stat-card">
-              <div class="stat-label">Average Rating</div>
+              <div class="stat-label" data-i18n="stats.avg_rating">Average Rating</div>
               <div class="stat-value" id="stat-avg-rating">—</div>
               <div class="stat-sub" id="stat-total-rated">0 rated items</div>
             </div>
             <div class="stat-card">
-              <div class="stat-label">Completion Rate</div>
+              <div class="stat-label" data-i18n="stats.completion_rate">Completion Rate</div>
               <div class="stat-value" id="stat-completion-rate">100%</div>
-              <div class="stat-sub">Finished playbacks</div>
+              <div class="stat-sub" data-i18n="stats.finished_playbacks">Finished playbacks</div>
             </div>
             <div class="stat-card">
-              <div class="stat-label">Peak Binge Day</div>
+              <div class="stat-label" data-i18n="stats.peak_day">Peak Binge Day</div>
               <div class="stat-value" id="stat-peak-count">0</div>
               <div class="stat-sub" id="stat-peak-day">—</div>
             </div>
@@ -389,24 +389,24 @@
             <div class="chart-card">
               <div class="chart-header-row">
                 <div>
-                  <h3 class="chart-title" id="activity-chart-title">Daily Watch Activity</h3>
-                  <p class="chart-subtitle" id="activity-chart-subtitle">Scrobbles over recent days</p>
+                  <h3 class="chart-title" id="activity-chart-title" data-i18n="stats.chart_activity">Daily Watch Activity</h3>
+                  <p class="chart-subtitle" id="activity-chart-subtitle" data-i18n="stats.chart_activity_sub">Scrobbles over recent days</p>
                 </div>
               </div>
               <div class="activity-chart-container" id="activity-chart">
                 <!-- Activity bars injected here -->
               </div>
               <div class="chart-legend" id="activity-chart-legend">
-                <span class="legend-item" id="legend-movie-item"><span class="legend-color legend-movie"></span> Movies</span>
-                <span class="legend-item" id="legend-episode-item"><span class="legend-color legend-episode"></span> TV Episodes</span>
+                <span class="legend-item" id="legend-movie-item"><span class="legend-color legend-movie"></span> <span data-i18n="stats.tab_movies">Movies</span></span>
+                <span class="legend-item" id="legend-episode-item"><span class="legend-color legend-episode"></span> <span data-i18n="history.episodes">TV Episodes</span></span>
               </div>
             </div>
 
             <div class="chart-card">
               <div class="chart-header-row">
                 <div>
-                  <h3 class="chart-title" id="genres-chart-title">Top Genres</h3>
-                  <p class="chart-subtitle" id="genres-chart-subtitle">Most watched genres</p>
+                  <h3 class="chart-title" id="genres-chart-title" data-i18n="stats.chart_genres">Top Genres</h3>
+                  <p class="chart-subtitle" id="genres-chart-subtitle" data-i18n="stats.chart_genres_sub">Most watched genres</p>
                 </div>
               </div>
               <div class="genres-chart-container" id="genres-chart">
@@ -420,8 +420,8 @@
             <div class="chart-card">
               <div class="chart-header-row">
                 <div>
-                  <h3 class="chart-title">Day of the Week Pattern</h3>
-                  <p class="chart-subtitle">When you scrobble throughout the week</p>
+                  <h3 class="chart-title" data-i18n="stats.chart_dow">Day of the Week Pattern</h3>
+                  <p class="chart-subtitle" data-i18n="stats.chart_dow_sub">When you scrobble throughout the week</p>
                 </div>
               </div>
               <div class="dow-chart-container" id="day-of-week-chart">
@@ -432,8 +432,8 @@
             <div class="chart-card">
               <div class="chart-header-row">
                 <div>
-                  <h3 class="chart-title">Time of Day Habits</h3>
-                  <p class="chart-subtitle">Viewing activity by time bracket</p>
+                  <h3 class="chart-title" data-i18n="stats.chart_tod">Time of Day Habits</h3>
+                  <p class="chart-subtitle" data-i18n="stats.chart_tod_sub">Viewing activity by time bracket</p>
                 </div>
               </div>
               <div class="tod-chart-container" id="time-of-day-chart">
@@ -447,8 +447,8 @@
             <div class="chart-card">
               <div class="chart-header-row">
                 <div>
-                  <h3 class="chart-title" id="top-actors-title">Top Watched Actors</h3>
-                  <p class="chart-subtitle">Cast members in your logged watches</p>
+                  <h3 class="chart-title" id="top-actors-title" data-i18n="stats.top_actors">Top Watched Actors</h3>
+                  <p class="chart-subtitle" id="top-actors-sub" data-i18n="stats.top_actors_sub">Cast members in your logged watches</p>
                 </div>
               </div>
               <div class="top-people-list" id="top-actors-list">
@@ -459,8 +459,8 @@
             <div class="chart-card">
               <div class="chart-header-row">
                 <div>
-                  <h3 class="chart-title" id="top-directors-title">Top Watched Directors</h3>
-                  <p class="chart-subtitle">Creators and directors in your logged watches</p>
+                  <h3 class="chart-title" id="top-directors-title" data-i18n="stats.top_directors">Top Watched Directors</h3>
+                  <p class="chart-subtitle" id="top-directors-sub" data-i18n="stats.top_directors_sub">Creators and directors in your logged watches</p>
                 </div>
               </div>
               <div class="top-people-list" id="top-directors-list">
@@ -471,7 +471,7 @@
 
           <!-- Top TV Shows Section -->
           <div class="stats-section" id="top-shows-section" style="margin-top: 24px;">
-            <h2 class="section-title">Top Watched TV Series</h2>
+            <h2 class="section-title" data-i18n="stats.chart_shows">Top Watched TV Series</h2>
             <div id="top-shows-list" class="top-shows-list">
               <!-- Top shows injected here -->
             </div>
@@ -479,7 +479,7 @@
 
           <!-- Top Movies Section -->
           <div class="stats-section" id="top-movies-section" style="margin-top: 24px;">
-            <h2 class="section-title">Top Watched Movies</h2>
+            <h2 class="section-title" data-i18n="stats.chart_movies">Top Watched Movies</h2>
             <div id="top-movies-list" class="top-shows-list">
               <!-- Top movies injected here -->
             </div>
@@ -490,8 +490,8 @@
         <section id="view-settings" class="app-view" style="display: none;">
           <div class="view-header">
             <div>
-              <h1 class="view-title">Settings & Integrations</h1>
-              <p class="view-subtitle">Configure your personal Plex webhook, Radarr, Sonarr, and Tautulli integrations</p>
+              <h1 class="view-title" data-i18n="settings.title">Settings & Integrations</h1>
+              <p class="view-subtitle" data-i18n="settings.subtitle">Configure your personal Plex webhook, Radarr, Sonarr, and Tautulli integrations</p>
             </div>
           </div>
 
@@ -499,9 +499,9 @@
           <div class="card settings-card" id="card-user-services">
             <h2 class="card-title">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
-              Connected Services
+              <span data-i18n="settings.connected_services">Connected Services</span>
             </h2>
-            <p class="card-desc">
+            <p class="card-desc" data-i18n="settings.connected_services_desc">
               Configure your personal Plex username filter, Radarr, Sonarr, and Tautulli credentials. These settings are specific to your user account.
             </p>
 
@@ -563,11 +563,11 @@
               </div>
               <div class="form-row">
                 <div class="form-group col-half">
-                  <label for="user-setting-radarr-url">Radarr Base URL</label>
+                  <label for="user-setting-radarr-url" data-i18n="settings.radarr_url">Radarr Base URL</label>
                   <input type="url" id="user-setting-radarr-url" class="form-control" placeholder="http://192.168.1.100:7878" />
                 </div>
                 <div class="form-group col-half">
-                  <label for="user-setting-radarr-api-key">Radarr API Key</label>
+                  <label for="user-setting-radarr-api-key" data-i18n="settings.radarr_key">Radarr API Key</label>
                   <div class="input-secret-wrapper">
                     <input type="text" id="user-setting-radarr-api-key" class="form-control font-mono" placeholder="API Key" autocomplete="off" spellcheck="false" />
                     <button type="button" class="btn-toggle-secret" data-target="user-setting-radarr-api-key" title="Unhide / Show full key">
@@ -584,11 +584,11 @@
               </div>
               <div class="form-row">
                 <div class="form-group col-half">
-                  <label for="user-setting-sonarr-url">Sonarr Base URL</label>
+                  <label for="user-setting-sonarr-url" data-i18n="settings.sonarr_url">Sonarr Base URL</label>
                   <input type="url" id="user-setting-sonarr-url" class="form-control" placeholder="http://192.168.1.100:8989" />
                 </div>
                 <div class="form-group col-half">
-                  <label for="user-setting-sonarr-api-key">Sonarr API Key</label>
+                  <label for="user-setting-sonarr-api-key" data-i18n="settings.sonarr_key">Sonarr API Key</label>
                   <div class="input-secret-wrapper">
                     <input type="text" id="user-setting-sonarr-api-key" class="form-control font-mono" placeholder="API Key" autocomplete="off" spellcheck="false" />
                     <button type="button" class="btn-toggle-secret" data-target="user-setting-sonarr-api-key" title="Unhide / Show full key">
@@ -605,11 +605,11 @@
               </div>
               <div class="form-row">
                 <div class="form-group col-half">
-                  <label for="user-setting-tautulli-url">Tautulli Base URL</label>
+                  <label for="user-setting-tautulli-url" data-i18n="settings.tautulli_url">Tautulli Base URL</label>
                   <input type="url" id="user-setting-tautulli-url" class="form-control" placeholder="http://192.168.1.100:8181" />
                 </div>
                 <div class="form-group col-half">
-                  <label for="user-setting-tautulli-api-key">Tautulli API Key</label>
+                  <label for="user-setting-tautulli-api-key" data-i18n="settings.tautulli_key">Tautulli API Key</label>
                   <div class="input-secret-wrapper">
                     <input type="text" id="user-setting-tautulli-api-key" class="form-control font-mono" placeholder="API Key" autocomplete="off" spellcheck="false" />
                     <button type="button" class="btn-toggle-secret" data-target="user-setting-tautulli-api-key" title="Unhide / Show full key">
@@ -772,23 +772,23 @@
         <section id="view-admin" class="app-view" style="display: none;">
           <div class="view-header">
             <div>
-              <h1 class="view-title">Administration</h1>
-              <p class="view-subtitle">Manage registered users, configure service API keys, monitor background tasks, and inspect logs</p>
+              <h1 class="view-title" data-i18n="admin.title">Administration</h1>
+              <p class="view-subtitle" data-i18n="admin.subtitle">Manage registered users, configure service API keys, monitor background tasks, and inspect logs</p>
             </div>
             <div class="view-actions">
               <button class="btn btn-outline btn-sm" id="btn-refresh-admin-users">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-                Refresh
+                <span data-i18n="common.refresh">Refresh</span>
               </button>
             </div>
           </div>
 
           <!-- Admin Sub-Navigation Pills -->
           <div class="admin-nav-pills" id="admin-subnav-pills">
-            <button class="pill active" data-subview="admin-sub-users">Users & Access</button>
-            <button class="pill" data-subview="admin-sub-settings">Services & API Keys</button>
-            <button class="pill" data-subview="admin-sub-tasks">Background Tasks</button>
-            <button class="pill" data-subview="admin-sub-logs">Application Logs</button>
+            <button class="pill active" data-subview="admin-sub-users" data-i18n="admin.users_tab">Users & Access</button>
+            <button class="pill" data-subview="admin-sub-settings" data-i18n="admin.settings_tab">Services & API Keys</button>
+            <button class="pill" data-subview="admin-sub-tasks" data-i18n="admin.tasks_tab">Background Tasks</button>
+            <button class="pill" data-subview="admin-sub-logs" data-i18n="admin.logs_tab">Application Logs</button>
           </div>
 
           <!-- Sub-view 1: Users & Access -->
@@ -804,7 +804,7 @@
               </p>
               <div class="webhook-input-group">
                 <input type="text" id="admin-backchannel-url-input" class="form-control" readonly />
-                <button class="btn btn-secondary" id="btn-copy-backchannel-url">Copy URL</button>
+                <button class="btn btn-secondary" id="btn-copy-backchannel-url" data-i18n="settings.copy_url">Copy URL</button>
               </div>
             </div>
 
@@ -813,11 +813,11 @@
                 <table class="admin-table">
                   <thead>
                     <tr>
-                      <th>User</th>
-                      <th>Role</th>
-                      <th>Scrobbles</th>
-                      <th>Joined</th>
-                      <th style="text-align: right;">Actions</th>
+                      <th data-i18n="admin.user_col">User</th>
+                      <th data-i18n="admin.role_col">Role</th>
+                      <th data-i18n="admin.scrobbles_col">Scrobbles</th>
+                      <th data-i18n="admin.joined_col">Joined</th>
+                      <th style="text-align: right;" data-i18n="admin.actions_col">Actions</th>
                     </tr>
                   </thead>
                   <tbody id="admin-users-tbody">
@@ -988,55 +988,55 @@
     <div id="modal-log-scrobble" class="modal-backdrop" style="display: none;">
       <div class="modal-dialog">
         <div class="modal-header">
-          <h3 class="modal-title">Manual Scrobble Log</h3>
+          <h3 class="modal-title" data-i18n="modal.log_watch">Manual Scrobble Log</h3>
           <button class="modal-close" id="btn-close-log-modal">&times;</button>
         </div>
         <form id="form-manual-scrobble">
           <div class="modal-body">
             <div class="form-group">
-              <label for="scrobble-media-type">Media Type</label>
+              <label for="scrobble-media-type" data-i18n="modal.media_type">Media Type</label>
               <select id="scrobble-media-type" class="form-control" required>
-                <option value="movie">Movie</option>
-                <option value="episode">TV Episode</option>
+                <option value="movie" data-i18n="modal.movie">Movie</option>
+                <option value="episode" data-i18n="modal.episode">TV Episode</option>
               </select>
             </div>
 
             <div class="form-group" id="group-grandparent" style="display: none;">
-              <label for="scrobble-show">TV Show Title</label>
+              <label for="scrobble-show" data-i18n="modal.show_name">TV Show Title</label>
               <input type="text" id="scrobble-show" class="form-control" placeholder="e.g. Breaking Bad" />
             </div>
 
             <div class="form-row" id="group-episode-nums" style="display: none;">
               <div class="form-group col-half">
-                <label for="scrobble-season">Season #</label>
+                <label for="scrobble-season" data-i18n="modal.season">Season #</label>
                 <input type="number" id="scrobble-season" class="form-control" min="1" placeholder="1" />
               </div>
               <div class="form-group col-half">
-                <label for="scrobble-episode">Episode #</label>
+                <label for="scrobble-episode" data-i18n="modal.episode_num">Episode #</label>
                 <input type="number" id="scrobble-episode" class="form-control" min="1" placeholder="1" />
               </div>
             </div>
 
             <div class="form-group">
-              <label for="scrobble-title" id="label-scrobble-title">Movie Title</label>
+              <label for="scrobble-title" id="label-scrobble-title" data-i18n="modal.title">Movie Title</label>
               <input type="text" id="scrobble-title" class="form-control" placeholder="e.g. Inception" required />
             </div>
 
             <div class="form-row">
               <div class="form-group col-half">
-                <label for="scrobble-year">Release Year</label>
+                <label for="scrobble-year" data-i18n="modal.year">Release Year</label>
                 <input type="number" id="scrobble-year" class="form-control" placeholder="2024" />
               </div>
               <div class="form-group col-half">
-                <label for="scrobble-duration">Duration (Minutes)</label>
+                <label for="scrobble-duration" data-i18n="modal.duration">Duration (Minutes)</label>
                 <input type="number" id="scrobble-duration" class="form-control" placeholder="120" />
               </div>
             </div>
 
             <div class="form-group">
-              <label for="scrobble-rating">Rating (1 to 10 Stars - Optional)</label>
+              <label for="scrobble-rating" data-i18n="modal.rating">Rating (1 to 10 Stars - Optional)</label>
               <select id="scrobble-rating" class="form-control">
-                <option value="">No rating</option>
+                <option value="" data-i18n="modal.no_rating">No rating</option>
                 <option value="10">★★★★★★★★★★ (10/10 - Masterpiece)</option>
                 <option value="9">★★★★★★★★★☆ (9/10 - Great)</option>
                 <option value="8">★★★★★★★★☆☆ (8/10 - Very Good)</option>
@@ -1051,13 +1051,13 @@
             </div>
 
             <div class="form-group">
-              <label for="scrobble-overview">Plot Overview / Notes</label>
+              <label for="scrobble-overview" data-i18n="modal.overview">Plot Overview / Notes</label>
               <textarea id="scrobble-overview" class="form-control" rows="3" placeholder="Brief summary..."></textarea>
             </div>
           </div>
           <div class="modal-footer">
-            <button type="button" class="btn btn-outline" id="btn-cancel-log-modal">Cancel</button>
-            <button type="submit" class="btn btn-primary" id="btn-submit-scrobble">Save Scrobble</button>
+            <button type="button" class="btn btn-outline" id="btn-cancel-log-modal" data-i18n="common.cancel">Cancel</button>
+            <button type="submit" class="btn btn-primary" id="btn-submit-scrobble" data-i18n="modal.save">Save Scrobble</button>
           </div>
         </form>
       </div>
@@ -1169,22 +1169,22 @@
           <div class="detail-actions-left">
             <a id="detail-imdb-link" href="#" target="_blank" rel="noopener noreferrer" class="btn btn-imdb btn-sm" style="display:none;">
               <span class="imdb-badge-icon">IMDb</span>
-              View on IMDb
+              <span data-i18n="modal.view_imdb">View on IMDb</span>
             </a>
             <a id="detail-tvdb-link" href="#" target="_blank" rel="noopener noreferrer" class="btn btn-tvdb btn-sm" style="display:none;">
               <span class="tvdb-badge-icon">TheTVDB</span>
-              View on TheTVDB
+              <span data-i18n="modal.view_tvdb">View on TheTVDB</span>
             </a>
-            <button class="btn btn-outline btn-sm" id="btn-refresh-detail-metadata" title="Refresh metadata and artwork from TheTVDB">
+            <button class="btn btn-outline btn-sm" id="btn-refresh-detail-metadata" title="Refresh metadata and artwork from TheTVDB" data-i18n="modal.refresh_metadata">
               Refresh Metadata
             </button>
-            <button class="btn btn-outline btn-sm text-danger" id="btn-delete-show-scrobbles" style="display:none;">
+            <button class="btn btn-outline btn-sm text-danger" id="btn-delete-show-scrobbles" style="display:none;" data-i18n="modal.delete_show">
               Delete Show Scrobbles
             </button>
           </div>
           <div class="detail-actions-right">
-            <button class="btn btn-danger btn-sm" id="btn-delete-detail-item">Delete Scrobble</button>
-            <button class="btn btn-outline btn-sm" id="btn-dismiss-detail-modal">Close</button>
+            <button class="btn btn-danger btn-sm" id="btn-delete-detail-item" data-i18n="modal.delete_scrobble">Delete Scrobble</button>
+            <button class="btn btn-outline btn-sm" id="btn-dismiss-detail-modal" data-i18n="modal.close">Close</button>
           </div>
         </div>
       </div>

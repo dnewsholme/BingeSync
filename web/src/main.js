@@ -1,5 +1,5 @@
 import { api, API_BASE } from './api.js';
-import { initI18n, setLanguage, getLanguage, t } from './i18n.js';
+import { initI18n, setLanguage, getLanguage, t, getMonthName, getMonthShortName } from './i18n.js';
 
 export const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -9,6 +9,13 @@ export const MONTH_SHORT_NAMES = [
   'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
   'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
 ];
+
+export function updateMonthNames() {
+  for (let i = 0; i < 12; i++) {
+    MONTH_NAMES[i] = getMonthName(i);
+    MONTH_SHORT_NAMES[i] = getMonthShortName(i);
+  }
+}
 
 // Application State
 const state = {
@@ -324,11 +331,43 @@ const el = {
 // Initialization
 async function init() {
   initI18n();
+  updateMonthNames();
 
   document.querySelectorAll('.language-select').forEach((sel) => {
     sel.addEventListener('change', (e) => {
       setLanguage(e.target.value);
     });
+  });
+
+  window.addEventListener('languagechange', () => {
+    updateMonthNames();
+    if (state.activeTab === 'view-timeline') {
+      renderTimelineHierarchyNav();
+      if (state.timeline.level === 'years') {
+        renderTimelineYearsView();
+        renderTimelineScrubberYears();
+      } else if (state.timeline.level === 'year') {
+        renderTimelineMonthsView();
+        renderTimelineScrubberMonths();
+      } else {
+        renderTimeline(state.timeline.days);
+        renderTimelineScrubber(state.timeline.days);
+        renderTimelinePagination();
+      }
+    } else if (state.activeTab === 'view-history') {
+      if (state.history.currentItems) {
+        renderHistory({
+          items: state.history.currentItems,
+          total: state.history.total || state.history.currentItems.length,
+          page: state.history.page,
+          total_pages: state.history.totalPages,
+        });
+      }
+    } else if (state.activeTab === 'view-stats') {
+      if (state.stats.data) {
+        renderStats();
+      }
+    }
   });
 
   try {
@@ -554,13 +593,13 @@ function renderTimelineHierarchyNav() {
     const totalItems = state.timeline.days.reduce((acc, d) => acc + (d.items?.length || 0), 0);
     const searchLabel = state.timeline.search ? `"${state.timeline.search}"` : 'All Dates';
     el.hierarchyBreadcrumbs.innerHTML = `
-      <span class="crumb-current">All History Search: ${escapeHtml(searchLabel)}</span>
+      <span class="crumb-current">${t('timeline.all_history_search')}: ${escapeHtml(searchLabel)}</span>
       <span class="crumb-separator">·</span>
-      <span style="font-size:0.8rem;color:var(--text-dim);">${totalItems} ${totalItems === 1 ? 'watch' : 'watches'} across ${state.timeline.days.length} days</span>
+      <span style="font-size:0.8rem;color:var(--text-dim);">${totalItems} ${totalItems === 1 ? t('timeline.item') : t('timeline.items')} (${state.timeline.days.length} ${t('stats.days')})</span>
     `;
     el.hierarchyControls.innerHTML = `
       <button class="btn btn-outline btn-xs" id="btn-exit-search-all-dates" title="Exit all-history search and return to monthly timeline">
-        Exit All-History View
+        ${t('timeline.exit_search_all')}
       </button>
     `;
     const btnExit = document.getElementById('btn-exit-search-all-dates');
@@ -584,20 +623,20 @@ function renderTimelineHierarchyNav() {
   // 1. Breadcrumbs
   if (level === 'years') {
     el.hierarchyBreadcrumbs.innerHTML = `
-      <span class="crumb-current">All Years</span>
+      <span class="crumb-current">${t('timeline.all_years')}</span>
     `;
   } else if (level === 'year') {
     el.hierarchyBreadcrumbs.innerHTML = `
-      <button class="crumb-btn" id="btn-crumb-years" title="Dig back to all years">All Years</button>
+      <button class="crumb-btn" id="btn-crumb-years" title="Dig back to all years">${t('timeline.all_years')}</button>
       <span class="crumb-separator">/</span>
       <span class="crumb-current">${year}</span>
     `;
   } else {
     // level === 'month'
     el.hierarchyBreadcrumbs.innerHTML = `
-      <button class="crumb-btn" id="btn-crumb-years" title="Dig back to all years">All Years</button>
+      <button class="crumb-btn" id="btn-crumb-years" title="Dig back to all years">${t('timeline.all_years')}</button>
       <span class="crumb-separator">/</span>
-      <button class="crumb-btn" id="btn-crumb-year" title="View ${year} months">${year}</button>
+      <button class="crumb-btn" id="btn-crumb-year" title="${t('timeline.view_year_months', { year })}">${year}</button>
       <span class="crumb-separator">/</span>
       <span class="crumb-current">${monthName}</span>
     `;
@@ -606,13 +645,13 @@ function renderTimelineHierarchyNav() {
   // 2. Controls & Steppers
   if (level === 'years') {
     el.hierarchyControls.innerHTML = `
-      <span class="hierarchy-active-label">All Years History</span>
+      <span class="hierarchy-active-label">${t('timeline.years_overview')}</span>
     `;
   } else if (level === 'year') {
     el.hierarchyControls.innerHTML = `
       <button class="btn btn-outline btn-xs btn-drill-up" id="btn-timeline-up" title="Dig back further to all years">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="18 15 12 9 6 15"/></svg>
-        All Years
+        ${t('timeline.all_years')}
       </button>
       <div class="hierarchy-nav-stepper">
         <button class="btn btn-icon btn-xs" id="btn-timeline-prev-year" title="Previous Year">‹</button>
@@ -623,9 +662,9 @@ function renderTimelineHierarchyNav() {
   } else {
     // level === 'month'
     el.hierarchyControls.innerHTML = `
-      <button class="btn btn-outline btn-xs btn-drill-up" id="btn-timeline-up" title="View all months of ${year}">
+      <button class="btn btn-outline btn-xs btn-drill-up" id="btn-timeline-up" title="${t('timeline.view_year_months', { year })}">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="18 15 12 9 6 15"/></svg>
-        ${year} Months
+        ${t('timeline.year_months', { year })}
       </button>
       <div class="hierarchy-nav-stepper">
         <button class="btn btn-icon btn-xs" id="btn-timeline-prev-month" title="Previous Month">‹</button>
@@ -776,11 +815,11 @@ function renderTimelineMonthsView() {
   let html = `
     <div class="timeline-day-header" style="margin-bottom: 16px;">
       <div style="display:flex;align-items:center;gap:12px;">
-        <div class="timeline-date-title">${year} — Months Overview</div>
+        <div class="timeline-date-title">${year} — ${t('timeline.months_overview')}</div>
       </div>
       <div class="timeline-day-stats">
-        <span class="stat-chip">${totalCount} ${totalCount === 1 ? 'watch' : 'watches'} in ${year}</span>
-        <span class="stat-chip">${totalHours} hours</span>
+        <span class="stat-chip">${totalCount} ${totalCount === 1 ? t('timeline.item') : t('timeline.items')} in ${year}</span>
+        <span class="stat-chip">${totalHours}h</span>
       </div>
     </div>
     <div class="timeline-months-grid">
@@ -793,7 +832,7 @@ function renderTimelineMonthsView() {
     const minutes = mData ? mData.minutes : 0;
     const hours = Math.floor(minutes / 60);
     const remMins = minutes % 60;
-    const timeStr = count > 0 ? (hours > 0 ? `${hours}h ${remMins}m watched` : `${remMins}m watched`) : 'No activity';
+    const timeStr = count > 0 ? (hours > 0 ? `${hours}h ${remMins}m ${t('timeline.hours_watched')}` : `${remMins}m ${t('timeline.hours_watched')}`) : t('stats.no_activity');
     const posters = mData?.poster_urls || [];
     const validPosters = posters.map(url => resolveImageUrl(url)).filter(Boolean);
     const posterImgs = validPosters.map(url => `<img src="${escapeHtml(url)}" class="month-card-poster" alt="Poster" loading="lazy" onerror="this.style.display='none'" />`).join('');
@@ -802,13 +841,13 @@ function renderTimelineMonthsView() {
       <div class="timeline-month-card ${count > 0 ? 'has-data' : 'empty'}" data-month-num="${monthNum}">
         <div class="month-card-header">
           <span class="month-card-title">${MONTH_NAMES[i]}</span>
-          <span class="month-card-badge">${count} ${count === 1 ? 'watch' : 'watches'}</span>
+          <span class="month-card-badge">${count} ${count === 1 ? t('timeline.item') : t('timeline.items')}</span>
         </div>
         <div class="month-card-stats">${timeStr}</div>
         <div class="month-card-posters">
           ${posterImgs || '<div style="display:flex;align-items:center;justify-content:center;width:100%;color:var(--text-dim);font-size:0.75rem;">No posters</div>'}
         </div>
-        <button class="btn btn-outline btn-xs" style="width: 100%; margin-top: 4px;">View Dates →</button>
+        <button class="btn btn-outline btn-xs" style="width: 100%; margin-top: 4px;">${t('timeline.view_dates')} →</button>
       </div>
     `;
   }
@@ -847,11 +886,11 @@ function renderTimelineYearsView() {
   let html = `
     <div class="timeline-day-header" style="margin-bottom: 16px;">
       <div style="display:flex;align-items:center;gap:12px;">
-        <div class="timeline-date-title">Watch History by Year</div>
+        <div class="timeline-date-title">${t('timeline.watch_history_by_year')}</div>
       </div>
       <div class="timeline-day-stats">
-        <span class="stat-chip">${totalLifetimeWatches} total scrobbles</span>
-        <span class="stat-chip">${displayYears.length} ${displayYears.length === 1 ? 'year' : 'years'}</span>
+        <span class="stat-chip">${totalLifetimeWatches} ${t('stats.total_scrobbles')}</span>
+        <span class="stat-chip">${displayYears.length} ${t('stats.days')}</span>
       </div>
     </div>
     <div class="timeline-years-grid">
@@ -868,13 +907,13 @@ function renderTimelineYearsView() {
       <div class="timeline-year-card" data-year="${y.year}">
         <div class="year-card-top">
           <div class="year-card-number">${y.year}</div>
-          <span class="year-card-badge">${y.count} ${y.count === 1 ? 'watch' : 'watches'}</span>
+          <span class="year-card-badge">${y.count} ${y.count === 1 ? t('timeline.item') : t('timeline.items')}</span>
         </div>
-        <div class="year-card-stats">${hours} hours watched • ${activeMonths} active ${activeMonths === 1 ? 'month' : 'months'}</div>
+        <div class="year-card-stats">${hours} ${t('timeline.hours_watched')} • ${activeMonths} ${activeMonths === 1 ? t('timeline.active_month') : t('timeline.active_months')}</div>
         <div class="year-card-posters">
           ${posterImgs || '<div style="display:flex;align-items:center;justify-content:center;width:100%;color:var(--text-dim);font-size:0.75rem;">No posters</div>'}
         </div>
-        <button class="btn btn-outline btn-sm" style="width: 100%; margin-top: 6px;">Explore Year →</button>
+        <button class="btn btn-outline btn-sm" style="width: 100%; margin-top: 6px;">${t('timeline.explore_year')} →</button>
       </div>
     `;
   }
@@ -1009,14 +1048,14 @@ function renderTimeline(days) {
       <div class="timeline-day-header">
         <div style="display:flex;align-items:center;gap:12px;">
           <div class="timeline-date-title">${formatDisplayDate(day.date)}</div>
-          <button class="day-header-delete-btn" data-date="${day.date}" title="Delete all scrobbles on ${day.date}">
+          <button class="day-header-delete-btn" data-date="${day.date}" title="${t('timeline.confirm_delete_day', { date: day.date })}">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-            Delete Day
+            ${t('timeline.delete_day')}
           </button>
         </div>
         <div class="timeline-day-stats">
-          <span class="stat-chip">${day.total_count} ${day.total_count === 1 ? 'item' : 'items'}</span>
-          <span class="stat-chip">${day.total_minutes} min watched</span>
+          <span class="stat-chip">${day.total_count} ${day.total_count === 1 ? t('timeline.item') : t('timeline.items')}</span>
+          <span class="stat-chip">${t('timeline.min_watched', { mins: day.total_minutes })}</span>
         </div>
       </div>
       <div class="scrobble-grid">
@@ -1030,7 +1069,7 @@ function renderTimeline(days) {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation();
       const dateStr = btn.dataset.date;
-      if (confirm(`Delete all scrobbles logged on ${dateStr}? This action cannot be undone.`)) {
+      if (confirm(t('timeline.confirm_delete_day', { date: dateStr }))) {
         try {
           await api.deleteByDate(dateStr);
           loadTimeline();
@@ -1275,7 +1314,7 @@ function renderScrobbleCard(item, isHistory = false) {
   const badgeClass = isEpisode ? 'badge-episode' : 'badge-movie';
   const badgeText = isEpisode
     ? `S${String(item.season_number || 1).padStart(2, '0')}E${String(item.episode_number || 1).padStart(2, '0')}`
-    : 'Movie';
+    : t('history.movie');
 
   const subTitle = isEpisode && item.grandparent_title
     ? `${item.grandparent_title}`
@@ -1306,7 +1345,7 @@ function renderScrobbleCard(item, isHistory = false) {
 
   const isInProgress = item.watch_status === 'in_progress';
   const progressBadgeHtml = isInProgress
-    ? `<span class="scrobble-badge badge-in-progress" title="In progress: ${item.progress_percent || 0}%">⏳ ${item.progress_percent || 0}%</span>`
+    ? `<span class="scrobble-badge badge-in-progress" title="${t('history.in_progress')}: ${item.progress_percent || 0}%">⏳ ${item.progress_percent || 0}%</span>`
     : '';
 
   const progressBarHtml = isInProgress && (item.progress_percent != null)
@@ -1395,11 +1434,12 @@ async function loadHistory() {
     });
 
     state.history.totalPages = res.total_pages || 1;
+    state.history.total = res.total || 0;
     state.history.currentItems = res.items || [];
     renderHistory(res);
   } catch (err) {
     console.error('Error loading history:', err);
-    el.historyList.innerHTML = `<div class="empty-state"><p>Error loading history.</p></div>`;
+    el.historyList.innerHTML = `<div class="empty-state"><p>${t('history.empty_filtered')}</p></div>`;
   }
 }
 
@@ -1408,7 +1448,7 @@ function renderHistory(res) {
     el.historyList.innerHTML = `
       <div class="empty-state">
         <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        <p>No scrobbles match your search criteria.</p>
+        <p>${t('history.empty_filtered')}</p>
       </div>`;
     el.historyPagination.style.display = 'none';
     return;
@@ -1426,11 +1466,11 @@ function renderHistory(res) {
   // Pagination bar
   el.historyPagination.style.display = 'flex';
   if (state.history.allResults) {
-    el.paginationInfo.textContent = `Showing all ${res.total} results across history`;
+    el.paginationInfo.textContent = t('history.showing_all', { total: res.total });
     el.btnPagePrev.disabled = true;
     el.btnPageNext.disabled = true;
   } else {
-    el.paginationInfo.textContent = `Page ${res.page} of ${res.total_pages} (${res.total} total)`;
+    el.paginationInfo.textContent = t('history.page_info', { page: res.page, pages: res.total_pages, total: res.total });
     el.btnPagePrev.disabled = res.page <= 1;
     el.btnPageNext.disabled = res.page >= res.total_pages;
   }
@@ -1440,7 +1480,7 @@ function renderHistory(res) {
 function updateBulkBarState() {
   if (!el.historyBulkBar) return;
   const count = state.history.selectedIds.size;
-  if (el.bulkSelectedCount) el.bulkSelectedCount.textContent = `${count} selected`;
+  if (el.bulkSelectedCount) el.bulkSelectedCount.textContent = t('history.selected_count', { count });
   if (el.btnDeleteSelected) el.btnDeleteSelected.disabled = count === 0;
 
   // Check if all visible items are selected
@@ -1590,14 +1630,14 @@ function renderStats() {
   // 1. Total Scrobbles Card
   if (isMovie) {
     el.statScrobbles.textContent = (s.movies_watched || 0).toLocaleString();
-    if (el.statScrobblesSub) el.statScrobblesSub.textContent = 'total movie watches';
+    if (el.statScrobblesSub) el.statScrobblesSub.textContent = t('stats.total_movies_watched', 'total movie watches');
   } else if (isTv) {
     el.statScrobbles.textContent = (s.episodes_watched || 0).toLocaleString();
-    if (el.statScrobblesSub) el.statScrobblesSub.textContent = 'total episode watches';
+    if (el.statScrobblesSub) el.statScrobblesSub.textContent = t('stats.total_episodes_watched', 'total episode watches');
   } else {
     el.statScrobbles.textContent = (s.total_scrobbles || 0).toLocaleString();
     if (el.statScrobblesSub) {
-      el.statScrobblesSub.textContent = `${(s.movies_watched || 0).toLocaleString()} movies · ${(s.episodes_watched || 0).toLocaleString()} episodes`;
+      el.statScrobblesSub.textContent = `${(s.movies_watched || 0).toLocaleString()} ${t('stats.tab_movies').toLowerCase()} · ${(s.episodes_watched || 0).toLocaleString()} ${t('stats.tab_shows').toLowerCase()}`;
     }
   }
 
@@ -1618,32 +1658,32 @@ function renderStats() {
   } else {
     el.statHours.textContent = mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
   }
-  el.statMinutes.textContent = `${totalMins.toLocaleString()} total minutes watched`;
+  el.statMinutes.textContent = t('stats.total_mins_watched', { mins: totalMins.toLocaleString() });
 
   // 3. Movies Card
   el.statMovies.textContent = (s.movies_watched || 0).toLocaleString();
   if (el.statUniqueMovies) {
-    el.statUniqueMovies.textContent = `${(s.unique_movies || 0).toLocaleString()} unique`;
+    el.statUniqueMovies.textContent = t('stats.unique_movies', { count: (s.unique_movies || 0).toLocaleString() });
   }
   if (el.statMovieTime) {
     const mH = Math.floor((s.movie_minutes || 0) / 60);
-    el.statMovieTime.textContent = `${mH.toLocaleString()}h total runtime`;
+    el.statMovieTime.textContent = t('stats.movie_runtime', { hours: mH.toLocaleString() });
   }
 
   // 4. TV Episodes Card
   el.statEpisodes.textContent = (s.episodes_watched || 0).toLocaleString();
   if (el.statUniqueShows) {
-    el.statUniqueShows.textContent = `${(s.unique_shows || 0).toLocaleString()} shows`;
+    el.statUniqueShows.textContent = t('stats.unique_shows', { count: (s.unique_shows || 0).toLocaleString() });
   }
   if (el.statEpisodeTime) {
     const eH = Math.floor((s.episode_minutes || 0) / 60);
-    el.statEpisodeTime.textContent = `${eH.toLocaleString()}h total runtime`;
+    el.statEpisodeTime.textContent = t('stats.episode_runtime', { hours: eH.toLocaleString() });
   }
 
   // 5. Watching Streak Card
   el.statStreak.textContent = `${s.current_streak_days || 0}d 🔥`;
   if (el.statStreakSub) {
-    el.statStreakSub.textContent = `Longest streak: ${s.longest_streak_days || 0} days`;
+    el.statStreakSub.textContent = t('stats.longest_streak', { days: s.longest_streak_days || 0 });
   }
 
   // 6. Daily Pace Card
@@ -1658,8 +1698,8 @@ function renderStats() {
   }
   if (el.statTotalRated) {
     el.statTotalRated.textContent = s.total_rated
-      ? `${s.total_rated.toLocaleString()} items rated`
-      : 'No ratings yet';
+      ? t('stats.items_rated', { count: s.total_rated.toLocaleString() })
+      : t('stats.no_ratings');
   }
 
   // 8. Completion Rate Card
@@ -1670,10 +1710,10 @@ function renderStats() {
 
   // 9. Peak Binge Day Card
   if (el.statPeakCount) {
-    el.statPeakCount.textContent = (s.peak_day_count || 0) > 0 ? `${s.peak_day_count} items` : '—';
+    el.statPeakCount.textContent = (s.peak_day_count || 0) > 0 ? t('stats.items_count', { count: s.peak_day_count }) : '—';
   }
   if (el.statPeakDay) {
-    el.statPeakDay.textContent = s.peak_day ? `on ${s.peak_day}` : 'No activity yet';
+    el.statPeakDay.textContent = s.peak_day ? t('stats.on_date', { date: s.peak_day }) : t('stats.no_activity');
   }
 
   // Toggle Top Shows section
@@ -1964,8 +2004,8 @@ async function loadNowPlaying() {
         ? `${p.grandparent_title} - ${p.title}`
         : p.title;
 
-      el.nowPlayingDevice.textContent = p.player_title ? `on ${p.player_title}` : '';
-      el.nowPlayingState.textContent = p.state === 'paused' ? 'PAUSED' : 'NOW WATCHING';
+      el.nowPlayingDevice.textContent = p.player_title ? t('now_playing.on_device', { device: p.player_title }) : '';
+      el.nowPlayingState.textContent = p.state === 'paused' ? t('now_playing.paused') : t('now_playing.badge');
 
       if (p.duration_ms > 0) {
         const pct = Math.min(100, Math.round((p.view_offset_ms / p.duration_ms) * 100));
@@ -2945,10 +2985,10 @@ function formatDisplayDate(dateStr) {
     today.setHours(0, 0, 0, 0);
 
     const diff = Math.round((today - d) / (1000 * 60 * 60 * 24));
-    if (diff === 0) return 'Today';
-    if (diff === 1) return 'Yesterday';
+    if (diff === 0) return t('timeline.today');
+    if (diff === 1) return t('timeline.yesterday');
 
-    return d.toLocaleDateString(undefined, {
+    return d.toLocaleDateString(getLanguage() || undefined, {
       weekday: 'short',
       month: 'short',
       day: 'numeric',
@@ -2961,7 +3001,7 @@ function formatDisplayDate(dateStr) {
 function formatTime(isoStr) {
   try {
     const d = new Date(isoStr);
-    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return d.toLocaleTimeString(getLanguage() || undefined, { hour: '2-digit', minute: '2-digit' });
   } catch (e) {
     return '';
   }

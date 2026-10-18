@@ -2890,9 +2890,9 @@ h1, h2, h3, h4 {
 }
 
 .language-select {
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid var(--border-color);
-  color: var(--text-color);
+  background-color: #131d33;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #f8fafc;
   font-size: 0.82rem;
   font-weight: 500;
   border-radius: var(--radius-sm);
@@ -2900,19 +2900,27 @@ h1, h2, h3, h4 {
   cursor: pointer;
   transition: all 0.2s ease;
   outline: none;
+  color-scheme: dark;
 }
 
 .language-select:hover,
 .language-select:focus {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.25);
+  background-color: #1e293b;
+  border-color: rgba(255, 255, 255, 0.3);
   color: #fff;
 }
 
 .nav-language-select {
   padding: 4px 6px;
   font-size: 0.78rem;
-  background: rgba(255, 255, 255, 0.04);
+  background-color: #0f172a;
+}
+
+/* Dark mode styling for dropdown options */
+select option,
+.language-select option {
+  background-color: #0f172a !important;
+  color: #f8fafc !important;
 }
 
 
