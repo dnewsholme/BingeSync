@@ -498,115 +498,68 @@ pub async fn import_tautulli_handler(
     })))
 }
 
-/// Helper to probe Tautulli endpoints and fetch users data
+/// Helper to call Tautulli endpoint and fetch users data using the exact configured path
 async fn fetch_tautulli_users_data(
     client: &Client,
     raw_url: &str,
     api_key: &str,
 ) -> Result<(String, serde_json::Value), (StatusCode, Json<serde_json::Value>)> {
-    let mut base = raw_url.trim().trim_end_matches('/').to_string();
-    if base.ends_with("/api/v2") {
-        base = base.trim_end_matches("/api/v2").trim_end_matches('/').to_string();
+    let base = raw_url.trim().trim_end_matches('/');
+    let endpoint = if base.ends_with("/api/v2") {
+        base.to_string()
     } else if base.ends_with("/api") {
-        base = base.trim_end_matches("/api").trim_end_matches('/').to_string();
-    }
-
-    let mut candidates = vec![
-        format!("{}/api/v2", base),
-        format!("{}/api/v2/", base),
-    ];
-    if !base.ends_with("/tautulli") {
-        candidates.push(format!("{}/tautulli/api/v2", base));
-        candidates.push(format!("{}/tautulli/api/v2/", base));
-    }
-    if !base.ends_with("/plexpy") {
-        candidates.push(format!("{}/plexpy/api/v2", base));
-        candidates.push(format!("{}/plexpy/api/v2/", base));
-    }
-    candidates.push(format!("{}/api", base));
-
-    let mut last_status = None;
-    let mut last_err = None;
-
-    for endpoint in &candidates {
-        let target_url = if endpoint.contains('?') {
-            format!("{}&apikey={}&cmd=get_users", endpoint, api_key.trim())
-        } else {
-            format!("{}?apikey={}&cmd=get_users", endpoint, api_key.trim())
-        };
-
-        match client.get(&target_url).send().await {
-            Ok(resp) => {
-                let status = resp.status();
-                if status.is_success() {
-                    match resp.json::<serde_json::Value>().await {
-                        Ok(json_val) => {
-                            if let Some(res) = json_val.get("response").and_then(|r| r.get("result")).and_then(|s| s.as_str()) {
-                                if res == "error" {
-                                    let msg = json_val.get("response")
-                                        .and_then(|r| r.get("message"))
-                                        .and_then(|m| m.as_str())
-                                        .unwrap_or("Tautulli returned an error");
-                                    return Err((
-                                        StatusCode::BAD_GATEWAY,
-                                        Json(serde_json::json!({ "error": format!("Tautulli error: {}", msg) })),
-                                    ));
-                                }
-                            }
-                            return Ok((endpoint.clone(), json_val));
-                        }
-                        Err(e) => {
-                            last_err = Some(format!("Failed to parse Tautulli response JSON: {}", e));
-                        }
-                    }
-                } else if status == StatusCode::NOT_FOUND {
-                    let body = resp.text().await.unwrap_or_default();
-                    tracing::warn!(
-                        endpoint = %endpoint,
-                        status = %status,
-                        body = %body,
-                        "Tautulli endpoint returned 404 Not Found"
-                    );
-                    last_status = Some(status);
-                    continue;
-                } else {
-                    let body = resp.text().await.unwrap_or_default();
-                    tracing::warn!(
-                        endpoint = %endpoint,
-                        status = %status,
-                        body = %body,
-                        "Tautulli endpoint returned non-success status"
-                    );
-                    return Err((
-                        StatusCode::BAD_GATEWAY,
-                        Json(serde_json::json!({
-                            "error": format!("Tautulli server responded with status: {}", status)
-                        })),
-                    ));
-                }
-            }
-            Err(e) => {
-                last_err = Some(format!("Failed to connect to Tautulli at {}: {}", endpoint, e));
-            }
-        }
-    }
-
-    let err_msg = if let Some(st) = last_status {
-        if st == StatusCode::NOT_FOUND {
-            format!(
-                "Tautulli server responded with status: 404 Not Found (tested: {}). Please verify that 'Enable API' is checked in Tautulli under Settings > Web Interface > API, and that any configured HTTP Root / Base Path is included in your Tautulli URL.",
-                candidates.join(", ")
-            )
-        } else {
-            format!("Tautulli server responded with status: {} (tested: {})", st, candidates.join(", "))
-        }
+        format!("{}/v2", base)
     } else {
-        last_err.unwrap_or_else(|| format!("Failed to reach Tautulli API (tested: {})", candidates.join(", ")))
+        format!("{}/api/v2", base)
     };
 
+    let target_url = if endpoint.contains('?') {
+        format!("{}&apikey={}&cmd=get_users", endpoint, api_key.trim())
+    } else {
+        format!("{}?apikey={}&cmd=get_users", endpoint, api_key.trim())
+    };
+
+    let resp = client.get(&target_url).send().await.map_err(|e| {
+        (
+            StatusCode::BAD_GATEWAY,
+            Json(serde_json::json!({
+                "error": format!("Failed to connect to Tautulli at {}: {}", endpoint, e)
+            })),
+        )
+    })?;
+
+    let status = resp.status();
+    if status.is_success() {
+        let json_val = resp.json::<serde_json::Value>().await.map_err(|e| {
+            (
+                StatusCode::BAD_GATEWAY,
+                Json(serde_json::json!({
+                    "error": format!("Failed to parse Tautulli response JSON from {}: {}", endpoint, e)
+                })),
+            )
+        })?;
+
+        if let Some(res) = json_val.get("response").and_then(|r| r.get("result")).and_then(|s| s.as_str()) {
+            if res == "error" {
+                let msg = json_val.get("response")
+                    .and_then(|r| r.get("message"))
+                    .and_then(|m| m.as_str())
+                    .unwrap_or("Tautulli returned an error");
+                return Err((
+                    StatusCode::BAD_GATEWAY,
+                    Json(serde_json::json!({ "error": format!("Tautulli error: {}", msg) })),
+                ));
+            }
+        }
+        return Ok((endpoint, json_val));
+    }
+
+    let body = resp.text().await.unwrap_or_default();
     Err((
         StatusCode::BAD_GATEWAY,
-        Json(serde_json::json!({ "error": err_msg })),
+        Json(serde_json::json!({
+            "error": format!("Tautulli server responded with status {}: {}", status, body.chars().take(200).collect::<String>())
+        })),
     ))
 }
 
