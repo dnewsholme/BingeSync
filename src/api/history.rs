@@ -782,54 +782,74 @@ pub async fn refresh_scrobble_metadata(
     let (search_title, detected_year) = crate::api::tvdb::normalize_search_query(raw_search_title);
     let effective_year = scrobble.year.or(detected_year);
 
-    // 1. Fetch metadata from TheTVDB if configured
-    let tvdb_key = state.get_effective_tvdb_api_key().await;
-    if let Some(ref key) = tvdb_key {
-        if !key.trim().is_empty() {
-            let base_url = state.get_effective_tvdb_base_url().await;
+    // 1. Fetch metadata from active provider (TheTVDB or TMDB) if configured
+    let metadata_source = state.get_effective_metadata_source().await;
+    let provider_owned = if metadata_source == "tmdb" {
+        if let Some(key) = state.get_effective_tmdb_api_key().await.filter(|k| !k.trim().is_empty()) {
+            let base_url = state.get_effective_tmdb_base_url().await;
+            Some(crate::api::tvdb::MetadataProviderOwned::Tmdb(crate::api::tmdb::TmdbClient::new(base_url, key)))
+        } else if let Some(key) = state.get_effective_tvdb_api_key().await.filter(|k| !k.trim().is_empty()) {
             let pin = state.get_effective_tvdb_pin().await;
-            let client = crate::api::tvdb::TvdbClient::new(base_url, key.clone(), pin);
+            let base_url = state.get_effective_tvdb_base_url().await;
+            Some(crate::api::tvdb::MetadataProviderOwned::Tvdb(crate::api::tvdb::TvdbClient::new(base_url, key, pin)))
+        } else {
+            None
+        }
+    } else {
+        if let Some(key) = state.get_effective_tvdb_api_key().await.filter(|k| !k.trim().is_empty()) {
+            let pin = state.get_effective_tvdb_pin().await;
+            let base_url = state.get_effective_tvdb_base_url().await;
+            Some(crate::api::tvdb::MetadataProviderOwned::Tvdb(crate::api::tvdb::TvdbClient::new(base_url, key, pin)))
+        } else if let Some(key) = state.get_effective_tmdb_api_key().await.filter(|k| !k.trim().is_empty()) {
+            let base_url = state.get_effective_tmdb_base_url().await;
+            Some(crate::api::tvdb::MetadataProviderOwned::Tmdb(crate::api::tmdb::TmdbClient::new(base_url, key)))
+        } else {
+            None
+        }
+    };
 
-            let mut meta_opt = None;
-            if let Some(ref tid) = scrobble.tvdb_id {
-                let clean_tid = tid.trim();
-                meta_opt = if is_episode {
-                    match client.get_series_extended(clean_tid).await {
-                        Ok(m) => Some(m),
-                        Err(_) => client.get_movie_extended(clean_tid).await.ok(),
+    if let Some(ref p_owned) = provider_owned {
+        let provider = p_owned.as_ref();
+        let mut meta_opt = None;
+        if let Some(ref tid) = scrobble.tvdb_id {
+            let clean_tid = tid.trim();
+            meta_opt = if is_episode {
+                match provider.get_series_extended(clean_tid).await {
+                    Ok(m) => Some(m),
+                    Err(_) => provider.get_movie_extended(clean_tid).await.ok(),
+                }
+            } else {
+                match provider.get_movie_extended(clean_tid).await {
+                    Ok(m) => Some(m),
+                    Err(_) => provider.get_series_extended(clean_tid).await.ok(),
+                }
+            };
+        }
+
+        if meta_opt.is_none() {
+            if let Ok(Some(search_match)) = provider.search(&search_title, if is_episode { "series" } else { "movie" }, effective_year).await {
+                let match_is_series = search_match.entity_type.as_deref() == Some("series") || is_episode;
+                let mut meta = if match_is_series {
+                    match provider.get_series_extended(&search_match.id).await {
+                        Ok(m) => m,
+                        Err(_) => provider.get_movie_extended(&search_match.id).await.unwrap_or_default(),
                     }
                 } else {
-                    match client.get_movie_extended(clean_tid).await {
-                        Ok(m) => Some(m),
-                        Err(_) => client.get_series_extended(clean_tid).await.ok(),
+                    match provider.get_movie_extended(&search_match.id).await {
+                        Ok(m) => m,
+                        Err(_) => provider.get_series_extended(&search_match.id).await.unwrap_or_default(),
                     }
                 };
-            }
 
-            if meta_opt.is_none() {
-                if let Ok(Some(search_match)) = client.search(&search_title, if is_episode { "series" } else { "movie" }, effective_year).await {
-                    let match_is_series = search_match.entity_type.as_deref() == Some("series") || is_episode;
-                    let mut meta = if match_is_series {
-                        match client.get_series_extended(&search_match.id).await {
-                            Ok(m) => m,
-                            Err(_) => client.get_movie_extended(&search_match.id).await.unwrap_or_default(),
-                        }
-                    } else {
-                        match client.get_movie_extended(&search_match.id).await {
-                            Ok(m) => m,
-                            Err(_) => client.get_series_extended(&search_match.id).await.unwrap_or_default(),
-                        }
-                    };
-
-                    if meta.overview.is_none() || meta.overview.as_deref() == Some("") {
-                        meta.overview = search_match.overview.clone();
-                    }
-                    if meta.image_url.is_none() || meta.image_url.as_deref() == Some("") {
-                        meta.image_url = search_match.image_url.clone();
-                    }
-                    meta_opt = Some(meta);
+                if meta.overview.is_none() || meta.overview.as_deref() == Some("") {
+                    meta.overview = search_match.overview.clone();
                 }
+                if meta.image_url.is_none() || meta.image_url.as_deref() == Some("") {
+                    meta.image_url = search_match.image_url.clone();
+                }
+                meta_opt = Some(meta);
             }
+        }
 
             if let Some(meta) = meta_opt {
                 let now_str = Utc::now().to_rfc3339();
@@ -905,7 +925,6 @@ pub async fn refresh_scrobble_metadata(
                 }
             }
         }
-    }
 
     // 2. Fetch/update poster if missing or Plex relative path
     let needs_poster = scrobble.thumb_url.as_deref()
@@ -1012,27 +1031,46 @@ pub async fn fix_match_handler(
             .await;
     }
 
-    // 3. Immediately fetch metadata from TheTVDB with specified ID if API key configured
-    let tvdb_key = state.get_effective_tvdb_api_key().await;
+    // 3. Immediately fetch metadata from active provider with specified ID if API key configured
+    let metadata_source = state.get_effective_metadata_source().await;
+    let provider_owned = if metadata_source == "tmdb" {
+        if let Some(key) = state.get_effective_tmdb_api_key().await.filter(|k| !k.trim().is_empty()) {
+            let base_url = state.get_effective_tmdb_base_url().await;
+            Some(crate::api::tvdb::MetadataProviderOwned::Tmdb(crate::api::tmdb::TmdbClient::new(base_url, key)))
+        } else if let Some(key) = state.get_effective_tvdb_api_key().await.filter(|k| !k.trim().is_empty()) {
+            let pin = state.get_effective_tvdb_pin().await;
+            let base_url = state.get_effective_tvdb_base_url().await;
+            Some(crate::api::tvdb::MetadataProviderOwned::Tvdb(crate::api::tvdb::TvdbClient::new(base_url, key, pin)))
+        } else {
+            None
+        }
+    } else {
+        if let Some(key) = state.get_effective_tvdb_api_key().await.filter(|k| !k.trim().is_empty()) {
+            let pin = state.get_effective_tvdb_pin().await;
+            let base_url = state.get_effective_tvdb_base_url().await;
+            Some(crate::api::tvdb::MetadataProviderOwned::Tvdb(crate::api::tvdb::TvdbClient::new(base_url, key, pin)))
+        } else if let Some(key) = state.get_effective_tmdb_api_key().await.filter(|k| !k.trim().is_empty()) {
+            let base_url = state.get_effective_tmdb_base_url().await;
+            Some(crate::api::tvdb::MetadataProviderOwned::Tmdb(crate::api::tmdb::TmdbClient::new(base_url, key)))
+        } else {
+            None
+        }
+    };
     let now_str = Utc::now().to_rfc3339();
 
-    if let Some(ref key) = tvdb_key {
-        if !key.trim().is_empty() {
-            let base_url = state.get_effective_tvdb_base_url().await;
-            let pin = state.get_effective_tvdb_pin().await;
-            let client = crate::api::tvdb::TvdbClient::new(base_url, key.clone(), pin);
-
-            let meta_res = if is_episode {
-                match client.get_series_extended(clean_id).await {
-                    Ok(m) => Ok(m),
-                    Err(_) => client.get_movie_extended(clean_id).await,
-                }
-            } else {
-                match client.get_movie_extended(clean_id).await {
-                    Ok(m) => Ok(m),
-                    Err(_) => client.get_series_extended(clean_id).await,
-                }
-            };
+    if let Some(ref p_owned) = provider_owned {
+        let provider = p_owned.as_ref();
+        let meta_res = if is_episode {
+            match provider.get_series_extended(clean_id).await {
+                Ok(m) => Ok(m),
+                Err(_) => provider.get_movie_extended(clean_id).await,
+            }
+        } else {
+            match provider.get_movie_extended(clean_id).await {
+                Ok(m) => Ok(m),
+                Err(_) => provider.get_series_extended(clean_id).await,
+            }
+        };
 
             if let Ok(meta) = meta_res {
                 if is_episode {
@@ -1107,7 +1145,6 @@ pub async fn fix_match_handler(
                 }
             }
         }
-    }
 
     // 4. Notify background workers if poster or metadata needs processing
     let needs_poster = scrobble.thumb_url.as_deref()

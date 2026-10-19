@@ -192,11 +192,28 @@ impl BackgroundTaskTracker {
             last_message: self.image_last_message.read().await.clone(),
         };
 
+        let metadata_source = state.get_effective_metadata_source().await;
+        let (meta_name, meta_desc, meta_configured) = if metadata_source == "tmdb" {
+            let tmdb_key = state.get_effective_tmdb_api_key().await;
+            let tmdb_configured = tmdb_key.is_some() && !tmdb_key.as_deref().unwrap_or("").is_empty();
+            (
+                "The Movie Database (TMDB) Metadata Enrichment".to_string(),
+                "Fetches official genres, actor cast lists, director credits, and episode/plot overviews from The Movie Database (TMDB).".to_string(),
+                tmdb_configured
+            )
+        } else {
+            (
+                "TheTVDB v4 Metadata Enrichment".to_string(),
+                "Fetches official genres, actor cast lists, director credits, and episode/plot overviews from TheTVDB.".to_string(),
+                tvdb_configured
+            )
+        };
+
         let tvdb_task = BackgroundTaskInfo {
             id: "tvdb_metadata".to_string(),
-            name: "TheTVDB v4 Metadata Enrichment".to_string(),
-            description: "Fetches official genres, actor cast lists, director credits, and episode/plot overviews from TheTVDB.".to_string(),
-            status: if tvdb_configured { self.tvdb_status.read().await.clone() } else { "disabled (unconfigured)".to_string() },
+            name: meta_name,
+            description: meta_desc,
+            status: if meta_configured { self.tvdb_status.read().await.clone() } else { "disabled (unconfigured)".to_string() },
             schedule: tvdb_sched_str,
             interval_hours: tvdb_interval,
             items_processed: (processed_metadata.max(0) as usize).max(self.tvdb_processed.load(Ordering::Relaxed)),

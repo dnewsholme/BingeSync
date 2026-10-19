@@ -709,33 +709,93 @@ fn parse_extended_metadata(data: &serde_json::Value) -> TvdbMetadata {
     }
 }
 
-/// Spawns the background worker for metadata enrichment via TheTVDB.
+pub enum MetadataProvider<'a> {
+    Tvdb(&'a TvdbClient),
+    Tmdb(&'a crate::api::tmdb::TmdbClient),
+}
+
+impl<'a> MetadataProvider<'a> {
+    pub async fn search(
+        &self,
+        query: &str,
+        media_type: &str,
+        year: Option<i32>,
+    ) -> Result<Option<TvdbSearchResult>, String> {
+        match self {
+            MetadataProvider::Tvdb(c) => c.search(query, media_type, year).await,
+            MetadataProvider::Tmdb(c) => c.search(query, media_type, year).await,
+        }
+    }
+
+    pub async fn get_series_extended(&self, id: &str) -> Result<TvdbMetadata, String> {
+        match self {
+            MetadataProvider::Tvdb(c) => c.get_series_extended(id).await,
+            MetadataProvider::Tmdb(c) => c.get_series_details(id).await,
+        }
+    }
+
+    pub async fn get_movie_extended(&self, id: &str) -> Result<TvdbMetadata, String> {
+        match self {
+            MetadataProvider::Tvdb(c) => c.get_movie_extended(id).await,
+            MetadataProvider::Tmdb(c) => c.get_movie_details(id).await,
+        }
+    }
+}
+
+pub enum MetadataProviderOwned {
+    Tvdb(TvdbClient),
+    Tmdb(crate::api::tmdb::TmdbClient),
+}
+
+impl MetadataProviderOwned {
+    pub fn as_ref(&self) -> MetadataProvider<'_> {
+        match self {
+            MetadataProviderOwned::Tvdb(ref c) => MetadataProvider::Tvdb(c),
+            MetadataProviderOwned::Tmdb(ref c) => MetadataProvider::Tmdb(c),
+        }
+    }
+}
+
+/// Spawns the background worker for metadata enrichment via TheTVDB or TMDB.
 pub fn start_metadata_worker(state: AppState) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let mut failed_lookups: HashSet<String> = HashSet::new();
 
         loop {
-            let api_key_opt = state.get_effective_tvdb_api_key().await;
-            if let Some(api_key) = api_key_opt {
-                if !api_key.trim().is_empty() {
-                    let pin = state.get_effective_tvdb_pin().await;
-                    let base_url = state.get_effective_tvdb_base_url().await;
-                    let tvdb_client = TvdbClient::new(base_url, api_key, pin);
-
-                    state.task_tracker.set_tvdb_running("Searching TheTVDB for missing metadata...").await;
-                    let processed = process_missing_metadata_batch(&state, &tvdb_client, &mut failed_lookups).await;
-                    state.task_tracker.set_tvdb_idle(processed, &format!("Processed {} item(s)", processed)).await;
-
-                    if processed > 0 {
-                        // Throttle slightly between batches to respect TVDB limits
-                        tokio::time::sleep(Duration::from_millis(400)).await;
-                        continue;
-                    }
+            let metadata_source = state.get_effective_metadata_source().await;
+            let (provider_opt, provider_name) = if metadata_source == "tmdb" {
+                let tmdb_key = state.get_effective_tmdb_api_key().await;
+                if let Some(key) = tmdb_key.filter(|k| !k.trim().is_empty()) {
+                    let base_url = state.get_effective_tmdb_base_url().await;
+                    let client = crate::api::tmdb::TmdbClient::new(base_url, key);
+                    (Some(MetadataProviderOwned::Tmdb(client)), "The Movie Database (TMDB)")
                 } else {
-                    state.task_tracker.set_tvdb_idle(0, "TVDB API key not configured").await;
+                    (None, "The Movie Database (TMDB)")
                 }
             } else {
-                state.task_tracker.set_tvdb_idle(0, "TVDB API key not configured").await;
+                let tvdb_key = state.get_effective_tvdb_api_key().await;
+                if let Some(key) = tvdb_key.filter(|k| !k.trim().is_empty()) {
+                    let pin = state.get_effective_tvdb_pin().await;
+                    let base_url = state.get_effective_tvdb_base_url().await;
+                    let client = TvdbClient::new(base_url, key, pin);
+                    (Some(MetadataProviderOwned::Tvdb(client)), "TheTVDB")
+                } else {
+                    (None, "TheTVDB")
+                }
+            };
+
+            if let Some(provider) = provider_opt {
+                state.task_tracker.set_tvdb_running(&format!("Searching {} for missing metadata...", provider_name)).await;
+                let processed = process_missing_metadata_batch_provider(&state, provider.as_ref(), &mut failed_lookups).await;
+                state.task_tracker.set_tvdb_idle(processed, &format!("Processed {} item(s)", processed)).await;
+
+                if processed > 0 {
+                    // Throttle slightly between batches to respect API limits
+                    tokio::time::sleep(Duration::from_millis(400)).await;
+                    continue;
+                }
+            } else {
+                state.task_tracker.set_tvdb_idle(0, &format!("{} API key not configured", provider_name)).await;
             }
 
             let interval_hours = state.get_task_interval_hours("tvdb_metadata").await;
@@ -772,10 +832,19 @@ struct MissingMetadataItem {
     tvdb_id: Option<String>,
 }
 
-/// Process a single batch of scrobbles requiring metadata enrichment.
+/// Process a single batch of scrobbles requiring metadata enrichment with TvdbClient (for backward compatibility).
 pub async fn process_missing_metadata_batch(
     state: &AppState,
     client: &TvdbClient,
+    failed_lookups: &mut HashSet<String>,
+) -> usize {
+    process_missing_metadata_batch_provider(state, MetadataProvider::Tvdb(client), failed_lookups).await
+}
+
+/// Process a single batch of scrobbles requiring metadata enrichment with any MetadataProvider.
+pub async fn process_missing_metadata_batch_provider(
+    state: &AppState,
+    client: MetadataProvider<'_>,
     failed_lookups: &mut HashSet<String>,
 ) -> usize {
     let rows: Vec<MissingMetadataItem> = match sqlx::query_as(
@@ -967,19 +1036,30 @@ pub async fn process_missing_metadata_batch(
 
 /// Helper to trigger metadata processing once (e.g. for testing)
 pub async fn process_missing_metadata_once(state: &AppState) -> usize {
-    let api_key = match state.get_effective_tvdb_api_key().await {
-        Some(k) if !k.trim().is_empty() => k,
-        _ => return 0,
-    };
-
-    let base_url = state.get_effective_tvdb_base_url().await;
-    let pin = state.get_effective_tvdb_pin().await;
-
-    let client = TvdbClient::new(
-        base_url,
-        api_key,
-        pin,
-    );
+    let source = state.get_effective_metadata_source().await;
     let mut failed = HashSet::new();
-    process_missing_metadata_batch(state, &client, &mut failed).await
+
+    if source == "tmdb" {
+        if let Some(tmdb_key) = state.get_effective_tmdb_api_key().await.filter(|k| !k.trim().is_empty()) {
+            let base_url = state.get_effective_tmdb_base_url().await;
+            let client = crate::api::tmdb::TmdbClient::new(base_url, tmdb_key);
+            return process_missing_metadata_batch_provider(state, MetadataProvider::Tmdb(&client), &mut failed).await;
+        }
+    }
+
+    if let Some(tvdb_key) = state.get_effective_tvdb_api_key().await.filter(|k| !k.trim().is_empty()) {
+        let base_url = state.get_effective_tvdb_base_url().await;
+        let pin = state.get_effective_tvdb_pin().await;
+        let client = TvdbClient::new(base_url, tvdb_key, pin);
+        return process_missing_metadata_batch_provider(state, MetadataProvider::Tvdb(&client), &mut failed).await;
+    }
+
+    // Fallback to TMDB if TVDB wasn't configured
+    if let Some(tmdb_key) = state.get_effective_tmdb_api_key().await.filter(|k| !k.trim().is_empty()) {
+        let base_url = state.get_effective_tmdb_base_url().await;
+        let client = crate::api::tmdb::TmdbClient::new(base_url, tmdb_key);
+        return process_missing_metadata_batch_provider(state, MetadataProvider::Tmdb(&client), &mut failed).await;
+    }
+
+    0
 }

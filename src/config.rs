@@ -18,6 +18,9 @@ pub struct Config {
     pub tvdb_api_key: Option<String>,
     pub tvdb_pin: Option<String>,
     pub tvdb_base_url: String,
+    pub metadata_source: String,
+    pub tmdb_api_key: Option<String>,
+    pub tmdb_base_url: String,
     pub scrobble_threshold_percent: i64,
 }
 
@@ -96,6 +99,16 @@ impl Config {
         let tvdb_pin = env::var("TVDB_PIN").ok().filter(|s| !s.trim().is_empty());
         let tvdb_base_url = env::var("TVDB_BASE_URL").unwrap_or_else(|_| "https://api4.thetvdb.com/v4".to_string());
 
+        let metadata_source = env::var("METADATA_SOURCE")
+            .ok()
+            .map(|s| s.trim().to_lowercase())
+            .filter(|s| s == "tmdb" || s == "themoviedb" || s == "tvdb" || s == "thetvdb")
+            .map(|s| if s == "tmdb" || s == "themoviedb" { "tmdb".to_string() } else { "tvdb".to_string() })
+            .unwrap_or_else(|| "tvdb".to_string());
+
+        let tmdb_api_key = env::var("TMDB_API_KEY").ok().filter(|s| !s.trim().is_empty());
+        let tmdb_base_url = env::var("TMDB_BASE_URL").unwrap_or_else(|_| "https://api.themoviedb.org/3".to_string());
+
         let image_cache_dir = env::var("IMAGE_CACHE_DIR").unwrap_or_else(|_| {
             if let Some(path_str) = database_url
                 .strip_prefix("sqlite://")
@@ -133,6 +146,9 @@ impl Config {
             tvdb_api_key,
             tvdb_pin,
             tvdb_base_url,
+            metadata_source,
+            tmdb_api_key,
+            tmdb_base_url,
             scrobble_threshold_percent,
         }
     }

@@ -562,6 +562,11 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     const footerLink = footer.locator('a.tvdb-link');
     await expect(footerLink).toHaveAttribute('href', 'https://thetvdb.com');
 
+    await expect(footer).toContainText('TMDB');
+    await expect(footer).toContainText('This product uses the TMDB API but is not endorsed or certified by TMDB');
+    const tmdbFooterLink = footer.locator('a.tmdb-link');
+    await expect(tmdbFooterLink).toHaveAttribute('href', 'https://www.themoviedb.org');
+
     // 2. Sign in
     await page.fill('#dev-email', userEmail);
     await page.fill('#dev-name', 'TVDB User');
@@ -877,7 +882,7 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     await expect(taskCards).toHaveCount(3);
     const posterCard = page.locator('.task-card', { hasText: 'Media Poster & Thumbnail Caching' });
     await expect(posterCard).toBeVisible();
-    await expect(page.locator('.task-card', { hasText: 'TheTVDB v4 Metadata Enrichment' })).toBeVisible();
+    await expect(page.locator('.task-card', { hasText: /Metadata Enrichment/ })).toBeVisible();
     await expect(page.locator('.task-card', { hasText: 'Plex & Media Server User Cache Sync' })).toBeVisible();
 
     // Verify schedule selector and next run time are displayed
@@ -1511,8 +1516,8 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     const btnForceAll = page.locator('#btn-force-refresh-all-metadata');
     await expect(btnForceAll).toBeVisible();
 
-    // Verify "Force Refresh All" button inside TheTVDB task card
-    const tvdbCard = page.locator('.task-card', { hasText: 'TheTVDB v4 Metadata Enrichment' });
+    // Verify "Force Refresh All" button inside Metadata Enrichment task card
+    const tvdbCard = page.locator('.task-card', { hasText: /Metadata Enrichment/ });
     await expect(tvdbCard).toBeVisible();
     const btnForceTvdb = tvdbCard.locator('button.btn-force-task');
     await expect(btnForceTvdb).toBeVisible();
@@ -1755,6 +1760,53 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     await expect(page.locator('#cleanup-modal-status')).toContainText('Successfully removed');
     expect(lastMediaHistoryDelete).toContain('media_type=series');
     expect(lastMediaHistoryDelete).toContain('Breaking');
+  });
+
+  test('admin settings: configure metadata source and tmdb api key', async ({ page }) => {
+    const adminEmail = `admin_tmdb_${Date.now()}@bingesync.local`;
+
+    await page.goto('/');
+
+    // 1. Sign in as admin
+    await page.fill('#dev-email', adminEmail);
+    await page.fill('#dev-name', 'Admin TMDB User');
+    await page.click('#btn-dev-submit');
+    await expect(page.locator('#user-display-name')).toContainText('Admin TMDB User');
+
+    // 2. Navigate to Admin > Services & API Keys
+    await page.click('#tab-admin');
+    await page.click('[data-subview="admin-sub-settings"]');
+    await expect(page.locator('#admin-sub-settings')).toBeVisible();
+
+    // 3. Verify metadata source dropdown exists
+    const sourceSelect = page.locator('#setting-metadata-source');
+    await expect(sourceSelect).toBeVisible();
+
+    // 4. Select TMDB as metadata source
+    await sourceSelect.selectOption('tmdb');
+
+    // 5. Fill TMDB API key and base URL
+    await page.fill('#setting-tmdb-api-key', 'tmdb_ui_test_key_789');
+    await page.fill('#setting-tmdb-base-url', 'https://api.themoviedb.org/3');
+
+    // 6. Save settings
+    await page.click('#btn-save-admin-settings');
+    await expect(page.locator('#admin-settings-status')).toContainText('Settings saved successfully');
+
+    // 7. Verify TMDB key is masked
+    await expect(page.locator('#setting-tmdb-api-key')).toHaveValue(/^tm.*•/);
+
+    // 8. Verify toggle unhide secret
+    const toggleBtn = page.locator('#setting-tmdb-api-key + .btn-toggle-secret');
+    await toggleBtn.click();
+    await expect(page.locator('#setting-tmdb-api-key')).toHaveValue('tmdb_ui_test_key_789');
+    await toggleBtn.click();
+    await expect(page.locator('#setting-tmdb-api-key')).toHaveValue(/^tm.*•/);
+
+    // 9. Reset source back to tvdb to leave environment clean
+    await sourceSelect.selectOption('tvdb');
+    await page.click('#btn-save-admin-settings');
+    await expect(page.locator('#admin-settings-status')).toContainText('Settings saved successfully');
   });
 });
 

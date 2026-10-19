@@ -12,6 +12,7 @@ pub mod timeline;
 pub mod trakt_import;
 pub mod tautulli_import;
 pub mod openapi;
+pub mod tmdb;
 pub mod tvdb;
 pub mod user;
 pub mod user_settings;
@@ -43,6 +44,36 @@ pub struct AppState {
 }
 
 impl AppState {
+    pub async fn get_effective_metadata_source(&self) -> String {
+        if let Some(src) = settings::get_db_setting(&self.pool, "metadata_source").await {
+            let s = src.trim().to_lowercase();
+            if s == "tmdb" || s == "themoviedb" {
+                return "tmdb".to_string();
+            } else if s == "tvdb" || s == "thetvdb" {
+                return "tvdb".to_string();
+            }
+        }
+        self.config.metadata_source.clone()
+    }
+
+    pub async fn get_effective_tmdb_api_key(&self) -> Option<String> {
+        if let Some(key) = settings::get_db_setting(&self.pool, "tmdb_api_key").await {
+            if !key.trim().is_empty() {
+                return Some(key);
+            }
+        }
+        self.config.tmdb_api_key.clone()
+    }
+
+    pub async fn get_effective_tmdb_base_url(&self) -> String {
+        if let Some(url) = settings::get_db_setting(&self.pool, "tmdb_base_url").await {
+            if !url.trim().is_empty() {
+                return url;
+            }
+        }
+        self.config.tmdb_base_url.clone()
+    }
+
     pub async fn get_effective_tvdb_api_key(&self) -> Option<String> {
         if let Some(key) = settings::get_db_setting(&self.pool, "tvdb_api_key").await {
             if !key.trim().is_empty() {

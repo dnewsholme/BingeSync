@@ -4975,3 +4975,233 @@ async fn test_delete_by_media_endpoint() {
     assert_eq!(count_b_bb, 1);
 }
 
+#[tokio::test]
+async fn test_tmdb_metadata_enrichment_worker() {
+    let pool = init_db("sqlite::memory:").await.unwrap();
+
+    // 1. Mock TMDB API server
+    let mock_tmdb_router = axum::Router::new()
+        .route(
+            "/search/tv",
+            axum::routing::get(|axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>| async move {
+                if params.get("api_key").map(|s| s.as_str()) == Some("test_tmdb_key") {
+                    let query = params.get("query").map(|s| s.as_str()).unwrap_or("");
+                    if query.contains("Stranger Things") {
+                        return (
+                            StatusCode::OK,
+                            axum::Json(serde_json::json!({
+                                "page": 1,
+                                "results": [
+                                    {
+                                        "id": 66732,
+                                        "name": "Stranger Things",
+                                        "first_air_date": "2016-07-15",
+                                        "overview": "When a young boy vanishes, a small town uncovers a mystery.",
+                                        "poster_path": "/x2LSRK2Cm7MZhjluni1msVJ3wDF.jpg"
+                                    }
+                                ]
+                            })),
+                        );
+                    }
+                }
+                (StatusCode::OK, axum::Json(serde_json::json!({ "results": [] })))
+            }),
+        )
+        .route(
+            "/tv/{id}",
+            axum::routing::get(|axum::extract::Path(id): axum::extract::Path<String>, axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>| async move {
+                if params.get("api_key").map(|s| s.as_str()) == Some("test_tmdb_key") && id == "66732" {
+                    return (
+                        StatusCode::OK,
+                        axum::Json(serde_json::json!({
+                            "id": 66732,
+                            "name": "Stranger Things",
+                            "overview": "When a young boy vanishes, a small town uncovers a mystery involving secret experiments and terrifying supernatural forces.",
+                            "poster_path": "/x2LSRK2Cm7MZhjluni1msVJ3wDF.jpg",
+                            "genres": [
+                                { "id": 18, "name": "Drama" },
+                                { "id": 10765, "name": "Sci-Fi & Fantasy" }
+                            ],
+                            "created_by": [
+                                { "id": 1179782, "name": "The Duffer Brothers" }
+                            ],
+                            "credits": {
+                                "cast": [
+                                    { "name": "Millie Bobby Brown", "character": "Eleven" },
+                                    { "name": "Winona Ryder", "character": "Joyce Byers" }
+                                ],
+                                "crew": [
+                                    { "name": "The Duffer Brothers", "job": "Director", "department": "Directing" },
+                                    { "name": "Tim Ives", "job": "Director of Photography", "department": "Camera" }
+                                ]
+                            }
+                        })),
+                    );
+                }
+                (StatusCode::NOT_FOUND, axum::Json(serde_json::json!({ "error": "Not found" })))
+            }),
+        );
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, mock_tmdb_router).await.unwrap();
+    });
+
+    let mut config = Config::from_env();
+    config.metadata_source = "tmdb".to_string();
+    config.tmdb_api_key = Some("test_tmdb_key".to_string());
+    config.tmdb_base_url = format!("http://{}", addr);
+    let config = Arc::new(config);
+    let state = AppState {
+        pool: pool.clone(),
+        config: config.clone(),
+        oidc_client: None,
+        image_notify: Arc::new(tokio::sync::Notify::new()),
+        metadata_notify: Arc::new(tokio::sync::Notify::new()),
+        user_sync_notify: Arc::new(tokio::sync::Notify::new()),
+        log_buffer: Arc::new(bingesync::api::logs::LogBuffer::new(500)),
+        task_tracker: Arc::new(bingesync::api::jobs::BackgroundTaskTracker::new()),
+    };
+
+    // 2. Insert test user and scrobble for "Stranger Things"
+    let user_id = "test_user_tmdb";
+    sqlx::query("INSERT INTO users (id, email, display_name, webhook_token) VALUES (?, ?, ?, ?)")
+        .bind(user_id)
+        .bind("tmdb_tester@bingesync.local")
+        .bind("TMDB Tester")
+        .bind("token_tmdb_123")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let scrobble_id = uuid::Uuid::new_v4().to_string();
+    sqlx::query(
+        r#"
+        INSERT INTO scrobbles (
+            id, user_id, title, media_type, grandparent_title, parent_title,
+            season_number, episode_number, year, overview, thumb_url,
+            duration_ms, user_rating, watch_status, watched_at, created_at
+        ) VALUES (
+            ?, ?, ?, ?, ?, ?,
+            ?, ?, ?, ?, ?,
+            ?, ?, ?, ?, ?
+        )
+        "#
+    )
+    .bind(&scrobble_id)
+    .bind(user_id)
+    .bind("Chapter One: The Vanishing of Will Byers")
+    .bind("episode")
+    .bind("Stranger Things")
+    .bind("Season 1")
+    .bind(1)
+    .bind(1)
+    .bind(2016)
+    .bind(None::<String>)
+    .bind(None::<String>)
+    .bind(2880000_i64)
+    .bind(9)
+    .bind("completed")
+    .bind("2024-02-01T20:00:00Z")
+    .bind("2024-02-01T20:00:00Z")
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    // 3. Run metadata worker with TMDB active
+    let processed = bingesync::api::tvdb::process_missing_metadata_once(&state).await;
+    assert_eq!(processed, 1);
+
+    // 4. Verify scrobble enriched from TMDB
+    let scrobble: Scrobble = sqlx::query_as("SELECT * FROM scrobbles WHERE id = ?")
+        .bind(&scrobble_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+    assert_eq!(scrobble.genres.as_deref(), Some("Drama, Sci-Fi & Fantasy"));
+    assert_eq!(scrobble.actors.as_deref(), Some("Millie Bobby Brown, Winona Ryder"));
+    assert_eq!(scrobble.directors.as_deref(), Some("The Duffer Brothers"));
+    assert_eq!(scrobble.cinematographer.as_deref(), Some("Tim Ives"));
+    assert!(scrobble.overview.is_some());
+    assert!(scrobble.overview.unwrap().contains("young boy vanishes"));
+    assert_eq!(
+        scrobble.thumb_url.as_deref(),
+        Some("https://image.tmdb.org/t/p/w500/x2LSRK2Cm7MZhjluni1msVJ3wDF.jpg")
+    );
+    assert!(scrobble.metadata_updated_at.is_some());
+}
+
+#[tokio::test]
+async fn test_admin_settings_metadata_source_and_tmdb() {
+    let pool = init_db("sqlite::memory:").await.unwrap();
+    let config = Arc::new(Config::from_env());
+    let state = AppState {
+        pool: pool.clone(),
+        config: config.clone(),
+        oidc_client: None,
+        image_notify: Arc::new(tokio::sync::Notify::new()),
+        metadata_notify: Arc::new(tokio::sync::Notify::new()),
+        user_sync_notify: Arc::new(tokio::sync::Notify::new()),
+        log_buffer: Arc::new(bingesync::api::logs::LogBuffer::new(500)),
+        task_tracker: Arc::new(bingesync::api::jobs::BackgroundTaskTracker::new()),
+    };
+    let app = bingesync::api::create_api_router(state.clone());
+
+    // Create admin user
+    let admin_id = "admin_tmdb_settings_user";
+    sqlx::query("INSERT INTO users (id, email, display_name, webhook_token, role) VALUES (?, ?, ?, ?, 'admin')")
+        .bind(admin_id)
+        .bind("admin_tmdb@bingesync.local")
+        .bind("Admin TMDB")
+        .bind("token_admin_tmdb")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let admin_jwt = create_jwt(admin_id, "admin_tmdb@bingesync.local", &config.jwt_secret).unwrap();
+
+    // 1. Update settings: switch metadata source to TMDB and configure TMDB API key
+    let update_body = serde_json::json!({
+        "metadata_source": "tmdb",
+        "tmdb_api_key": "my_tmdb_secret_key_123",
+        "tmdb_base_url": "https://api.themoviedb.org/3"
+    });
+
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/admin/settings")
+        .header(header::AUTHORIZATION, format!("Bearer {}", admin_jwt))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(serde_json::to_vec(&update_body).unwrap()))
+        .unwrap();
+
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // 2. Fetch admin settings and verify metadata_source and masked tmdb_api_key
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/admin/settings")
+        .header(header::AUTHORIZATION, format!("Bearer {}", admin_jwt))
+        .body(Body::empty())
+        .unwrap();
+
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let settings: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+
+    assert_eq!(settings["metadata_source"], "tmdb");
+    assert_eq!(settings["tmdb_api_key_configured"], true);
+    assert!(settings["tmdb_api_key_masked"].as_str().unwrap().starts_with("my"));
+    assert!(settings["tmdb_api_key_masked"].as_str().unwrap().contains('•'));
+
+    // 3. Verify task tracker displays TMDB as name
+    let tasks_summary = state.task_tracker.get_tasks_summary(&state, false).await;
+    let meta_task = tasks_summary.iter().find(|t| t.id == "tvdb_metadata").unwrap();
+    assert!(meta_task.name.contains("TMDB") || meta_task.name.contains("The Movie Database"));
+}
+
+

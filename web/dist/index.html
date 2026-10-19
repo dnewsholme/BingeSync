@@ -17,8 +17,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
   <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
-  <script type="module" crossorigin src="./assets/index-DcCHLWNW.js"></script>
-  <link rel="stylesheet" crossorigin href="./assets/index-DKEUa044.css">
+  <script type="module" crossorigin src="./assets/index-Bd_zhpAz.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-AWyXW4H2.css">
 </head>
 <body>
   <div id="app">
@@ -946,29 +946,71 @@
               </p>
 
               <form id="form-admin-settings" style="margin-top: 18px;">
-                <!-- TheTVDB -->
+                <!-- Metadata Source Provider Selection -->
                 <div class="settings-group-header">
-                  <span class="badge-pill" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3);">TheTVDB v4</span>
-                  <strong>Metadata & Cast Enrichment</strong>
+                  <span class="badge-pill" style="background: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3);">Metadata Provider</span>
+                  <strong>Active Metadata Source</strong>
                 </div>
-                <div class="form-row">
-                  <div class="form-group col-half">
-                    <label for="setting-tvdb-api-key">TheTVDB API Key (v4)</label>
-                    <div class="input-secret-wrapper">
-                      <input type="text" id="setting-tvdb-api-key" class="form-control font-mono" placeholder="API Key" autocomplete="off" spellcheck="false" />
-                      <button type="button" class="btn-toggle-secret" data-target="setting-tvdb-api-key" title="Unhide / Show full key">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                      </button>
+                <div class="form-group" style="margin-bottom: 16px;">
+                  <label for="setting-metadata-source">Metadata Source</label>
+                  <select id="setting-metadata-source" class="form-control">
+                    <option value="tvdb">TheTVDB (v4)</option>
+                    <option value="tmdb">The Movie Database (TMDB)</option>
+                  </select>
+                  <small style="display:block;margin-top:4px;font-size:0.75rem;color:var(--text-dim);">Choose whether to enrich scrobbles, artwork, cast, and overview details using TheTVDB or TMDB.</small>
+                </div>
+
+                <!-- TheTVDB -->
+                <div id="admin-tvdb-settings-group">
+                  <div class="settings-group-header">
+                    <span class="badge-pill" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3);">TheTVDB v4</span>
+                    <strong>TheTVDB Configuration</strong>
+                  </div>
+                  <div class="form-row">
+                    <div class="form-group col-half">
+                      <label for="setting-tvdb-api-key">TheTVDB API Key (v4)</label>
+                      <div class="input-secret-wrapper">
+                        <input type="text" id="setting-tvdb-api-key" class="form-control font-mono" placeholder="API Key" autocomplete="off" spellcheck="false" />
+                        <button type="button" class="btn-toggle-secret" data-target="setting-tvdb-api-key" title="Unhide / Show full key">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                        </button>
+                      </div>
+                    </div>
+                    <div class="form-group col-half">
+                      <label for="setting-tvdb-pin">Subscriber PIN (Optional)</label>
+                      <input type="text" id="setting-tvdb-pin" class="form-control" placeholder="User PIN if subscriber key" />
                     </div>
                   </div>
-                  <div class="form-group col-half">
-                    <label for="setting-tvdb-pin">Subscriber PIN (Optional)</label>
-                    <input type="text" id="setting-tvdb-pin" class="form-control" placeholder="User PIN if subscriber key" />
+                  <div class="form-group">
+                    <label for="setting-tvdb-base-url">TheTVDB API Base URL</label>
+                    <input type="url" id="setting-tvdb-base-url" class="form-control" placeholder="https://api4.thetvdb.com/v4" />
                   </div>
                 </div>
-                <div class="form-group">
-                  <label for="setting-tvdb-base-url">TheTVDB API Base URL</label>
-                  <input type="url" id="setting-tvdb-base-url" class="form-control" placeholder="https://api4.thetvdb.com/v4" />
+
+                <!-- TMDB -->
+                <div id="admin-tmdb-settings-group">
+                  <div class="settings-group-header" style="margin-top: 14px;">
+                    <span class="badge-pill" style="background: rgba(13, 148, 136, 0.15); color: #2dd4bf; border: 1px solid rgba(13, 148, 136, 0.3);">TMDB</span>
+                    <strong>The Movie Database (TMDB) Configuration</strong>
+                  </div>
+                  <div class="form-row">
+                    <div class="form-group col-half">
+                      <label for="setting-tmdb-api-key">TMDB API Key / Read Access Token</label>
+                      <div class="input-secret-wrapper">
+                        <input type="text" id="setting-tmdb-api-key" class="form-control font-mono" placeholder="API Key (v3) or Read Access Token (v4)" autocomplete="off" spellcheck="false" />
+                        <button type="button" class="btn-toggle-secret" data-target="setting-tmdb-api-key" title="Unhide / Show full key">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                        </button>
+                      </div>
+                    </div>
+                    <div class="form-group col-half">
+                      <label for="setting-tmdb-base-url">TMDB API Base URL</label>
+                      <input type="url" id="setting-tmdb-base-url" class="form-control" placeholder="https://api.themoviedb.org/3" />
+                    </div>
+                  </div>
+                  <p class="card-desc" style="font-size:0.8rem;margin-top:4px;color:var(--text-dim);">
+                    This product uses the TMDB API but is not endorsed or certified by <a href="https://www.themoviedb.org" target="_blank" rel="noopener noreferrer" style="color:var(--accent-primary);">TMDB</a>.
+                  </p>
                 </div>
 
                 <!-- OpenID Connect -->
@@ -1079,16 +1121,18 @@
       </div>
     </main>
 
-    <!-- Global App Footer with TheTVDB Attribution -->
+    <!-- Global App Footer with TheTVDB & TMDB Attribution -->
     <footer class="app-footer">
       <div class="footer-container">
         <div class="footer-attribution">
-          <span>Metadata, plot summaries, genres, and cast details provided by <a href="https://thetvdb.com" target="_blank" rel="noopener noreferrer" class="tvdb-link">TheTVDB</a>.</span>
+          <span>Metadata, plot summaries, genres, and cast details provided by <a href="https://thetvdb.com" target="_blank" rel="noopener noreferrer" class="tvdb-link">TheTVDB</a> and <a href="https://www.themoviedb.org" target="_blank" rel="noopener noreferrer" class="tmdb-link">The Movie Database (TMDB)</a>.</span>
           <span style="margin: 0 8px; opacity: 0.4;">&bull;</span>
           <a href="./docs" target="_blank" rel="noopener noreferrer" class="footer-docs-link" style="color:var(--text-muted);text-decoration:none;font-weight:500;">Swagger API Docs</a>
         </div>
         <div class="footer-disclaimer">
           <span>This product uses TheTVDB API but is not endorsed or certified by TheTVDB.</span>
+          <span style="margin: 0 8px; opacity: 0.4;">&bull;</span>
+          <span>This product uses the TMDB API but is not endorsed or certified by TMDB.</span>
         </div>
       </div>
     </footer>
@@ -1294,6 +1338,10 @@
             <a id="detail-tvdb-link" href="#" target="_blank" rel="noopener noreferrer" class="btn btn-tvdb btn-sm" style="display:none;">
               <span class="tvdb-badge-icon">TheTVDB</span>
               <span data-i18n="modal.view_tvdb">View on TheTVDB</span>
+            </a>
+            <a id="detail-tmdb-link" href="#" target="_blank" rel="noopener noreferrer" class="btn btn-tmdb btn-sm" style="display:none;">
+              <span class="tmdb-badge-icon">TMDB</span>
+              <span data-i18n="modal.view_tmdb">View on TMDB</span>
             </a>
             <button class="btn btn-outline btn-sm" id="btn-refresh-detail-metadata" title="Refresh metadata and artwork from TheTVDB" data-i18n="modal.refresh_metadata">
               Refresh Metadata

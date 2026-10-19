@@ -123,10 +123,23 @@ pub async fn get_integrations_status(
     let tvdb_key = state.get_effective_tvdb_api_key().await;
     let tvdb_configured = tvdb_key.is_some() && !tvdb_key.as_deref().unwrap_or("").is_empty();
 
+    let tmdb_key = state.get_effective_tmdb_api_key().await;
+    let tmdb_configured = tmdb_key.is_some() && !tmdb_key.as_deref().unwrap_or("").is_empty();
+
+    let metadata_source = state.get_effective_metadata_source().await;
+    let metadata_configured = if metadata_source == "tmdb" {
+        tmdb_configured
+    } else {
+        tvdb_configured
+    };
+
     Json(serde_json::json!({
         "radarr_configured": radarr_configured,
         "sonarr_configured": sonarr_configured,
         "tvdb_configured": tvdb_configured,
+        "tmdb_configured": tmdb_configured,
+        "metadata_source": metadata_source,
+        "metadata_configured": metadata_configured,
     }))
 }
 

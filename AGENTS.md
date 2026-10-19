@@ -129,7 +129,7 @@ Plex webhooks send:
 ```bash
 cargo test
 ```
-Tests in `tests/api_tests.rs` (38 integration tests) cover:
+Tests in `tests/api_tests.rs` (40 integration tests) cover:
 - Dev login and `/api/v1/auth/me`
 - Plex movie and TV episode scrobbling
 - Multi-user isolation (User A cannot see User B's data)
@@ -166,6 +166,8 @@ Tests in `tests/api_tests.rs` (38 integration tests) cover:
 - Force refresh poster images resetting thumbnail URLs and triggering image cache worker
 - Force refresh user cache clearing cached Plex and Jellyfin user mappings and triggering user sync worker
 - Watched library cleanup candidates cross-referencing Radarr/Sonarr with disk space calculation and season details
+- TMDB metadata enrichment worker (movies, TV shows, credits, and poster formatting)
+- Admin settings metadata source selection (TheTVDB vs TMDB) and credential masking
 
 ### Run Playwright E2E UI Tests
 ```bash
@@ -173,7 +175,7 @@ cd web
 npm install
 npx playwright test
 ```
-Playwright tests in `web/tests/e2e.spec.js` (31 browser E2E tests) cover:
+Playwright tests in `web/tests/e2e.spec.js` (32 browser E2E tests) cover:
 - User sign-in flow, "+ Log Watch" modal, and timeline rendering
 - Multi-user separation in the web UI
 - Trakt history and rating import flow in the web UI (pasted JSON)
@@ -205,6 +207,7 @@ Playwright tests in `web/tests/e2e.spec.js` (31 browser E2E tests) cover:
 - Admin background tasks: force refresh all metadata option
 - Mobile responsive layout: bottom app navigation bar, stacked touch forms, and responsive modals on phone viewports
 - Library cleanup view: list watched items on Radarr & Sonarr, view reclaimable disk space, filter by type, and execute cleanup action modals
+- Admin settings metadata source configuration (TheTVDB or TMDB), credential saving, and TMDB footer attribution
 
 ### Run the App Locally
 ```bash
@@ -240,9 +243,12 @@ docker run -p 8080:8080 -v bingesync_data:/data bingesync:latest
 | `OIDC_CLIENT_SECRET` | *(none)* | OIDC client secret |
 | `OIDC_REDIRECT_URL` | `${APP_URL}/api/v1/auth/callback` | Callback URL |
 | `DEV_LOGIN_ENABLED` | `true` | Allows local email/username login |
+| `METADATA_SOURCE` | `tvdb` | Active metadata enrichment provider (`tvdb` or `tmdb`) |
 | `TVDB_API_KEY` | *(none)* | TheTVDB v4 API key for background metadata enrichment |
 | `TVDB_PIN` | *(none)* | Optional subscriber PIN for user-subscription TheTVDB keys |
 | `TVDB_BASE_URL` | `https://api4.thetvdb.com/v4` | TheTVDB v4 API base URL |
+| `TMDB_API_KEY` | *(none)* | The Movie Database (TMDB) API key or Read Access Token |
+| `TMDB_BASE_URL` | `https://api.themoviedb.org/3` | The Movie Database (TMDB) API base URL |
 | `SCROBBLE_THRESHOLD_PERCENT` | `80` | Percentage of media playback required to mark as watched |
 | `IMAGE_CACHE_DIR` | `/data/images` | Directory path on disk where media poster images are cached |
 | `TAUTULLI_URL` | *(none)* | Base URL of Tautulli instance for playback history import |

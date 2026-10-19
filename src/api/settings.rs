@@ -11,11 +11,17 @@ use crate::{api::AppState, auth::AuthUser};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SystemSettingsView {
+    pub metadata_source: String,
     pub tvdb_api_key_configured: bool,
     pub tvdb_api_key_masked: Option<String>,
     pub tvdb_api_key: Option<String>,
     pub tvdb_pin: Option<String>,
     pub tvdb_base_url: Option<String>,
+
+    pub tmdb_api_key_configured: bool,
+    pub tmdb_api_key_masked: Option<String>,
+    pub tmdb_api_key: Option<String>,
+    pub tmdb_base_url: Option<String>,
 
     pub oidc_enabled: bool,
     pub oidc_issuer_url: Option<String>,
@@ -31,9 +37,13 @@ pub struct SystemSettingsView {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateSettingsRequest {
+    pub metadata_source: Option<String>,
     pub tvdb_api_key: Option<String>,
     pub tvdb_pin: Option<String>,
     pub tvdb_base_url: Option<String>,
+
+    pub tmdb_api_key: Option<String>,
+    pub tmdb_base_url: Option<String>,
 
     pub oidc_enabled: Option<bool>,
     pub oidc_issuer_url: Option<String>,
@@ -91,6 +101,12 @@ pub async fn get_admin_settings_handler(
         ));
     }
 
+    let metadata_source = match get_db_setting(&state.pool, "metadata_source").await {
+        Some(v) if v.to_lowercase() == "tmdb" || v.to_lowercase() == "themoviedb" => "tmdb".to_string(),
+        Some(v) if v.to_lowercase() == "tvdb" || v.to_lowercase() == "thetvdb" => "tvdb".to_string(),
+        _ => state.config.metadata_source.clone(),
+    };
+
     let tvdb_api_key = match get_db_setting(&state.pool, "tvdb_api_key").await {
         Some(v) if !v.trim().is_empty() => Some(v),
         _ => state.config.tvdb_api_key.clone(),
@@ -102,6 +118,15 @@ pub async fn get_admin_settings_handler(
     let tvdb_base_url = match get_db_setting(&state.pool, "tvdb_base_url").await {
         Some(v) if !v.trim().is_empty() => Some(v),
         _ => Some(state.config.tvdb_base_url.clone()),
+    };
+
+    let tmdb_api_key = match get_db_setting(&state.pool, "tmdb_api_key").await {
+        Some(v) if !v.trim().is_empty() => Some(v),
+        _ => state.config.tmdb_api_key.clone(),
+    };
+    let tmdb_base_url = match get_db_setting(&state.pool, "tmdb_base_url").await {
+        Some(v) if !v.trim().is_empty() => Some(v),
+        _ => Some(state.config.tmdb_base_url.clone()),
     };
 
     let oidc_enabled = match get_db_setting(&state.pool, "oidc_enabled").await {
@@ -126,11 +151,17 @@ pub async fn get_admin_settings_handler(
     };
 
     let view = SystemSettingsView {
+        metadata_source,
         tvdb_api_key_configured: tvdb_api_key.is_some() && !tvdb_api_key.as_deref().unwrap_or("").is_empty(),
         tvdb_api_key_masked: tvdb_api_key.as_deref().map(mask_api_key),
         tvdb_api_key: None,
         tvdb_pin,
         tvdb_base_url,
+
+        tmdb_api_key_configured: tmdb_api_key.is_some() && !tmdb_api_key.as_deref().unwrap_or("").is_empty(),
+        tmdb_api_key_masked: tmdb_api_key.as_deref().map(mask_api_key),
+        tmdb_api_key: None,
+        tmdb_base_url,
 
         oidc_enabled,
         oidc_issuer_url,
@@ -159,20 +190,43 @@ pub async fn update_admin_settings_handler(
         ));
     }
 
-    let mut tvdb_updated = false;
+    let mut metadata_updated = false;
+
+    if let Some(ref source) = payload.metadata_source {
+        let clean_src = source.trim().to_lowercase();
+        if clean_src == "tmdb" || clean_src == "themoviedb" {
+            let _ = set_db_setting(&state.pool, "metadata_source", "tmdb").await;
+            metadata_updated = true;
+        } else if clean_src == "tvdb" || clean_src == "thetvdb" {
+            let _ = set_db_setting(&state.pool, "metadata_source", "tvdb").await;
+            metadata_updated = true;
+        }
+    }
+
     if let Some(ref val) = payload.tvdb_api_key {
         if !val.trim().is_empty() && !val.contains('•') {
             let _ = set_db_setting(&state.pool, "tvdb_api_key", val.trim()).await;
-            tvdb_updated = true;
+            metadata_updated = true;
         }
     }
     if let Some(ref val) = payload.tvdb_pin {
         let _ = set_db_setting(&state.pool, "tvdb_pin", val.trim()).await;
-        tvdb_updated = true;
+        metadata_updated = true;
     }
     if let Some(ref val) = payload.tvdb_base_url {
         let _ = set_db_setting(&state.pool, "tvdb_base_url", val.trim()).await;
-        tvdb_updated = true;
+        metadata_updated = true;
+    }
+
+    if let Some(ref val) = payload.tmdb_api_key {
+        if !val.trim().is_empty() && !val.contains('•') {
+            let _ = set_db_setting(&state.pool, "tmdb_api_key", val.trim()).await;
+            metadata_updated = true;
+        }
+    }
+    if let Some(ref val) = payload.tmdb_base_url {
+        let _ = set_db_setting(&state.pool, "tmdb_base_url", val.trim()).await;
+        metadata_updated = true;
     }
 
     if let Some(enabled) = payload.oidc_enabled {
@@ -211,7 +265,7 @@ pub async fn update_admin_settings_handler(
 
     state.log_buffer.push("INFO", "bingesync::settings", "System settings updated by admin");
 
-    if tvdb_updated {
+    if metadata_updated {
         state.metadata_notify.notify_waiters();
         state.metadata_notify.notify_one();
     }

@@ -113,6 +113,20 @@ function getTvdbUrl(item) {
   return `https://thetvdb.com/search?query=${encodeURIComponent(query.trim())}`;
 }
 
+// Helper: TMDB URL generator
+function getTmdbUrl(item) {
+  if (item.guid) {
+    const match = item.guid.match(/tmdb:\/\/(\d+)/i);
+    if (match) {
+      return `https://www.themoviedb.org/${item.media_type === 'movie' ? 'movie' : 'tv'}/${match[1]}`;
+    }
+  }
+  const query = item.media_type === 'episode' && item.grandparent_title
+    ? item.grandparent_title
+    : (item.title || '');
+  return `https://www.themoviedb.org/search?query=${encodeURIComponent(query.trim())}`;
+}
+
 // Helper: Resolve image URL (resolves relative cached image paths to active API_BASE)
 function resolveImageUrl(url) {
   if (!url) return null;
@@ -315,6 +329,7 @@ const el = {
   detailBody: document.getElementById('detail-body'),
   detailImdbLink: document.getElementById('detail-imdb-link'),
   detailTvdbLink: document.getElementById('detail-tvdb-link'),
+  detailTmdbLink: document.getElementById('detail-tmdb-link'),
   btnDeleteShowScrobbles: document.getElementById('btn-delete-show-scrobbles'),
 
   // Admin Management & Subviews
@@ -329,9 +344,14 @@ const el = {
   formAdminSettings: document.getElementById('form-admin-settings'),
   btnSaveAdminSettings: document.getElementById('btn-save-admin-settings'),
   adminSettingsStatus: document.getElementById('admin-settings-status'),
+  settingMetadataSource: document.getElementById('setting-metadata-source'),
   settingTvdbApiKey: document.getElementById('setting-tvdb-api-key'),
   settingTvdbPin: document.getElementById('setting-tvdb-pin'),
   settingTvdbBaseUrl: document.getElementById('setting-tvdb-base-url'),
+  settingTmdbApiKey: document.getElementById('setting-tmdb-api-key'),
+  settingTmdbBaseUrl: document.getElementById('setting-tmdb-base-url'),
+  adminTvdbGroup: document.getElementById('admin-tvdb-settings-group'),
+  adminTmdbGroup: document.getElementById('admin-tmdb-settings-group'),
   settingOidcEnabled: document.getElementById('setting-oidc-enabled'),
   settingOidcIssuerUrl: document.getElementById('setting-oidc-issuer-url'),
   settingOidcClientId: document.getElementById('setting-oidc-client-id'),
@@ -2137,21 +2157,34 @@ async function loadWebhookInfo() {
     console.error('Error loading webhook info:', err);
   }
 
-  // Load TVDB integration status
+  // Load Metadata integration status (TheTVDB or TMDB)
   const tvdbBadge = document.getElementById('tvdb-status-badge');
   const tvdbText = document.getElementById('tvdb-status-text');
   const tvdbDot = document.getElementById('tvdb-pulse-dot');
   if (tvdbBadge && tvdbText) {
     try {
       const integrations = await api.getIntegrationsStatus();
-      if (integrations && integrations.tvdb_configured) {
-        tvdbText.textContent = 'TheTVDB Connected & Active (Background Enrichment Enabled)';
-        tvdbBadge.className = 'tvdb-status-badge tvdb-status-active';
-        if (tvdbDot) tvdbDot.className = 'pulse-dot-sm pulse-active';
+      const isTmdb = integrations && integrations.metadata_source === 'tmdb';
+      if (isTmdb) {
+        if (integrations.tmdb_configured) {
+          tvdbText.textContent = 'The Movie Database (TMDB) Connected & Active (Background Enrichment Enabled)';
+          tvdbBadge.className = 'tvdb-status-badge tvdb-status-active';
+          if (tvdbDot) tvdbDot.className = 'pulse-dot-sm pulse-active';
+        } else {
+          tvdbText.textContent = 'TMDB API Key Not Configured (Set TMDB_API_KEY to enable)';
+          tvdbBadge.className = 'tvdb-status-badge tvdb-status-inactive';
+          if (tvdbDot) tvdbDot.className = 'pulse-dot-sm pulse-inactive';
+        }
       } else {
-        tvdbText.textContent = 'TheTVDB API Key Not Configured (Set TVDB_API_KEY to enable)';
-        tvdbBadge.className = 'tvdb-status-badge tvdb-status-inactive';
-        if (tvdbDot) tvdbDot.className = 'pulse-dot-sm pulse-inactive';
+        if (integrations && integrations.tvdb_configured) {
+          tvdbText.textContent = 'TheTVDB Connected & Active (Background Enrichment Enabled)';
+          tvdbBadge.className = 'tvdb-status-badge tvdb-status-active';
+          if (tvdbDot) tvdbDot.className = 'pulse-dot-sm pulse-active';
+        } else {
+          tvdbText.textContent = 'TheTVDB API Key Not Configured (Set TVDB_API_KEY to enable)';
+          tvdbBadge.className = 'tvdb-status-badge tvdb-status-inactive';
+          if (tvdbDot) tvdbDot.className = 'pulse-dot-sm pulse-inactive';
+        }
       }
     } catch (e) {
       tvdbText.textContent = 'TheTVDB Integration Active';
@@ -2955,6 +2988,12 @@ async function openDetailModal(item) {
     el.detailTvdbLink.style.display = 'inline-flex';
   }
 
+  // TMDB button setup
+  if (el.detailTmdbLink) {
+    el.detailTmdbLink.href = getTmdbUrl(item);
+    el.detailTmdbLink.style.display = 'inline-flex';
+  }
+
   // Delete show scrobbles button setup
   if (el.btnDeleteShowScrobbles) {
     if (showTitle) {
@@ -3571,13 +3610,34 @@ document.addEventListener('click', (e) => {
 });
 
 // Admin: Settings & API Keys
+function updateAdminMetadataSourceUI() {
+  const src = el.settingMetadataSource ? el.settingMetadataSource.value : 'tvdb';
+  if (el.adminTvdbGroup) {
+    el.adminTvdbGroup.style.opacity = src === 'tvdb' ? '1' : '0.65';
+  }
+  if (el.adminTmdbGroup) {
+    el.adminTmdbGroup.style.opacity = src === 'tmdb' ? '1' : '0.65';
+  }
+}
+
+if (el.settingMetadataSource) {
+  el.settingMetadataSource.addEventListener('change', updateAdminMetadataSourceUI);
+}
+
 async function loadAdminSettings() {
   if (!el.formAdminSettings) return;
   try {
     const s = await api.getAdminSettings();
+    if (el.settingMetadataSource) {
+      el.settingMetadataSource.value = s.metadata_source || 'tvdb';
+      updateAdminMetadataSourceUI();
+    }
     applySecretField(el.settingTvdbApiKey, s.tvdb_api_key, s.tvdb_api_key_masked);
     if (el.settingTvdbPin) el.settingTvdbPin.value = s.tvdb_pin || '';
     if (el.settingTvdbBaseUrl) el.settingTvdbBaseUrl.value = s.tvdb_base_url || '';
+
+    applySecretField(el.settingTmdbApiKey, s.tmdb_api_key, s.tmdb_api_key_masked);
+    if (el.settingTmdbBaseUrl) el.settingTmdbBaseUrl.value = s.tmdb_base_url || '';
 
     if (el.settingOidcEnabled) el.settingOidcEnabled.checked = Boolean(s.oidc_enabled);
     if (el.settingOidcIssuerUrl) el.settingOidcIssuerUrl.value = s.oidc_issuer_url || '';
@@ -3605,9 +3665,12 @@ if (el.formAdminSettings) {
 
     try {
       const payload = {
+        metadata_source: el.settingMetadataSource ? el.settingMetadataSource.value : null,
         tvdb_api_key: getSecretValue(el.settingTvdbApiKey),
         tvdb_pin: el.settingTvdbPin ? el.settingTvdbPin.value.trim() : null,
         tvdb_base_url: el.settingTvdbBaseUrl ? el.settingTvdbBaseUrl.value.trim() : null,
+        tmdb_api_key: getSecretValue(el.settingTmdbApiKey),
+        tmdb_base_url: el.settingTmdbBaseUrl ? el.settingTmdbBaseUrl.value.trim() : null,
         oidc_enabled: el.settingOidcEnabled ? el.settingOidcEnabled.checked : null,
         oidc_issuer_url: el.settingOidcIssuerUrl ? el.settingOidcIssuerUrl.value.trim() : null,
         oidc_client_id: el.settingOidcClientId ? el.settingOidcClientId.value.trim() : null,

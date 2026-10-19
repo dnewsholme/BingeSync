@@ -1356,6 +1356,51 @@ h1, h2, h3, h4 {
   letter-spacing: -0.5px;
 }
 
+/* TMDB Link Badge & Button */
+.btn-tmdb {
+  background: #01b4e4;
+  color: #fff !important;
+  font-weight: 700;
+  border: 1px solid #0093be;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  text-decoration: none;
+  transition: all 0.15s ease;
+}
+
+.btn-tmdb:hover {
+  background: #0093be;
+  transform: translateY(-1px);
+  color: #fff !important;
+}
+
+.tmdb-badge-icon {
+  background: rgba(0, 0, 0, 0.25);
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 900;
+  padding: 1px 4px;
+  border-radius: 3px;
+  letter-spacing: -0.5px;
+}
+
+.card-tmdb-link {
+  display: inline-flex;
+  align-items: center;
+  color: #38bdf8;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-decoration: none;
+  opacity: 0.85;
+  transition: opacity 0.15s ease;
+}
+
+.card-tmdb-link:hover {
+  opacity: 1;
+  text-decoration: underline;
+}
+
 .card-tvdb-link {
   display: inline-flex;
   align-items: center;

@@ -587,16 +587,70 @@ pub const OPENAPI_SPEC_JSON: &str = r###"{
                 "get": {
                     "tags": ["Admin"],
                     "summary": "Get system settings",
+                    "description": "Returns current system settings including metadata provider configuration (TheTVDB or TMDB), OIDC SSO details, and task schedules with sensitive secrets masked.",
                     "security": [{ "BearerAuth": [] }],
                     "responses": {
-                        "200": { "description": "Current system settings" },
+                        "200": {
+                            "description": "Current system settings",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "metadata_source": { "type": "string", "enum": ["tvdb", "tmdb"], "description": "Active metadata enrichment provider" },
+                                            "tvdb_api_key_configured": { "type": "boolean" },
+                                            "tvdb_api_key_masked": { "type": "string" },
+                                            "tvdb_pin": { "type": "string" },
+                                            "tvdb_base_url": { "type": "string" },
+                                            "tmdb_api_key_configured": { "type": "boolean" },
+                                            "tmdb_api_key_masked": { "type": "string" },
+                                            "tmdb_base_url": { "type": "string" },
+                                            "oidc_enabled": { "type": "boolean" },
+                                            "oidc_issuer_url": { "type": "string" },
+                                            "oidc_client_id": { "type": "string" },
+                                            "oidc_client_secret_configured": { "type": "boolean" },
+                                            "oidc_client_secret_masked": { "type": "string" },
+                                            "oidc_redirect_url": { "type": "string" },
+                                            "scrobble_threshold_percent": { "type": "integer" },
+                                            "task_image_interval_hours": { "type": "integer" },
+                                            "task_tvdb_interval_hours": { "type": "integer" }
+                                        }
+                                    }
+                                }
+                            }
+                        },
                         "403": { "description": "Admin access required" }
                     }
                 },
                 "post": {
                     "tags": ["Admin"],
                     "summary": "Update system settings",
+                    "description": "Updates system-wide settings including metadata provider selection (TheTVDB or TMDB), API credentials, and background task intervals.",
                     "security": [{ "BearerAuth": [] }],
+                    "requestBody": {
+                        "required": true,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "metadata_source": { "type": "string", "enum": ["tvdb", "tmdb"], "description": "Active metadata enrichment provider" },
+                                        "tvdb_api_key": { "type": "string" },
+                                        "tvdb_pin": { "type": "string" },
+                                        "tvdb_base_url": { "type": "string" },
+                                        "tmdb_api_key": { "type": "string" },
+                                        "tmdb_base_url": { "type": "string" },
+                                        "oidc_enabled": { "type": "boolean" },
+                                        "oidc_issuer_url": { "type": "string" },
+                                        "oidc_client_id": { "type": "string" },
+                                        "oidc_client_secret": { "type": "string" },
+                                        "oidc_redirect_url": { "type": "string" },
+                                        "scrobble_threshold_percent": { "type": "integer" }
+                                    }
+                                }
+                            }
+                        }
+                    },
                     "responses": {
                         "200": { "description": "Settings updated" },
                         "403": { "description": "Admin access required" }
@@ -605,7 +659,32 @@ pub const OPENAPI_SPEC_JSON: &str = r###"{
                 "put": {
                     "tags": ["Admin"],
                     "summary": "Update system settings (idempotent PUT)",
+                    "description": "Idempotent update for system settings.",
                     "security": [{ "BearerAuth": [] }],
+                    "requestBody": {
+                        "required": true,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "metadata_source": { "type": "string", "enum": ["tvdb", "tmdb"] },
+                                        "tvdb_api_key": { "type": "string" },
+                                        "tvdb_pin": { "type": "string" },
+                                        "tvdb_base_url": { "type": "string" },
+                                        "tmdb_api_key": { "type": "string" },
+                                        "tmdb_base_url": { "type": "string" },
+                                        "oidc_enabled": { "type": "boolean" },
+                                        "oidc_issuer_url": { "type": "string" },
+                                        "oidc_client_id": { "type": "string" },
+                                        "oidc_client_secret": { "type": "string" },
+                                        "oidc_redirect_url": { "type": "string" },
+                                        "scrobble_threshold_percent": { "type": "integer" }
+                                    }
+                                }
+                            }
+                        }
+                    },
                     "responses": {
                         "200": { "description": "Settings updated" },
                         "403": { "description": "Admin access required" }
