@@ -877,13 +877,14 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     await page.click('#admin-subnav-pills button[data-subview="admin-sub-tasks"]');
     await expect(page.locator('#admin-sub-tasks')).toBeVisible();
 
-    // Verify task cards exist (poster_cache, tvdb_metadata, and user_sync)
+    // Verify task cards exist (poster_cache, tvdb_metadata, user_sync, and db_backup)
     const taskCards = page.locator('.task-card');
-    await expect(taskCards).toHaveCount(3);
+    await expect(taskCards).toHaveCount(4);
     const posterCard = page.locator('.task-card', { hasText: 'Media Poster & Thumbnail Caching' });
     await expect(posterCard).toBeVisible();
     await expect(page.locator('.task-card', { hasText: /Metadata Enrichment/ })).toBeVisible();
     await expect(page.locator('.task-card', { hasText: 'Plex & Media Server User Cache Sync' })).toBeVisible();
+    await expect(page.locator('.task-card', { hasText: 'Database Backup' })).toBeVisible();
 
     // Verify schedule selector and next run time are displayed
     await expect(posterCard.locator('.task-schedule-select')).toBeVisible();
@@ -1830,7 +1831,7 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     await page.click('#btn-admin-create-backup');
 
     // 4. Verify backup is created and appears in table
-    await expect(page.locator('#admin-backups-tbody tr')).toHaveCount(1, { timeout: 10000 });
+    await expect(page.locator('#admin-backups-tbody tr').first()).toContainText('bingesync_backup_', { timeout: 10000 });
     const backupRow = page.locator('#admin-backups-tbody tr').first();
     await expect(backupRow).toContainText('bingesync_backup_');
 
