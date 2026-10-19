@@ -263,7 +263,16 @@ pub async fn update_admin_settings_handler(
         state.task_tracker.set_tvdb_next_run(Some(next_run)).await;
     }
 
-    state.log_buffer.push("INFO", "bingesync::settings", "System settings updated by admin");
+    tracing::info!(
+        admin_id = %auth.user_id,
+        metadata_source = ?payload.metadata_source,
+        metadata_updated = metadata_updated,
+        scrobble_threshold_percent = ?payload.scrobble_threshold_percent,
+        task_image_interval_hours = ?payload.task_image_interval_hours,
+        task_tvdb_interval_hours = ?payload.task_tvdb_interval_hours,
+        oidc_enabled = ?payload.oidc_enabled,
+        "System settings updated by admin"
+    );
 
     if metadata_updated {
         state.metadata_notify.notify_waiters();

@@ -22,6 +22,7 @@ pub struct Config {
     pub tmdb_api_key: Option<String>,
     pub tmdb_base_url: String,
     pub scrobble_threshold_percent: i64,
+    pub backup_dir: String,
 }
 
 impl Config {
@@ -129,6 +130,8 @@ impl Config {
             .and_then(|v| v.parse::<i64>().ok())
             .unwrap_or(80);
 
+        let backup_dir = env::var("BACKUP_DIR").unwrap_or_else(|_| "/backup".to_string());
+
         Self {
             host,
             port,
@@ -150,6 +153,7 @@ impl Config {
             tmdb_api_key,
             tmdb_base_url,
             scrobble_threshold_percent,
+            backup_dir,
         }
     }
 }

@@ -371,6 +371,23 @@ const el = {
   adminLogsFilterLevel: document.getElementById('admin-logs-filter-level'),
   adminLogsAutorefresh: document.getElementById('admin-logs-autorefresh'),
 
+  // Admin Database Backups & Restore
+  pillAdminBackups: document.getElementById('pill-admin-backups'),
+  adminBackupsPath: document.getElementById('admin-backups-path'),
+  adminBackupsTable: document.getElementById('admin-backups-table'),
+  adminBackupsTbody: document.getElementById('admin-backups-tbody'),
+  adminBackupsStatus: document.getElementById('admin-backups-status'),
+  btnAdminCreateBackup: document.getElementById('btn-admin-create-backup'),
+  btnRefreshAdminBackups: document.getElementById('btn-refresh-admin-backups'),
+
+  // Restore Modal
+  modalRestoreBackup: document.getElementById('modal-restore-backup'),
+  restoreTargetFilename: document.getElementById('restore-target-filename'),
+  restoreModalStatus: document.getElementById('restore-modal-status'),
+  btnCloseRestoreModal: document.getElementById('btn-close-restore-modal'),
+  btnCancelRestoreModal: document.getElementById('btn-cancel-restore-modal'),
+  btnConfirmRestoreBackup: document.getElementById('btn-confirm-restore-backup'),
+
   // Library Cleanup (Radarr / Sonarr)
   tabCleanup: document.getElementById('tab-cleanup'),
   viewCleanup: document.getElementById('view-cleanup'),
@@ -2161,11 +2178,19 @@ async function loadWebhookInfo() {
   const tvdbBadge = document.getElementById('tvdb-status-badge');
   const tvdbText = document.getElementById('tvdb-status-text');
   const tvdbDot = document.getElementById('tvdb-pulse-dot');
+  const cardTitle = document.getElementById('settings-metadata-card-title');
+  const cardDesc = document.getElementById('settings-metadata-card-desc');
+  const cardAttribution = document.getElementById('settings-metadata-attribution-note');
+
   if (tvdbBadge && tvdbText) {
     try {
       const integrations = await api.getIntegrationsStatus();
       const isTmdb = integrations && integrations.metadata_source === 'tmdb';
       if (isTmdb) {
+        if (cardTitle) cardTitle.textContent = 'The Movie Database (TMDB) Metadata Integration';
+        if (cardDesc) cardDesc.innerHTML = 'BingeSync automatically enriches your scrobble timeline in the background with genres, cast/actor details, director credits, and plot summaries retrieved from <a href="https://www.themoviedb.org/" target="_blank" rel="noopener noreferrer" class="tmdb-inline-link">The Movie Database (TMDB)</a>.';
+        if (cardAttribution) cardAttribution.innerHTML = 'Media metadata, plot outlines, genres, and cast details are provided by <a href="https://www.themoviedb.org/" target="_blank" rel="noopener noreferrer" class="tmdb-inline-link"><strong>The Movie Database (TMDB)</strong></a>. This product uses the TMDB API but is not endorsed or certified by TMDB.';
+
         if (integrations.tmdb_configured) {
           tvdbText.textContent = 'The Movie Database (TMDB) Connected & Active (Background Enrichment Enabled)';
           tvdbBadge.className = 'tvdb-status-badge tvdb-status-active';
@@ -2176,6 +2201,10 @@ async function loadWebhookInfo() {
           if (tvdbDot) tvdbDot.className = 'pulse-dot-sm pulse-inactive';
         }
       } else {
+        if (cardTitle) cardTitle.textContent = 'TheTVDB Metadata Integration';
+        if (cardDesc) cardDesc.innerHTML = 'BingeSync automatically enriches your scrobble timeline in the background with genres, cast/actor details, director credits, and plot summaries retrieved from <a href="https://thetvdb.com/" target="_blank" rel="noopener noreferrer" class="tvdb-inline-link">TheTVDB</a>.';
+        if (cardAttribution) cardAttribution.innerHTML = 'Media metadata, plot outlines, genres, and cast details are provided by <a href="https://thetvdb.com/" target="_blank" rel="noopener noreferrer" class="tvdb-inline-link"><strong>TheTVDB</strong></a>. This product uses TheTVDB API but is not certified or endorsed by TheTVDB.';
+
         if (integrations && integrations.tvdb_configured) {
           tvdbText.textContent = 'TheTVDB Connected & Active (Background Enrichment Enabled)';
           tvdbBadge.className = 'tvdb-status-badge tvdb-status-active';
@@ -2187,7 +2216,7 @@ async function loadWebhookInfo() {
         }
       }
     } catch (e) {
-      tvdbText.textContent = 'TheTVDB Integration Active';
+      tvdbText.textContent = 'Metadata Integration Active';
     }
   }
 }
@@ -3489,7 +3518,19 @@ function renderAdminUsers(users) {
 }
 
 if (el.btnRefreshAdminUsers) {
-  el.btnRefreshAdminUsers.addEventListener('click', () => loadAdminUsers());
+  el.btnRefreshAdminUsers.addEventListener('click', () => {
+    if (state.admin.activeSubview === 'admin-sub-backups') {
+      loadAdminBackups();
+    } else if (state.admin.activeSubview === 'admin-sub-tasks') {
+      loadAdminTasks();
+    } else if (state.admin.activeSubview === 'admin-sub-logs') {
+      loadAdminLogs();
+    } else if (state.admin.activeSubview === 'admin-sub-settings') {
+      loadAdminSettings();
+    } else {
+      loadAdminUsers();
+    }
+  });
 }
 
 if (el.btnCopyBackchannelUrl && el.adminBackchannelUrlInput) {
@@ -3529,6 +3570,9 @@ function switchAdminSubview(subviewId) {
   } else if (subviewId === 'admin-sub-logs') {
     loadAdminLogs();
     startLogsAutoRefresh();
+  } else if (subviewId === 'admin-sub-backups') {
+    stopLogsAutoRefresh();
+    loadAdminBackups();
   }
 }
 
@@ -3847,7 +3891,7 @@ function renderAdminTasks(tasks) {
       const taskId = btn.dataset.taskId;
       let confirmMsg = 'Force refresh all items for this background task?';
       if (taskId === 'tvdb_metadata') {
-        confirmMsg = 'Force refresh metadata for ALL items? This will reset metadata timestamps and re-download all metadata from TheTVDB.';
+        confirmMsg = 'Force refresh metadata for ALL items? This will reset metadata timestamps and re-download all metadata from the active metadata provider.';
       } else if (taskId === 'image_cache') {
         confirmMsg = 'Force refresh poster images for ALL items? This will reset poster thumbnails and re-download artwork for all scrobbles.';
       } else if (taskId === 'user_sync') {
@@ -3888,7 +3932,7 @@ if (el.btnRefreshAdminTasks) {
 
 if (el.btnForceRefreshAllMetadata) {
   el.btnForceRefreshAllMetadata.addEventListener('click', async () => {
-    if (!confirm('Force refresh metadata for ALL items? This will reset metadata timestamps and re-download all metadata from TheTVDB.')) {
+    if (!confirm('Force refresh metadata for ALL items? This will reset metadata timestamps and re-download all metadata from the active metadata provider.')) {
       return;
     }
     el.btnForceRefreshAllMetadata.disabled = true;
@@ -3999,6 +4043,203 @@ if (el.btnClearAdminLogs) {
       }
     }
   });
+}
+
+// ==========================================
+// ADMIN: DATABASE BACKUPS & RESTORE
+// ==========================================
+
+let pendingRestoreFilename = null;
+
+async function loadAdminBackups() {
+  if (!el.adminBackupsTbody) return;
+  el.adminBackupsTbody.innerHTML = `<tr><td colspan="4" style="text-align:center;padding:20px;color:var(--text-dim);"><div class="spinner" style="margin: 0 auto 10px;"></div>Loading database backups...</td></tr>`;
+  try {
+    const res = await api.getBackups();
+    if (el.adminBackupsPath && res.backup_dir) {
+      el.adminBackupsPath.textContent = res.backup_dir;
+    }
+    const backups = Array.isArray(res.backups) ? res.backups : [];
+    renderAdminBackups(backups);
+  } catch (err) {
+    console.error('Failed to load database backups:', err);
+    el.adminBackupsTbody.innerHTML = `<tr><td colspan="4" style="text-align:center;padding:20px;color:var(--accent-red);">Failed to load backups: ${escapeHtml(err.message)}</td></tr>`;
+  }
+}
+
+function renderAdminBackups(backups) {
+  if (!el.adminBackupsTbody) return;
+  if (!backups || backups.length === 0) {
+    el.adminBackupsTbody.innerHTML = `<tr><td colspan="4" style="text-align:center;padding:24px;color:var(--text-dim);">No database backups found in directory. Click "Backup Now" to create your first backup.</td></tr>`;
+    return;
+  }
+
+  el.adminBackupsTbody.innerHTML = backups
+    .map(b => {
+      const createdStr = b.created_at ? new Date(b.created_at).toLocaleString() : 'Unknown';
+      const isPreRestore = b.filename.includes('pre_restore');
+      const badge = isPreRestore
+        ? `<span class="badge-pill" style="font-size:0.7rem;background:rgba(234,179,8,0.15);color:#facc15;margin-left:8px;">Safety Snapshot</span>`
+        : '';
+
+      return `
+        <tr data-filename="${escapeHtml(b.filename)}">
+          <td>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:#38bdf8;flex-shrink:0;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              <span class="font-mono" style="font-size:0.85rem;word-break:break-all;">${escapeHtml(b.filename)}</span>
+              ${badge}
+            </div>
+          </td>
+          <td style="color:var(--text-dim);font-size:0.85rem;white-space:nowrap;">${createdStr}</td>
+          <td style="font-size:0.85rem;color:#38bdf8;white-space:nowrap;">${escapeHtml(b.size_formatted || '0 B')}</td>
+          <td style="text-align: right; white-space:nowrap;">
+            <div style="display:inline-flex;gap:8px;">
+              <button class="btn btn-outline btn-sm btn-restore-backup" data-filename="${escapeHtml(b.filename)}" title="Restore database from this backup">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+                Restore
+              </button>
+              <button class="btn btn-outline btn-sm text-danger btn-delete-backup" data-filename="${escapeHtml(b.filename)}" title="Delete this backup file">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+              </button>
+            </div>
+          </td>
+        </tr>
+      `;
+    })
+    .join('');
+
+  // Attach restore buttons
+  el.adminBackupsTbody.querySelectorAll('.btn-restore-backup').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const filename = btn.dataset.filename;
+      openRestoreModal(filename);
+    });
+  });
+
+  // Attach delete buttons
+  el.adminBackupsTbody.querySelectorAll('.btn-delete-backup').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const filename = btn.dataset.filename;
+      if (!confirm(`Are you sure you want to permanently delete backup "${filename}"?`)) {
+        return;
+      }
+      btn.disabled = true;
+      try {
+        await api.deleteBackup(filename);
+        showAdminBackupsStatus(`Backup "${filename}" deleted successfully`, 'success');
+        loadAdminBackups();
+      } catch (err) {
+        alert('Failed to delete backup: ' + err.message);
+        btn.disabled = false;
+      }
+    });
+  });
+}
+
+function showAdminBackupsStatus(msg, type = 'info') {
+  if (!el.adminBackupsStatus) return;
+  el.adminBackupsStatus.style.display = 'block';
+  el.adminBackupsStatus.className = `import-status-box status-${type}`;
+  el.adminBackupsStatus.textContent = msg;
+  setTimeout(() => {
+    if (el.adminBackupsStatus) el.adminBackupsStatus.style.display = 'none';
+  }, 4000);
+}
+
+function openRestoreModal(filename) {
+  pendingRestoreFilename = filename;
+  if (el.restoreTargetFilename) {
+    el.restoreTargetFilename.textContent = filename;
+  }
+  if (el.restoreModalStatus) {
+    el.restoreModalStatus.style.display = 'none';
+  }
+  if (el.btnConfirmRestoreBackup) {
+    el.btnConfirmRestoreBackup.disabled = false;
+    el.btnConfirmRestoreBackup.textContent = 'Confirm & Restore';
+  }
+  if (el.modalRestoreBackup) {
+    el.modalRestoreBackup.style.display = 'flex';
+  }
+}
+
+function closeRestoreModal() {
+  pendingRestoreFilename = null;
+  if (el.modalRestoreBackup) {
+    el.modalRestoreBackup.style.display = 'none';
+  }
+}
+
+if (el.btnCloseRestoreModal) {
+  el.btnCloseRestoreModal.addEventListener('click', closeRestoreModal);
+}
+if (el.btnCancelRestoreModal) {
+  el.btnCancelRestoreModal.addEventListener('click', closeRestoreModal);
+}
+if (el.modalRestoreBackup) {
+  el.modalRestoreBackup.addEventListener('click', e => {
+    if (e.target === el.modalRestoreBackup) closeRestoreModal();
+  });
+}
+
+if (el.btnConfirmRestoreBackup) {
+  el.btnConfirmRestoreBackup.addEventListener('click', async () => {
+    if (!pendingRestoreFilename) return;
+    el.btnConfirmRestoreBackup.disabled = true;
+    el.btnConfirmRestoreBackup.textContent = 'Restoring...';
+
+    if (el.restoreModalStatus) {
+      el.restoreModalStatus.style.display = 'block';
+      el.restoreModalStatus.className = 'import-status-box status-info';
+      el.restoreModalStatus.textContent = 'Executing database restore and schema verification...';
+    }
+
+    try {
+      const res = await api.restoreBackup(pendingRestoreFilename);
+      if (el.restoreModalStatus) {
+        el.restoreModalStatus.className = 'import-status-box status-success';
+        el.restoreModalStatus.textContent = res.message || 'Database restored successfully!';
+      }
+      setTimeout(() => {
+        closeRestoreModal();
+        loadAdminBackups();
+        // Also refresh user data / stats / timeline
+        fetchTimeline();
+        fetchStats();
+      }, 1500);
+    } catch (err) {
+      console.error('Failed to restore backup:', err);
+      if (el.restoreModalStatus) {
+        el.restoreModalStatus.className = 'import-status-box status-error';
+        el.restoreModalStatus.textContent = 'Restore failed: ' + err.message;
+      }
+      el.btnConfirmRestoreBackup.disabled = false;
+      el.btnConfirmRestoreBackup.textContent = 'Try Again';
+    }
+  });
+}
+
+if (el.btnAdminCreateBackup) {
+  el.btnAdminCreateBackup.addEventListener('click', async () => {
+    el.btnAdminCreateBackup.disabled = true;
+    const origHtml = el.btnAdminCreateBackup.innerHTML;
+    el.btnAdminCreateBackup.innerHTML = `<span class="spinner" style="width:14px;height:14px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:6px;"></span> Creating Backup...`;
+    try {
+      const res = await api.createBackup();
+      showAdminBackupsStatus(`Backup created successfully: ${res.backup ? res.backup.filename : 'complete'}`, 'success');
+      loadAdminBackups();
+    } catch (err) {
+      alert('Failed to create database backup: ' + err.message);
+    } finally {
+      el.btnAdminCreateBackup.disabled = false;
+      el.btnAdminCreateBackup.innerHTML = origHtml;
+    }
+  });
+}
+
+if (el.btnRefreshAdminBackups) {
+  el.btnRefreshAdminBackups.addEventListener('click', () => loadAdminBackups());
 }
 
 // ==========================================

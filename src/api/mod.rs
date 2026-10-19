@@ -17,6 +17,7 @@ pub mod tvdb;
 pub mod user;
 pub mod user_settings;
 pub mod user_sync;
+pub mod backup;
 pub mod webhooks;
 pub mod ssrf;
 pub mod rate_limit;
@@ -41,6 +42,7 @@ pub struct AppState {
     pub user_sync_notify: Arc<tokio::sync::Notify>,
     pub log_buffer: Arc<logs::LogBuffer>,
     pub task_tracker: Arc<jobs::BackgroundTaskTracker>,
+    pub db_backup_notify: Arc<tokio::sync::Notify>,
 }
 
 impl AppState {
@@ -113,10 +115,11 @@ impl AppState {
     }
 
     pub async fn get_task_interval_hours(&self, task_id: &str) -> u64 {
-        let key = match task_id {
-            "image_cache" | "images" => "task_image_cache_interval_hours",
-            "tvdb_metadata" | "tvdb" => "task_tvdb_metadata_interval_hours",
-            "user_sync" | "users" | "plex_users" => "task_user_sync_interval_hours",
+        let (key, default_hours) = match task_id {
+            "image_cache" | "images" => ("task_image_cache_interval_hours", 4),
+            "tvdb_metadata" | "tvdb" => ("task_tvdb_metadata_interval_hours", 4),
+            "user_sync" | "users" | "plex_users" => ("task_user_sync_interval_hours", 4),
+            "db_backup" | "backup" => ("task_db_backup_interval_hours", 24),
             _ => return 4,
         };
         if let Some(val) = settings::get_db_setting(&self.pool, key).await {
@@ -126,7 +129,7 @@ impl AppState {
                 }
             }
         }
-        4
+        default_hours
     }
 
     pub async fn set_task_interval_hours(&self, task_id: &str, hours: u64) -> Result<(), sqlx::Error> {
@@ -134,6 +137,7 @@ impl AppState {
             "image_cache" | "images" => "task_image_cache_interval_hours",
             "tvdb_metadata" | "tvdb" => "task_tvdb_metadata_interval_hours",
             "user_sync" | "users" | "plex_users" => "task_user_sync_interval_hours",
+            "db_backup" | "backup" => "task_db_backup_interval_hours",
             _ => return Ok(()),
         };
         let clamped = hours.clamp(1, 168);
@@ -257,6 +261,11 @@ pub fn create_api_router(state: AppState) -> Router {
         .route("/api/v1/admin/metadata/force-refresh", post(jobs::force_refresh_all_metadata_handler))
         .route("/api/v1/admin/images/force-refresh", post(jobs::force_refresh_all_images_handler))
         .route("/api/v1/admin/users-cache/force-refresh", post(jobs::force_refresh_user_cache_handler))
+        // Database Backups & Restore (Admin Only)
+        .route("/api/v1/admin/backups", get(backup::get_admin_backups_handler))
+        .route("/api/v1/admin/backups/create", post(backup::create_admin_backup_handler))
+        .route("/api/v1/admin/backups/restore", post(backup::restore_admin_backup_handler))
+        .route("/api/v1/admin/backups/{filename}", delete(backup::delete_admin_backup_handler))
         // OpenAPI specification and Swagger UI
         .route("/api/v1/openapi.json", get(openapi::get_openapi_json))
         .route("/docs", get(openapi::get_swagger_ui))

@@ -73,6 +73,7 @@ impl TvdbClient {
         }
 
         let login_url = format!("{}/login", self.base_url);
+        tracing::info!(base_url = %self.base_url, "Authenticating with TheTVDB API");
         let mut login_body = serde_json::json!({
             "apikey": self.api_key
         });
@@ -88,16 +89,23 @@ impl TvdbClient {
             .json(&login_body)
             .send()
             .await
-            .map_err(|e| format!("Failed to send login request to TVDB: {}", e))?;
+            .map_err(|e| {
+                tracing::warn!(error = %e, "Failed to send login request to TVDB");
+                format!("Failed to send login request to TVDB: {}", e)
+            })?;
 
         if !resp.status().is_success() {
+            tracing::warn!(status = %resp.status(), "TVDB login failed");
             return Err(format!("TVDB login failed with status {}", resp.status()));
         }
 
         let json_val: serde_json::Value = resp
             .json()
             .await
-            .map_err(|e| format!("Failed to parse TVDB login response: {}", e))?;
+            .map_err(|e| {
+                tracing::warn!(error = %e, "Failed to parse TVDB login response");
+                format!("Failed to parse TVDB login response: {}", e)
+            })?;
 
         let token = json_val
             .get("data")
@@ -107,6 +115,7 @@ impl TvdbClient {
             .to_string();
 
         *write_guard = Some((token.clone(), Instant::now()));
+        tracing::info!("Successfully obtained authentication token from TheTVDB");
         Ok(token)
     }
 
@@ -118,6 +127,7 @@ impl TvdbClient {
     ) -> Result<Vec<TvdbSearchCandidate>, String> {
         let token = self.get_token().await?;
         let search_url = format!("{}/search", self.base_url);
+        tracing::info!(query = %query, entity_type = ?entity_type, year = ?year, "Querying TheTVDB search API");
 
         let mut req = self
             .client
@@ -139,16 +149,21 @@ impl TvdbClient {
         let resp = req
             .send()
             .await
-            .map_err(|e| format!("Failed to search TVDB: {}", e))?;
+            .map_err(|e| {
+                tracing::warn!(query = %query, error = %e, "Failed to send search request to TVDB");
+                format!("Failed to search TVDB: {}", e)
+            })?;
 
         if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
             let mut guard = self.token.write().await;
             *guard = None;
             drop(guard);
+            tracing::warn!(query = %query, "TVDB token expired or unauthorized during search");
             return Err("TVDB token expired or unauthorized".to_string());
         }
 
         if !resp.status().is_success() {
+            tracing::warn!(query = %query, status = %resp.status(), "TVDB search returned error status");
             return Err(format!("TVDB search returned status {}", resp.status()));
         }
 
@@ -277,6 +292,7 @@ impl TvdbClient {
             });
         }
 
+        tracing::info!(query = %query, results_count = candidates.len(), "Received TheTVDB search results");
         Ok(candidates)
     }
 
@@ -354,6 +370,7 @@ impl TvdbClient {
             .or_else(|| series_id.strip_prefix("movie-"))
             .unwrap_or(series_id);
 
+        tracing::info!(series_id = %clean_id, "Fetching series extended metadata from TheTVDB");
         let token = self.get_token().await?;
         let url = format!("{}/series/{}/extended", self.base_url, clean_id);
 
@@ -369,6 +386,7 @@ impl TvdbClient {
             if r.status().is_success() {
                 if let Ok(json_val) = r.json::<serde_json::Value>().await {
                     if let Some(data) = json_val.get("data") {
+                        tracing::info!(series_id = %clean_id, "Successfully fetched series extended metadata from TheTVDB");
                         return Ok(parse_extended_metadata(data));
                     }
                 }
@@ -384,16 +402,21 @@ impl TvdbClient {
             .header("Accept", "application/json")
             .send()
             .await
-            .map_err(|e| format!("Failed to fetch TVDB series base: {}", e))?;
+            .map_err(|e| {
+                tracing::warn!(series_id = %clean_id, error = %e, "Failed to fetch TVDB series base");
+                format!("Failed to fetch TVDB series base: {}", e)
+            })?;
 
         if resp2.status().is_success() {
             if let Ok(json_val) = resp2.json::<serde_json::Value>().await {
                 if let Some(data) = json_val.get("data") {
+                    tracing::info!(series_id = %clean_id, "Successfully fetched series base metadata from TheTVDB");
                     return Ok(parse_extended_metadata(data));
                 }
             }
         }
 
+        tracing::warn!(series_id = %clean_id, "TVDB series metadata lookup failed");
         Err(format!("TVDB series extended failed for ID {}", clean_id))
     }
 
@@ -404,6 +427,7 @@ impl TvdbClient {
             .or_else(|| movie_id.strip_prefix("series-"))
             .unwrap_or(movie_id);
 
+        tracing::info!(movie_id = %clean_id, "Fetching movie extended metadata from TheTVDB");
         let token = self.get_token().await?;
         let url = format!("{}/movies/{}/extended", self.base_url, clean_id);
 
@@ -419,6 +443,7 @@ impl TvdbClient {
             if r.status().is_success() {
                 if let Ok(json_val) = r.json::<serde_json::Value>().await {
                     if let Some(data) = json_val.get("data") {
+                        tracing::info!(movie_id = %clean_id, "Successfully fetched movie extended metadata from TheTVDB");
                         return Ok(parse_extended_metadata(data));
                     }
                 }
@@ -434,16 +459,21 @@ impl TvdbClient {
             .header("Accept", "application/json")
             .send()
             .await
-            .map_err(|e| format!("Failed to fetch TVDB movie base: {}", e))?;
+            .map_err(|e| {
+                tracing::warn!(movie_id = %clean_id, error = %e, "Failed to fetch TVDB movie base");
+                format!("Failed to fetch TVDB movie base: {}", e)
+            })?;
 
         if resp2.status().is_success() {
             if let Ok(json_val) = resp2.json::<serde_json::Value>().await {
                 if let Some(data) = json_val.get("data") {
+                    tracing::info!(movie_id = %clean_id, "Successfully fetched movie base metadata from TheTVDB");
                     return Ok(parse_extended_metadata(data));
                 }
             }
         }
 
+        tracing::warn!(movie_id = %clean_id, "TVDB movie metadata lookup failed");
         Err(format!("TVDB movie extended failed for ID {}", clean_id))
     }
 }
@@ -867,6 +897,8 @@ pub async fn process_missing_metadata_batch_provider(
         return 0;
     }
 
+    tracing::info!(batch_size = rows.len(), "Processing batch for metadata enrichment");
+
     let mut processed_count = 0;
 
     for item in rows {
@@ -1029,6 +1061,12 @@ pub async fn process_missing_metadata_batch_provider(
         }
 
         processed_count += 1;
+        tracing::info!(
+            id = %item.id,
+            title = %search_title,
+            media_type = %item.media_type,
+            "Enriched scrobble metadata"
+        );
     }
 
     processed_count

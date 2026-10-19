@@ -238,4 +238,13 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ interval_hours: intervalHours }),
     }),
+  getBackups: () => request('/admin/backups'),
+  createBackup: () => request('/admin/backups/create', { method: 'POST' }),
+  restoreBackup: (filename) =>
+    request('/admin/backups/restore', {
+      method: 'POST',
+      body: JSON.stringify({ filename }),
+    }),
+  deleteBackup: (filename) =>
+    request(`/admin/backups/${encodeURIComponent(filename)}`, { method: 'DELETE' }),
 };

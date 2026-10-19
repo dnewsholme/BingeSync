@@ -155,6 +155,7 @@ pub async fn check_media_in_library(
         .unwrap_or_default();
 
     if query.media_type == "movie" {
+        tracing::debug!(service = "radarr", user_id = %auth.user_id, title = %query.title, year = ?query.year, "Checking if movie exists in Radarr");
         let user_radarr_url = crate::api::user_settings::get_user_setting(&state.pool, &auth.user_id, "radarr_url").await;
         let user_radarr_key = crate::api::user_settings::get_user_setting(&state.pool, &auth.user_id, "radarr_api_key").await;
         if let (Some(ref radarr_url), Some(ref api_key)) = (user_radarr_url, user_radarr_key) {
@@ -179,8 +180,8 @@ pub async fn check_media_in_library(
                     }
                 }
 
-                if let Ok(resp) = res {
-                    if resp.status().is_success() {
+                match res {
+                    Ok(resp) if resp.status().is_success() => {
                         if let Ok(movies) = resp.json::<Vec<serde_json::Value>>().await {
                             for m in movies {
                                 let m_id = m.get("id").and_then(|v| v.as_i64()).unwrap_or(0);
@@ -193,6 +194,7 @@ pub async fn check_media_in_library(
                                 if m_id > 0 && (title_match || year_match) {
                                     let has_file = m.get("hasFile").and_then(|v| v.as_bool()).unwrap_or(false);
                                     let size_on_disk = m.get("sizeOnDisk").and_then(|v| v.as_i64()).unwrap_or(0);
+                                    tracing::info!(service = "radarr", user_id = %auth.user_id, title = %query.title, movie_id = m_id, has_file = has_file, "Movie match found in Radarr");
                                     return Ok(Json(serde_json::json!({
                                         "found": true,
                                         "service": "radarr",
@@ -205,13 +207,21 @@ pub async fn check_media_in_library(
                             }
                         }
                     }
+                    Ok(resp) => {
+                        tracing::warn!(service = "radarr", status = %resp.status(), title = %query.title, "Radarr movie lookup returned error HTTP status");
+                    }
+                    Err(e) => {
+                        tracing::warn!(service = "radarr", error = %e, title = %query.title, "Failed to connect to Radarr for movie lookup");
+                    }
                 }
             }
         }
 
+        tracing::debug!(service = "radarr", user_id = %auth.user_id, title = %query.title, "Movie not found in Radarr library");
         return Ok(Json(serde_json::json!({ "found": false, "service": "radarr" })));
     } else {
         // Episode / TV Series -> check Sonarr
+        tracing::debug!(service = "sonarr", user_id = %auth.user_id, title = %query.title, "Checking if TV series exists in Sonarr");
         let user_sonarr_url = crate::api::user_settings::get_user_setting(&state.pool, &auth.user_id, "sonarr_url").await;
         let user_sonarr_key = crate::api::user_settings::get_user_setting(&state.pool, &auth.user_id, "sonarr_api_key").await;
         if let (Some(ref sonarr_url), Some(ref api_key)) = (user_sonarr_url, user_sonarr_key) {
@@ -237,12 +247,13 @@ pub async fn check_media_in_library(
                     }
                 }
 
-                if let Ok(resp) = res {
-                    if resp.status().is_success() {
+                match res {
+                    Ok(resp) if resp.status().is_success() => {
                         if let Ok(series_list) = resp.json::<Vec<serde_json::Value>>().await {
                             for s in series_list {
                                 let s_id = s.get("id").and_then(|v| v.as_i64()).unwrap_or(0);
                                 if s_id > 0 {
+                                    tracing::info!(service = "sonarr", user_id = %auth.user_id, series = %search_term, series_id = s_id, "Series match found in Sonarr");
                                     return Ok(Json(serde_json::json!({
                                         "found": true,
                                         "service": "sonarr",
@@ -253,10 +264,17 @@ pub async fn check_media_in_library(
                             }
                         }
                     }
+                    Ok(resp) => {
+                        tracing::warn!(service = "sonarr", status = %resp.status(), series = %search_term, "Sonarr series lookup returned error HTTP status");
+                    }
+                    Err(e) => {
+                        tracing::warn!(service = "sonarr", error = %e, series = %search_term, "Failed to connect to Sonarr for series lookup");
+                    }
                 }
             }
         }
 
+        tracing::debug!(service = "sonarr", user_id = %auth.user_id, title = %query.title, "Series not found in Sonarr library");
         return Ok(Json(serde_json::json!({ "found": false, "service": "sonarr" })));
     }
 }
@@ -271,6 +289,7 @@ pub async fn delete_from_radarr(
     let (radarr_url, api_key_val) = match (user_radarr_url, user_radarr_key) {
         (Some(u), Some(k)) => (u, k),
         _ => {
+            tracing::warn!(service = "radarr", user_id = %auth.user_id, "Radarr delete failed: not configured in settings");
             return Err((
                 StatusCode::BAD_REQUEST,
                 Json(serde_json::json!({ "error": "Radarr is not configured in your settings" })),
@@ -279,6 +298,7 @@ pub async fn delete_from_radarr(
     };
     let api_key = api_key_val.as_str();
     let safe_url = crate::api::ssrf::validate_integration_url(&radarr_url).map_err(|e| {
+        tracing::warn!(service = "radarr", error = %e, "Invalid Radarr URL");
         (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({ "error": format!("Invalid Radarr URL: {}", e) })),
@@ -293,6 +313,14 @@ pub async fn delete_from_radarr(
         delete_files
     );
 
+    tracing::info!(
+        service = "radarr",
+        user_id = %auth.user_id,
+        movie_id = payload.movie_id,
+        delete_files = delete_files,
+        "Deleting movie from Radarr"
+    );
+
     let client = Client::builder()
         .timeout(std::time::Duration::from_secs(10))
         .danger_accept_invalid_certs(true)
@@ -304,6 +332,7 @@ pub async fn delete_from_radarr(
         .send()
         .await
         .map_err(|e| {
+            tracing::warn!(service = "radarr", error = %e, movie_id = payload.movie_id, "Failed to communicate with Radarr during delete");
             (
                 StatusCode::BAD_GATEWAY,
                 Json(serde_json::json!({ "error": format!("Failed to communicate with Radarr: {}", e) })),
@@ -311,12 +340,14 @@ pub async fn delete_from_radarr(
         })?;
 
     if !res.status().is_success() {
+        tracing::warn!(service = "radarr", status = %res.status(), movie_id = payload.movie_id, "Radarr delete returned non-success status");
         return Err((
             StatusCode::BAD_GATEWAY,
             Json(serde_json::json!({ "error": format!("Radarr returned error status: {}", res.status()) })),
         ));
     }
 
+    tracing::info!(service = "radarr", user_id = %auth.user_id, movie_id = payload.movie_id, "Movie successfully deleted from Radarr");
     Ok(Json(serde_json::json!({
         "status": "deleted",
         "service": "radarr",
@@ -369,6 +400,14 @@ pub async fn delete_from_sonarr(
                 }
             };
 
+            tracing::info!(
+                service = "sonarr",
+                user_id = %auth.user_id,
+                series_id = payload.series_id,
+                season_number = season,
+                "Deleting season files and unmonitoring season in Sonarr"
+            );
+
             // 1. Fetch episode files and delete those belonging to this season
             let ep_files_url = format!("{}/api/v3/episodefile?seriesId={}", base_url, payload.series_id);
             let ep_files_res = client
@@ -395,7 +434,11 @@ pub async fn delete_from_sonarr(
                             }
                         }
                     }
+                } else {
+                    tracing::warn!(service = "sonarr", status = %resp.status(), series_id = payload.series_id, "Failed to retrieve episode files from Sonarr");
                 }
+            } else if let Err(ref e) = ep_files_res {
+                tracing::warn!(service = "sonarr", error = %e, series_id = payload.series_id, "Network error fetching episode files from Sonarr");
             }
 
             // 2. Fetch series, update season monitored to false, and PUT back
@@ -406,6 +449,7 @@ pub async fn delete_from_sonarr(
                 .send()
                 .await
                 .map_err(|e| {
+                    tracing::warn!(service = "sonarr", error = %e, series_id = payload.series_id, "Failed to fetch series from Sonarr");
                     (
                         StatusCode::BAD_GATEWAY,
                         Json(serde_json::json!({ "error": format!("Failed to fetch series from Sonarr: {}", e) })),
@@ -413,6 +457,7 @@ pub async fn delete_from_sonarr(
                 })?;
 
             if !series_res.status().is_success() {
+                tracing::warn!(service = "sonarr", status = %series_res.status(), series_id = payload.series_id, "Sonarr returned error fetching series");
                 return Err((
                     StatusCode::BAD_GATEWAY,
                     Json(serde_json::json!({ "error": format!("Sonarr returned error status: {}", series_res.status()) })),
@@ -475,6 +520,15 @@ pub async fn delete_from_sonarr(
                 }
             }
 
+            tracing::info!(
+                service = "sonarr",
+                user_id = %auth.user_id,
+                series_id = payload.series_id,
+                season_number = season,
+                deleted_files_count = deleted_files_count,
+                "Season files deleted and season unmonitored in Sonarr"
+            );
+
             Ok(Json(serde_json::json!({
                 "status": "deleted",
                 "service": "sonarr",
@@ -487,6 +541,13 @@ pub async fn delete_from_sonarr(
         }
 
         "delete_all_files_unmonitor" => {
+            tracing::info!(
+                service = "sonarr",
+                user_id = %auth.user_id,
+                series_id = payload.series_id,
+                "Deleting all series files and unmonitoring all seasons in Sonarr"
+            );
+
             // 1. Fetch all episode files and delete all of them
             let ep_files_url = format!("{}/api/v3/episodefile?seriesId={}", base_url, payload.series_id);
             let ep_files_res = client
@@ -511,7 +572,11 @@ pub async fn delete_from_sonarr(
                             }
                         }
                     }
+                } else {
+                    tracing::warn!(service = "sonarr", status = %resp.status(), series_id = payload.series_id, "Failed to retrieve episode files from Sonarr");
                 }
+            } else if let Err(ref e) = ep_files_res {
+                tracing::warn!(service = "sonarr", error = %e, series_id = payload.series_id, "Network error fetching episode files from Sonarr");
             }
 
             // 2. Fetch series, update all seasons and series monitored to false, and PUT back
@@ -522,6 +587,7 @@ pub async fn delete_from_sonarr(
                 .send()
                 .await
                 .map_err(|e| {
+                    tracing::warn!(service = "sonarr", error = %e, series_id = payload.series_id, "Failed to fetch series from Sonarr");
                     (
                         StatusCode::BAD_GATEWAY,
                         Json(serde_json::json!({ "error": format!("Failed to fetch series from Sonarr: {}", e) })),
@@ -529,6 +595,7 @@ pub async fn delete_from_sonarr(
                 })?;
 
             if !series_res.status().is_success() {
+                tracing::warn!(service = "sonarr", status = %series_res.status(), series_id = payload.series_id, "Sonarr returned error status for series");
                 return Err((
                     StatusCode::BAD_GATEWAY,
                     Json(serde_json::json!({ "error": format!("Sonarr returned error status: {}", series_res.status()) })),
@@ -590,6 +657,14 @@ pub async fn delete_from_sonarr(
                 }
             }
 
+            tracing::info!(
+                service = "sonarr",
+                user_id = %auth.user_id,
+                series_id = payload.series_id,
+                deleted_files_count = deleted_files_count,
+                "All series files deleted and all seasons unmonitored in Sonarr"
+            );
+
             Ok(Json(serde_json::json!({
                 "status": "deleted",
                 "service": "sonarr",
@@ -609,12 +684,21 @@ pub async fn delete_from_sonarr(
                 delete_files
             );
 
+            tracing::info!(
+                service = "sonarr",
+                user_id = %auth.user_id,
+                series_id = payload.series_id,
+                delete_files = delete_files,
+                "Deleting series from Sonarr"
+            );
+
             let res = client
                 .delete(&target_url)
                 .header("X-Api-Key", api_key)
                 .send()
                 .await
                 .map_err(|e| {
+                    tracing::warn!(service = "sonarr", error = %e, series_id = payload.series_id, "Failed to communicate with Sonarr during series delete");
                     (
                         StatusCode::BAD_GATEWAY,
                         Json(serde_json::json!({ "error": format!("Failed to communicate with Sonarr: {}", e) })),
@@ -622,11 +706,19 @@ pub async fn delete_from_sonarr(
                 })?;
 
             if !res.status().is_success() {
+                tracing::warn!(service = "sonarr", status = %res.status(), series_id = payload.series_id, "Sonarr returned error status during series delete");
                 return Err((
                     StatusCode::BAD_GATEWAY,
                     Json(serde_json::json!({ "error": format!("Sonarr returned error status: {}", res.status()) })),
                 ));
             }
+
+            tracing::info!(
+                service = "sonarr",
+                user_id = %auth.user_id,
+                series_id = payload.series_id,
+                "Series and files successfully removed from Sonarr"
+            );
 
             Ok(Json(serde_json::json!({
                 "status": "deleted",
@@ -662,6 +754,13 @@ pub async fn get_cleanup_items(
     let user_sonarr_key = crate::api::user_settings::get_user_setting(&state.pool, &auth.user_id, "sonarr_api_key").await
         .or_else(|| std::env::var("SONARR_API_KEY").ok());
     let sonarr_configured = user_sonarr_url.is_some() && user_sonarr_key.is_some();
+
+    tracing::info!(
+        user_id = %auth.user_id,
+        radarr_configured = radarr_configured,
+        sonarr_configured = sonarr_configured,
+        "Scanning library for watched cleanup candidates"
+    );
 
     let mut items: Vec<CleanupItem> = Vec::new();
     let mut radarr_error = None;
@@ -712,6 +811,7 @@ pub async fn get_cleanup_items(
                     match res {
                         Ok(resp) if resp.status().is_success() => {
                             if let Ok(radarr_movies) = resp.json::<Vec<serde_json::Value>>().await {
+                                let total_radarr_count = radarr_movies.len();
                                 for rm in radarr_movies {
                                     let rm_id = rm.get("id").and_then(|v| v.as_i64()).unwrap_or(0);
                                     if rm_id <= 0 { continue; }
@@ -764,10 +864,18 @@ pub async fn get_cleanup_items(
                                         });
                                     }
                                 }
+                                tracing::info!(
+                                    service = "radarr",
+                                    user_id = %auth.user_id,
+                                    fetched_movies = total_radarr_count,
+                                    "Successfully scanned Radarr movies for cleanup"
+                                );
                             }
                         }
                         Ok(resp) => {
-                            radarr_error = Some(format!("Radarr returned HTTP status {}", resp.status()));
+                            let err_msg = format!("Radarr returned HTTP status {}", resp.status());
+                            tracing::warn!(service = "radarr", status = %resp.status(), "Radarr returned error during cleanup scan");
+                            radarr_error = Some(err_msg);
                         }
                         Err(e) => {
                             let hint = if safe_url.scheme() == "https" {
@@ -775,12 +883,15 @@ pub async fn get_cleanup_items(
                             } else {
                                 ""
                             };
-                            radarr_error = Some(format!("Failed to connect to Radarr: {}{}", e, hint));
+                            let err_msg = format!("Failed to connect to Radarr: {}{}", e, hint);
+                            tracing::warn!(service = "radarr", error = %e, "Failed to connect to Radarr during cleanup scan");
+                            radarr_error = Some(err_msg);
                         }
                     }
                 }
             }
             Err(e) => {
+                tracing::warn!(service = "radarr", error = %e, "Invalid Radarr URL configured");
                 radarr_error = Some(format!("Invalid Radarr URL: {}", e));
             }
         }
@@ -842,6 +953,7 @@ pub async fn get_cleanup_items(
                     match res {
                         Ok(resp) if resp.status().is_success() => {
                             if let Ok(sonarr_series) = resp.json::<Vec<serde_json::Value>>().await {
+                                let total_sonarr_count = sonarr_series.len();
                                 for ss in sonarr_series {
                                     let ss_id = ss.get("id").and_then(|v| v.as_i64()).unwrap_or(0);
                                     if ss_id <= 0 { continue; }
@@ -904,10 +1016,18 @@ pub async fn get_cleanup_items(
                                         });
                                     }
                                 }
+                                tracing::info!(
+                                    service = "sonarr",
+                                    user_id = %auth.user_id,
+                                    fetched_series = total_sonarr_count,
+                                    "Successfully scanned Sonarr series for cleanup"
+                                );
                             }
                         }
                         Ok(resp) => {
-                            sonarr_error = Some(format!("Sonarr returned HTTP status {}", resp.status()));
+                            let err_msg = format!("Sonarr returned HTTP status {}", resp.status());
+                            tracing::warn!(service = "sonarr", status = %resp.status(), "Sonarr returned error during cleanup scan");
+                            sonarr_error = Some(err_msg);
                         }
                         Err(e) => {
                             let hint = if safe_url.scheme() == "https" {
@@ -915,12 +1035,15 @@ pub async fn get_cleanup_items(
                             } else {
                                 ""
                             };
-                            sonarr_error = Some(format!("Failed to connect to Sonarr: {}{}", e, hint));
+                            let err_msg = format!("Failed to connect to Sonarr: {}{}", e, hint);
+                            tracing::warn!(service = "sonarr", error = %e, "Failed to connect to Sonarr during cleanup scan");
+                            sonarr_error = Some(err_msg);
                         }
                     }
                 }
             }
             Err(e) => {
+                tracing::warn!(service = "sonarr", error = %e, "Invalid Sonarr URL configured");
                 sonarr_error = Some(format!("Invalid Sonarr URL: {}", e));
             }
         }
@@ -931,6 +1054,13 @@ pub async fn get_cleanup_items(
 
     let total_size_bytes: i64 = items.iter().map(|it| it.size_on_disk).sum();
     let total_items = items.len();
+
+    tracing::info!(
+        user_id = %auth.user_id,
+        cleanup_items_count = total_items,
+        reclaimable_bytes = total_size_bytes,
+        "Completed library cleanup scan"
+    );
 
     Ok(Json(serde_json::to_value(CleanupResponse {
         radarr_configured,

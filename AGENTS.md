@@ -63,6 +63,7 @@ BingeSync/
 │       ├── trakt_import.rs  # /api/v1/import/trakt JSON/CSV history & rating import
 │       ├── integrations.rs  # /api/v1/integrations/* Radarr & Sonarr library check & cleanup
 │       ├── admin.rs         # /api/v1/admin/users user management and cascade deletion
+│       ├── backup.rs        # /api/v1/admin/backups/* backup creation, 7-day pruning, restore
 │       └── user.rs          # /api/v1/user/webhook & token regeneration
 ├── tests/
 │   └── api_tests.rs         # Integration test suite (31 tests covering full API)
@@ -168,6 +169,7 @@ Tests in `tests/api_tests.rs` (40 integration tests) cover:
 - Watched library cleanup candidates cross-referencing Radarr/Sonarr with disk space calculation and season details
 - TMDB metadata enrichment worker (movies, TV shows, credits, and poster formatting)
 - Admin settings metadata source selection (TheTVDB vs TMDB) and credential masking
+- Database backup creation, 7-day retention pruning, pre-restore safety snapshot, transactional restore, and path traversal protection
 
 ### Run Playwright E2E UI Tests
 ```bash
@@ -175,7 +177,7 @@ cd web
 npm install
 npx playwright test
 ```
-Playwright tests in `web/tests/e2e.spec.js` (32 browser E2E tests) cover:
+Playwright tests in `web/tests/e2e.spec.js` (33 browser E2E tests) cover:
 - User sign-in flow, "+ Log Watch" modal, and timeline rendering
 - Multi-user separation in the web UI
 - Trakt history and rating import flow in the web UI (pasted JSON)
@@ -208,6 +210,7 @@ Playwright tests in `web/tests/e2e.spec.js` (32 browser E2E tests) cover:
 - Mobile responsive layout: bottom app navigation bar, stacked touch forms, and responsive modals on phone viewports
 - Library cleanup view: list watched items on Radarr & Sonarr, view reclaimable disk space, filter by type, and execute cleanup action modals
 - Admin settings metadata source configuration (TheTVDB or TMDB), credential saving, and TMDB footer attribution
+- Admin database backup creation, backups listing table, and confirmation restore modal
 
 ### Run the App Locally
 ```bash
@@ -222,7 +225,7 @@ Access at `http://localhost:8080`.
 ### Build & Run Docker Image
 ```bash
 docker build -t bingesync:latest .
-docker run -p 8080:8080 -v bingesync_data:/data bingesync:latest
+docker run -p 8080:8080 -v bingesync_data:/data -v bingesync_backups:/backup bingesync:latest
 ```
 
 ---
@@ -236,6 +239,7 @@ docker run -p 8080:8080 -v bingesync_data:/data bingesync:latest
 | `APP_URL` | `http://localhost:8080` | Base URL for webhook generation and OIDC redirects |
 | `BASE_PATH` | `""` | Optional subpath for reverse proxies (e.g. `/bingesync`) |
 | `DATABASE_URL` | `sqlite:///data/bingesync.db?mode=rwc` | SQLite connection string |
+| `BACKUP_DIR` | `/backup` | Directory where SQLite database backups are stored (7-day retention) |
 | `JWT_SECRET` | *(internal dev secret)* | Secret for signing session JWTs |
 | `OIDC_ENABLED` | `false` | Enable/disable OIDC provider integration |
 | `OIDC_ISSUER_URL` | *(none)* | OIDC discovery endpoint (e.g. `https://auth.example.com`) |

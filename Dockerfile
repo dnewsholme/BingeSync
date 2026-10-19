@@ -47,8 +47,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Create application user and data storage directory
 RUN useradd -m -u 1000 -U -s /bin/sh bingesync && \
-    mkdir -p /data && \
-    chown -R bingesync:bingesync /data
+    mkdir -p /data /backup && \
+    chown -R bingesync:bingesync /data /backup
 
 WORKDIR /app
 
@@ -62,12 +62,13 @@ RUN chmod +x /usr/local/bin/bingesync
 ENV HOST=0.0.0.0 \
     PORT=8080 \
     DATABASE_URL=sqlite:///data/bingesync.db?mode=rwc \
+    BACKUP_DIR=/backup \
     APP_URL=http://localhost:8080 \
     OIDC_ENABLED=false \
     DEV_LOGIN_ENABLED=true
 
-# Storage volume for SQLite database
-VOLUME ["/data"]
+# Storage volumes for SQLite database and database backups
+VOLUME ["/data", "/backup"]
 
 # Expose default HTTP port
 EXPOSE 8080

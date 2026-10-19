@@ -50,6 +50,7 @@ impl TmdbClient {
         entity_type: &str,
     ) -> Result<Vec<TmdbSearchCandidate>, String> {
         let url = format!("{}/search/{}", self.base_url, endpoint);
+        tracing::info!(endpoint = %endpoint, query = %query, year = ?year, "Querying TMDB search API");
         let mut req = self.client.get(&url);
         req = self.apply_auth(req);
         req = req.query(&[("query", query)]);
@@ -66,9 +67,13 @@ impl TmdbClient {
         let resp = req
             .send()
             .await
-            .map_err(|e| format!("Failed to send search request to TMDB: {}", e))?;
+            .map_err(|e| {
+                tracing::warn!(endpoint = %endpoint, query = %query, error = %e, "Failed to send search request to TMDB");
+                format!("Failed to send search request to TMDB: {}", e)
+            })?;
 
         if !resp.status().is_success() {
+            tracing::warn!(endpoint = %endpoint, query = %query, status = %resp.status(), "TMDB search returned error status");
             return Err(format!("TMDB search returned status {}", resp.status()));
         }
 
@@ -137,6 +142,7 @@ impl TmdbClient {
             });
         }
 
+        tracing::info!(query = %query, results_count = candidates.len(), "Received TMDB search results");
         Ok(candidates)
     }
 
@@ -242,6 +248,7 @@ impl TmdbClient {
             .unwrap_or(movie_id)
             .trim();
 
+        tracing::info!(movie_id = %clean_id, "Fetching movie details from TMDB");
         let url = format!("{}/movie/{}", self.base_url, clean_id);
         let mut req = self.client.get(&url);
         req = self.apply_auth(req);
@@ -250,9 +257,13 @@ impl TmdbClient {
         let resp = req
             .send()
             .await
-            .map_err(|e| format!("Failed to fetch TMDB movie details: {}", e))?;
+            .map_err(|e| {
+                tracing::warn!(movie_id = %clean_id, error = %e, "Failed to fetch TMDB movie details");
+                format!("Failed to fetch TMDB movie details: {}", e)
+            })?;
 
         if !resp.status().is_success() {
+            tracing::warn!(movie_id = %clean_id, status = %resp.status(), "TMDB movie details returned error status");
             return Err(format!("TMDB movie details returned status {}", resp.status()));
         }
 
@@ -261,6 +272,7 @@ impl TmdbClient {
             .await
             .map_err(|e| format!("Failed to parse TMDB movie JSON: {}", e))?;
 
+        tracing::info!(movie_id = %clean_id, "Successfully fetched movie details from TMDB");
         Ok(parse_tmdb_metadata(&json_val))
     }
 
@@ -272,6 +284,7 @@ impl TmdbClient {
             .unwrap_or(series_id)
             .trim();
 
+        tracing::info!(series_id = %clean_id, "Fetching series details from TMDB");
         let url = format!("{}/tv/{}", self.base_url, clean_id);
         let mut req = self.client.get(&url);
         req = self.apply_auth(req);
@@ -280,9 +293,13 @@ impl TmdbClient {
         let resp = req
             .send()
             .await
-            .map_err(|e| format!("Failed to fetch TMDB tv details: {}", e))?;
+            .map_err(|e| {
+                tracing::warn!(series_id = %clean_id, error = %e, "Failed to fetch TMDB tv details");
+                format!("Failed to fetch TMDB tv details: {}", e)
+            })?;
 
         if !resp.status().is_success() {
+            tracing::warn!(series_id = %clean_id, status = %resp.status(), "TMDB tv details returned error status");
             return Err(format!("TMDB tv details returned status {}", resp.status()));
         }
 
@@ -291,6 +308,7 @@ impl TmdbClient {
             .await
             .map_err(|e| format!("Failed to parse TMDB tv JSON: {}", e))?;
 
+        tracing::info!(series_id = %clean_id, "Successfully fetched series details from TMDB");
         Ok(parse_tmdb_metadata(&json_val))
     }
 }

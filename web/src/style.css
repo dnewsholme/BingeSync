@@ -2132,14 +2132,18 @@ h1, h2, h3, h4 {
   color: var(--text-dim);
 }
 
-.tvdb-link, .tvdb-inline-link {
+.tvdb-link, .tvdb-inline-link,
+.tmdb-link, .tmdb-inline-link,
+.footer-attribution a.tvdb-link, .footer-attribution a.tmdb-link {
   color: #38bdf8;
   font-weight: 600;
   text-decoration: none;
   transition: color 0.15s ease;
 }
 
-.tvdb-link:hover, .tvdb-inline-link:hover {
+.tvdb-link:hover, .tvdb-inline-link:hover,
+.tmdb-link:hover, .tmdb-inline-link:hover,
+.footer-attribution a.tvdb-link:hover, .footer-attribution a.tmdb-link:hover {
   color: #7dd3fc;
   text-decoration: underline;
 }

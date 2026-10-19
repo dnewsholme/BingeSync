@@ -13,6 +13,7 @@ services:
       - PORT=8080
       - APP_URL=http://localhost:8080
       - DATABASE_URL=sqlite:///data/bingesync.db?mode=rwc
+      - BACKUP_DIR=/backup
       - JWT_SECRET=change-this-to-a-very-secure-random-secret-string
 
       # OpenID Connect (OIDC) Authentication
@@ -27,7 +28,10 @@ services:
       - DEV_LOGIN_ENABLED=true
     volumes:
       - bingesync_data:/data
+      - bingesync_backups:/backup
 
 volumes:
   bingesync_data:
+    driver: local
+  bingesync_backups:
     driver: local

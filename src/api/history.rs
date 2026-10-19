@@ -782,6 +782,15 @@ pub async fn refresh_scrobble_metadata(
     let (search_title, detected_year) = crate::api::tvdb::normalize_search_query(raw_search_title);
     let effective_year = scrobble.year.or(detected_year);
 
+    tracing::info!(
+        user_id = %auth.user_id,
+        scrobble_id = %id,
+        title = %search_title,
+        year = ?effective_year,
+        media_type = %scrobble.media_type,
+        "Initiating manual metadata and artwork refresh"
+    );
+
     // 1. Fetch metadata from active provider (TheTVDB or TMDB) if configured
     let metadata_source = state.get_effective_metadata_source().await;
     let provider_owned = if metadata_source == "tmdb" {
@@ -957,6 +966,13 @@ pub async fn refresh_scrobble_metadata(
             )
         })?;
 
+    tracing::info!(
+        user_id = %auth.user_id,
+        scrobble_id = %id,
+        title = %refreshed.title,
+        "Completed manual metadata and artwork refresh"
+    );
+
     Ok(Json(serde_json::json!({
         "status": "refreshed",
         "scrobble": refreshed,
@@ -983,6 +999,13 @@ pub async fn fix_match_handler(
         .or_else(|| raw_tvdb_id.strip_prefix("movie-"))
         .unwrap_or(raw_tvdb_id)
         .trim();
+
+    tracing::info!(
+        user_id = %auth.user_id,
+        scrobble_id = %id,
+        target_id = %clean_id,
+        "Initiating manual match fix"
+    );
 
     // 1. Verify scrobble ownership
     let scrobble = match sqlx::query_as::<_, Scrobble>(
@@ -1166,6 +1189,13 @@ pub async fn fix_match_handler(
                 Json(serde_json::json!({ "error": format!("Failed to retrieve updated scrobble: {}", e) })),
             )
         })?;
+
+    tracing::info!(
+        user_id = %auth.user_id,
+        scrobble_id = %id,
+        target_id = %clean_id,
+        "Completed manual match fix"
+    );
 
     Ok(Json(serde_json::json!({
         "status": "fixed",

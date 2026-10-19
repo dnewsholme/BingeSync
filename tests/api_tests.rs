@@ -30,6 +30,7 @@ async fn setup_test_app() -> (axum::Router, sqlx::SqlitePool, Arc<Config>) {
         user_sync_notify: Arc::new(tokio::sync::Notify::new()),
         log_buffer: Arc::new(bingesync::api::logs::LogBuffer::new(500)),
         task_tracker: Arc::new(bingesync::api::jobs::BackgroundTaskTracker::new()),
+        db_backup_notify: Arc::new(tokio::sync::Notify::new()),
     };
 
     let router = create_api_router(state);
@@ -1293,6 +1294,7 @@ async fn test_subpath_routing_and_assets() {
         user_sync_notify: Arc::new(tokio::sync::Notify::new()),
         log_buffer: Arc::new(bingesync::api::logs::LogBuffer::new(500)),
         task_tracker: Arc::new(bingesync::api::jobs::BackgroundTaskTracker::new()),
+        db_backup_notify: Arc::new(tokio::sync::Notify::new()),
     };
     let app = create_api_router(state).fallback(bingesync::assets::static_handler);
     let base = config.base_path.trim_end_matches('/').to_string();
@@ -1493,6 +1495,7 @@ async fn test_oidc_backchannel_logout() {
         user_sync_notify: Arc::new(tokio::sync::Notify::new()),
         log_buffer: Arc::new(bingesync::api::logs::LogBuffer::new(500)),
         task_tracker: Arc::new(bingesync::api::jobs::BackgroundTaskTracker::new()),
+        db_backup_notify: Arc::new(tokio::sync::Notify::new()),
     };
 
     let app = create_api_router(state);
@@ -1672,6 +1675,7 @@ async fn test_image_cache_serving_and_background_worker() {
         user_sync_notify: Arc::new(tokio::sync::Notify::new()),
         log_buffer: Arc::new(bingesync::api::logs::LogBuffer::new(500)),
         task_tracker: Arc::new(bingesync::api::jobs::BackgroundTaskTracker::new()),
+        db_backup_notify: Arc::new(tokio::sync::Notify::new()),
     };
 
     let app = create_api_router(state.clone());
@@ -1862,6 +1866,7 @@ async fn test_sonarr_delete_options() {
         user_sync_notify: Arc::new(tokio::sync::Notify::new()),
         log_buffer: Arc::new(bingesync::api::logs::LogBuffer::new(500)),
         task_tracker: Arc::new(bingesync::api::jobs::BackgroundTaskTracker::new()),
+        db_backup_notify: Arc::new(tokio::sync::Notify::new()),
     };
     let app = create_api_router(state);
 
@@ -2062,6 +2067,7 @@ async fn test_tvdb_metadata_enrichment_worker() {
         user_sync_notify: Arc::new(tokio::sync::Notify::new()),
         log_buffer: Arc::new(bingesync::api::logs::LogBuffer::new(500)),
         task_tracker: Arc::new(bingesync::api::jobs::BackgroundTaskTracker::new()),
+        db_backup_notify: Arc::new(tokio::sync::Notify::new()),
     };
 
     // 2. Create test user and insert a scrobble with missing overview, genres, actors, directors
@@ -2231,6 +2237,7 @@ async fn test_movie_tvdb_metadata_fallback_and_refresh() {
         user_sync_notify: Arc::new(tokio::sync::Notify::new()),
         log_buffer: Arc::new(bingesync::api::logs::LogBuffer::new(500)),
         task_tracker: Arc::new(bingesync::api::jobs::BackgroundTaskTracker::new()),
+        db_backup_notify: Arc::new(tokio::sync::Notify::new()),
     };
 
     // 2. Create test user and insert movie with title "Obsession" and year 2025
@@ -2586,10 +2593,11 @@ async fn test_admin_settings_logs_and_tasks_management() {
     let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
     let tasks_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     let tasks = tasks_json["tasks"].as_array().unwrap();
-    assert_eq!(tasks.len(), 3);
+    assert_eq!(tasks.len(), 4);
     let image_task = tasks.iter().find(|t| t["id"] == "image_cache").unwrap();
     let tvdb_task = tasks.iter().find(|t| t["id"] == "tvdb_metadata").unwrap();
     let user_sync_task = tasks.iter().find(|t| t["id"] == "user_sync").unwrap();
+    let db_backup_task = tasks.iter().find(|t| t["id"] == "db_backup").unwrap();
     assert_eq!(image_task["schedule"], "Every 4 hours");
     assert_eq!(image_task["interval_hours"], 4);
     assert!(image_task["next_run_at"].is_string());
@@ -2598,6 +2606,8 @@ async fn test_admin_settings_logs_and_tasks_management() {
     assert_eq!(user_sync_task["interval_hours"], 4);
     assert_eq!(user_sync_task["schedule"], "Every 4 hours");
     assert!(user_sync_task["next_run_at"].is_string());
+    assert_eq!(db_backup_task["interval_hours"], 24);
+    assert_eq!(db_backup_task["schedule"], "Every 24 hours");
 
     // 7. Test configuring background task schedule
     let req = Request::builder()
@@ -4144,6 +4154,7 @@ async fn test_user_cache_background_sync_and_jellyfin_id_resolution() {
         user_sync_notify: std::sync::Arc::new(tokio::sync::Notify::new()),
         log_buffer: std::sync::Arc::new(bingesync::api::logs::LogBuffer::new(100)),
         task_tracker: std::sync::Arc::new(bingesync::api::jobs::BackgroundTaskTracker::new()),
+        db_backup_notify: std::sync::Arc::new(tokio::sync::Notify::new()),
     };
 
     let processed = bingesync::api::user_sync::sync_user_cache_once(&state).await;
@@ -5062,6 +5073,7 @@ async fn test_tmdb_metadata_enrichment_worker() {
         user_sync_notify: Arc::new(tokio::sync::Notify::new()),
         log_buffer: Arc::new(bingesync::api::logs::LogBuffer::new(500)),
         task_tracker: Arc::new(bingesync::api::jobs::BackgroundTaskTracker::new()),
+        db_backup_notify: Arc::new(tokio::sync::Notify::new()),
     };
 
     // 2. Insert test user and scrobble for "Stranger Things"
@@ -5146,6 +5158,7 @@ async fn test_admin_settings_metadata_source_and_tmdb() {
         user_sync_notify: Arc::new(tokio::sync::Notify::new()),
         log_buffer: Arc::new(bingesync::api::logs::LogBuffer::new(500)),
         task_tracker: Arc::new(bingesync::api::jobs::BackgroundTaskTracker::new()),
+        db_backup_notify: Arc::new(tokio::sync::Notify::new()),
     };
     let app = bingesync::api::create_api_router(state.clone());
 
@@ -5198,10 +5211,223 @@ async fn test_admin_settings_metadata_source_and_tmdb() {
     assert!(settings["tmdb_api_key_masked"].as_str().unwrap().starts_with("my"));
     assert!(settings["tmdb_api_key_masked"].as_str().unwrap().contains('•'));
 
-    // 3. Verify task tracker displays TMDB as name
+    // 3. Verify task tracker displays Metadata Enrichment and active provider description
     let tasks_summary = state.task_tracker.get_tasks_summary(&state, false).await;
     let meta_task = tasks_summary.iter().find(|t| t.id == "tvdb_metadata").unwrap();
-    assert!(meta_task.name.contains("TMDB") || meta_task.name.contains("The Movie Database"));
+    assert_eq!(meta_task.name, "Metadata Enrichment");
+    assert!(meta_task.description.contains("TMDB") || meta_task.description.contains("The Movie Database"));
 }
+
+#[tokio::test]
+async fn test_admin_database_backup_and_restore() {
+    let test_id = uuid::Uuid::new_v4();
+    let db_file = std::env::temp_dir().join(format!("bingesync_test_backup_src_{}.db", test_id));
+    let pool = init_db(&format!("sqlite://{}?mode=rwc", db_file.to_string_lossy())).await.unwrap();
+    let mut config_val = Config::from_env();
+    let temp_backup_dir = std::env::temp_dir().join(format!("bingesync_test_backup_{}", test_id));
+    config_val.backup_dir = temp_backup_dir.to_string_lossy().to_string();
+    let config = Arc::new(config_val);
+
+    let state = AppState {
+        pool: pool.clone(),
+        config: config.clone(),
+        oidc_client: None,
+        image_notify: Arc::new(tokio::sync::Notify::new()),
+        metadata_notify: Arc::new(tokio::sync::Notify::new()),
+        user_sync_notify: Arc::new(tokio::sync::Notify::new()),
+        log_buffer: Arc::new(bingesync::api::logs::LogBuffer::new(500)),
+        task_tracker: Arc::new(bingesync::api::jobs::BackgroundTaskTracker::new()),
+        db_backup_notify: Arc::new(tokio::sync::Notify::new()),
+    };
+    let app = bingesync::api::create_api_router(state.clone());
+
+    // 1. Create admin and regular user
+    let admin_id = "backup_admin_user";
+    sqlx::query("INSERT INTO users (id, email, display_name, webhook_token, role) VALUES (?, ?, ?, ?, 'admin')")
+        .bind(admin_id)
+        .bind("backup_admin@bingesync.local")
+        .bind("Backup Admin")
+        .bind("token_backup_admin")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let regular_id = "backup_regular_user";
+    sqlx::query("INSERT INTO users (id, email, display_name, webhook_token, role) VALUES (?, ?, ?, ?, 'user')")
+        .bind(regular_id)
+        .bind("regular@bingesync.local")
+        .bind("Regular User")
+        .bind("token_regular")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let admin_jwt = create_jwt(admin_id, "backup_admin@bingesync.local", &config.jwt_secret).unwrap();
+    let regular_jwt = create_jwt(regular_id, "regular@bingesync.local", &config.jwt_secret).unwrap();
+
+    // Insert an initial scrobble
+    let initial_scrobble_id = "scrobble_snapshot_1";
+    sqlx::query("INSERT INTO scrobbles (id, user_id, title, media_type, year) VALUES (?, ?, ?, ?, ?)")
+        .bind(initial_scrobble_id)
+        .bind(admin_id)
+        .bind("The Matrix")
+        .bind("movie")
+        .bind(1999)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    // 2. Verify non-admin gets 403 Forbidden
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/admin/backups")
+        .header(header::AUTHORIZATION, format!("Bearer {}", regular_jwt))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+
+    // 3. Admin lists backups (initially empty)
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/admin/backups")
+        .header(header::AUTHORIZATION, format!("Bearer {}", admin_jwt))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let list_json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    assert_eq!(list_json["backups"].as_array().unwrap().len(), 0);
+
+    // 4. Admin creates a backup via POST /api/v1/admin/backups/create
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/admin/backups/create")
+        .header(header::AUTHORIZATION, format!("Bearer {}", admin_jwt))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let create_json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    let created_filename = create_json["backup"]["filename"].as_str().unwrap().to_string();
+    assert!(created_filename.starts_with("bingesync_backup_"));
+    assert!(created_filename.ends_with(".db"));
+    assert!(create_json["backup"]["size_bytes"].as_u64().unwrap() > 0);
+
+    // 5. Admin lists backups again and verifies the created backup is returned
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/admin/backups")
+        .header(header::AUTHORIZATION, format!("Bearer {}", admin_jwt))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let list_json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    assert_eq!(list_json["backups"].as_array().unwrap().len(), 1);
+    assert_eq!(list_json["backups"][0]["filename"], created_filename);
+
+    // 6. Verify task tracker summary includes Database Backup
+    let tasks = state.task_tracker.get_tasks_summary(&state, false).await;
+    let backup_task = tasks.iter().find(|t| t.id == "db_backup").unwrap();
+    assert_eq!(backup_task.name, "Database Backup");
+    assert_eq!(backup_task.interval_hours, 24);
+    assert_eq!(backup_task.schedule, "Every 24 hours");
+    assert_eq!(backup_task.items_pending, 1);
+
+    // 7. Mutate current database: add a second movie and delete the first movie
+    let second_scrobble_id = "scrobble_mutated_2";
+    sqlx::query("INSERT INTO scrobbles (id, user_id, title, media_type, year) VALUES (?, ?, ?, ?, ?)")
+        .bind(second_scrobble_id)
+        .bind(admin_id)
+        .bind("Inception")
+        .bind("movie")
+        .bind(2010)
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query("DELETE FROM scrobbles WHERE id = ?")
+        .bind(initial_scrobble_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let count_before_restore: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE id = ?")
+        .bind(initial_scrobble_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(count_before_restore, 0);
+
+    // 8. Test restore path traversal rejection
+    let bad_restore = serde_json::json!({ "filename": "../../../etc/passwd" });
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/admin/backups/restore")
+        .header(header::AUTHORIZATION, format!("Bearer {}", admin_jwt))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(serde_json::to_vec(&bad_restore).unwrap()))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+    // 9. Restore from the valid backup created in step 4
+    let restore_payload = serde_json::json!({ "filename": created_filename });
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/admin/backups/restore")
+        .header(header::AUTHORIZATION, format!("Bearer {}", admin_jwt))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(serde_json::to_vec(&restore_payload).unwrap()))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let restore_json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    assert_eq!(restore_json["status"], "restored");
+
+    // 10. Verify database contents were restored to the snapshot
+    let count_after_restore: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE id = ?")
+        .bind(initial_scrobble_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(count_after_restore, 1);
+
+    let count_second_after_restore: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE id = ?")
+        .bind(second_scrobble_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(count_second_after_restore, 0);
+
+    // 11. Test background task trigger endpoint /api/v1/admin/tasks/db_backup/run
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/admin/tasks/db_backup/run")
+        .header(header::AUTHORIZATION, format!("Bearer {}", admin_jwt))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // 12. Test deleting a backup file
+    let req = Request::builder()
+        .method("DELETE")
+        .uri(format!("/api/v1/admin/backups/{}", created_filename))
+        .header(header::AUTHORIZATION, format!("Bearer {}", admin_jwt))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // Clean up temp dir and test db
+    let _ = std::fs::remove_dir_all(&temp_backup_dir);
+    let _ = std::fs::remove_file(&db_file);
+}
+
 
 

@@ -560,12 +560,12 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     await expect(footer).toContainText('TheTVDB');
     await expect(footer).toContainText('This product uses TheTVDB API but is not endorsed or certified by TheTVDB');
     const footerLink = footer.locator('a.tvdb-link');
-    await expect(footerLink).toHaveAttribute('href', 'https://thetvdb.com');
+    await expect(footerLink).toHaveAttribute('href', /^https:\/\/thetvdb\.com\/?$/);
 
     await expect(footer).toContainText('TMDB');
     await expect(footer).toContainText('This product uses the TMDB API but is not endorsed or certified by TMDB');
     const tmdbFooterLink = footer.locator('a.tmdb-link');
-    await expect(tmdbFooterLink).toHaveAttribute('href', 'https://www.themoviedb.org');
+    await expect(tmdbFooterLink).toHaveAttribute('href', /^https:\/\/www\.themoviedb\.org\/?$/);
 
     // 2. Sign in
     await page.fill('#dev-email', userEmail);
@@ -1807,6 +1807,44 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     await sourceSelect.selectOption('tvdb');
     await page.click('#btn-save-admin-settings');
     await expect(page.locator('#admin-settings-status')).toContainText('Settings saved successfully');
+  });
+
+  test('admin database backup and restore flow', async ({ page }) => {
+    const adminEmail = `admin_backup_${Date.now()}@bingesync.local`;
+
+    await page.goto('/');
+
+    // 1. Sign in as admin
+    await page.fill('#dev-email', adminEmail);
+    await page.fill('#dev-name', 'Admin Backup User');
+    await page.click('#btn-dev-submit');
+    await expect(page.locator('#user-display-name')).toContainText('Admin Backup User');
+
+    // 2. Navigate to Admin > Database Backups & Restore
+    await page.click('#tab-admin');
+    await page.click('#pill-admin-backups');
+    await expect(page.locator('#admin-sub-backups')).toBeVisible();
+
+    // 3. Verify backup path and create backup
+    await expect(page.locator('#admin-backups-path')).toBeVisible();
+    await page.click('#btn-admin-create-backup');
+
+    // 4. Verify backup is created and appears in table
+    await expect(page.locator('#admin-backups-tbody tr')).toHaveCount(1, { timeout: 10000 });
+    const backupRow = page.locator('#admin-backups-tbody tr').first();
+    await expect(backupRow).toContainText('bingesync_backup_');
+
+    // 5. Open restore modal
+    await backupRow.locator('.btn-restore-backup').click();
+    await expect(page.locator('#modal-restore-backup')).toBeVisible();
+    await expect(page.locator('#restore-target-filename')).toContainText('bingesync_backup_');
+
+    // 6. Confirm restore
+    await page.click('#btn-confirm-restore-backup');
+    await expect(page.locator('#restore-modal-status')).toContainText('restored', { timeout: 10000 });
+
+    // 7. Modal closes and backups table is visible
+    await expect(page.locator('#modal-restore-backup')).not.toBeVisible({ timeout: 5000 });
   });
 });
 

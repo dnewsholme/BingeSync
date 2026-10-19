@@ -48,6 +48,13 @@ pub struct BackgroundTaskTracker {
     pub user_sync_last_success: RwLock<Option<String>>,
     pub user_sync_next_run: RwLock<Option<String>>,
     pub user_sync_last_message: RwLock<Option<String>>,
+
+    pub db_backup_status: RwLock<String>,
+    pub db_backup_processed: AtomicUsize,
+    pub db_backup_last_run: RwLock<Option<String>>,
+    pub db_backup_last_success: RwLock<Option<String>>,
+    pub db_backup_next_run: RwLock<Option<String>>,
+    pub db_backup_last_message: RwLock<Option<String>>,
 }
 
 impl Default for BackgroundTaskTracker {
@@ -60,6 +67,7 @@ impl BackgroundTaskTracker {
     pub fn new() -> Self {
         let initial_next = chrono::Utc::now() + chrono::Duration::hours(4);
         let next_str = Some(initial_next.to_rfc3339());
+        let initial_backup_next = chrono::Utc::now() + chrono::Duration::hours(24);
         Self {
             image_status: RwLock::new("idle".to_string()),
             image_processed: AtomicUsize::new(0),
@@ -81,6 +89,13 @@ impl BackgroundTaskTracker {
             user_sync_last_success: RwLock::new(None),
             user_sync_next_run: RwLock::new(next_str),
             user_sync_last_message: RwLock::new(Some("Worker initialized. Ready to sync user caches.".to_string())),
+
+            db_backup_status: RwLock::new("idle".to_string()),
+            db_backup_processed: AtomicUsize::new(0),
+            db_backup_last_run: RwLock::new(None),
+            db_backup_last_success: RwLock::new(None),
+            db_backup_next_run: RwLock::new(Some(initial_backup_next.to_rfc3339())),
+            db_backup_last_message: RwLock::new(Some("Worker initialized. Ready for database backups.".to_string())),
         }
     }
 
@@ -141,6 +156,25 @@ impl BackgroundTaskTracker {
         *self.user_sync_next_run.write().await = next_run;
     }
 
+    pub async fn set_db_backup_running(&self, message: &str) {
+        *self.db_backup_status.write().await = "running".to_string();
+        *self.db_backup_last_run.write().await = Some(chrono::Utc::now().to_rfc3339());
+        *self.db_backup_last_message.write().await = Some(message.to_string());
+    }
+
+    pub async fn set_db_backup_idle(&self, processed: usize, message: &str) {
+        *self.db_backup_status.write().await = "idle".to_string();
+        if processed > 0 {
+            self.db_backup_processed.fetch_add(processed, Ordering::Relaxed);
+            *self.db_backup_last_success.write().await = Some(chrono::Utc::now().to_rfc3339());
+        }
+        *self.db_backup_last_message.write().await = Some(message.to_string());
+    }
+
+    pub async fn set_db_backup_next_run(&self, next_run: Option<String>) {
+        *self.db_backup_next_run.write().await = next_run;
+    }
+
     pub async fn get_tasks_summary(&self, state: &AppState, tvdb_configured: bool) -> Vec<BackgroundTaskInfo> {
         let pool = &state.pool;
         let pending_images: i64 = sqlx::query_scalar(
@@ -193,17 +227,15 @@ impl BackgroundTaskTracker {
         };
 
         let metadata_source = state.get_effective_metadata_source().await;
-        let (meta_name, meta_desc, meta_configured) = if metadata_source == "tmdb" {
+        let (meta_desc, meta_configured) = if metadata_source == "tmdb" {
             let tmdb_key = state.get_effective_tmdb_api_key().await;
             let tmdb_configured = tmdb_key.is_some() && !tmdb_key.as_deref().unwrap_or("").is_empty();
             (
-                "The Movie Database (TMDB) Metadata Enrichment".to_string(),
                 "Fetches official genres, actor cast lists, director credits, and episode/plot overviews from The Movie Database (TMDB).".to_string(),
                 tmdb_configured
             )
         } else {
             (
-                "TheTVDB v4 Metadata Enrichment".to_string(),
                 "Fetches official genres, actor cast lists, director credits, and episode/plot overviews from TheTVDB.".to_string(),
                 tvdb_configured
             )
@@ -211,7 +243,7 @@ impl BackgroundTaskTracker {
 
         let tvdb_task = BackgroundTaskInfo {
             id: "tvdb_metadata".to_string(),
-            name: meta_name,
+            name: "Metadata Enrichment".to_string(),
             description: meta_desc,
             status: if meta_configured { self.tvdb_status.read().await.clone() } else { "disabled (unconfigured)".to_string() },
             schedule: tvdb_sched_str,
@@ -247,7 +279,30 @@ impl BackgroundTaskTracker {
             last_message: self.user_sync_last_message.read().await.clone(),
         };
 
-        vec![image_task, tvdb_task, user_sync_task]
+        let db_backup_interval = state.get_task_interval_hours("db_backup").await;
+        let db_backup_sched_str = format!("Every {} hour{}", db_backup_interval, if db_backup_interval == 1 { "" } else { "s" });
+
+        let current_backups_count = crate::api::backup::list_backups(state)
+            .await
+            .map(|r| r.backups.len())
+            .unwrap_or(0);
+
+        let db_backup_task = BackgroundTaskInfo {
+            id: "db_backup".to_string(),
+            name: "Database Backup".to_string(),
+            description: "Creates live local SQLite database backups into the backup folder and automatically keeps 7 days worth of backups.".to_string(),
+            status: self.db_backup_status.read().await.clone(),
+            schedule: db_backup_sched_str,
+            interval_hours: db_backup_interval,
+            items_processed: self.db_backup_processed.load(Ordering::Relaxed),
+            items_pending: current_backups_count,
+            last_run_at: self.db_backup_last_run.read().await.clone(),
+            last_success_at: self.db_backup_last_success.read().await.clone(),
+            next_run_at: self.db_backup_next_run.read().await.clone(),
+            last_message: self.db_backup_last_message.read().await.clone(),
+        };
+
+        vec![image_task, tvdb_task, user_sync_task, db_backup_task]
     }
 }
 
@@ -373,6 +428,37 @@ pub async fn trigger_admin_task_handler(
         }
         "force_user_sync_refresh" => {
             force_refresh_user_cache_internal(&state).await
+        }
+        "db_backup" | "backup" => {
+            state.task_tracker.set_db_backup_running("Manual backup triggered...").await;
+            state.db_backup_notify.notify_waiters();
+            state.db_backup_notify.notify_one();
+            state.log_buffer.push("INFO", "bingesync::tasks", "Manual run triggered for Database Backup worker");
+
+            match crate::api::backup::create_database_backup(&state, None).await {
+                Ok(item) => {
+                    state
+                        .task_tracker
+                        .set_db_backup_idle(1, &format!("Backup created: {}", item.filename))
+                        .await;
+                    Ok(Json(serde_json::json!({
+                        "status": "triggered",
+                        "task_id": "db_backup",
+                        "backup": item,
+                        "message": "Database backup created successfully"
+                    })))
+                }
+                Err(e) => {
+                    state
+                        .task_tracker
+                        .set_db_backup_idle(0, &format!("Backup failed: {}", e))
+                        .await;
+                    Err((
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(serde_json::json!({ "error": e })),
+                    ))
+                }
+            }
         }
         _ => Err((
             StatusCode::NOT_FOUND,

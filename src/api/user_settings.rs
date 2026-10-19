@@ -217,6 +217,17 @@ pub async fn update_user_settings_handler(
         }
     }
 
+    tracing::info!(
+        user_id = %auth.user_id,
+        has_plex_username = payload.plex_username.is_some(),
+        has_jellyfin_username = payload.jellyfin_username.is_some(),
+        has_jellyfin_url = payload.jellyfin_url.is_some(),
+        has_radarr_url = payload.radarr_url.is_some(),
+        has_sonarr_url = payload.sonarr_url.is_some(),
+        has_tautulli_url = payload.tautulli_url.is_some(),
+        "User personal settings updated"
+    );
+
     state.user_sync_notify.notify_one();
 
     Ok(Json(serde_json::json!({
