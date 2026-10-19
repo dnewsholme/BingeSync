@@ -545,14 +545,14 @@
 
           <!-- Filter & Search Controls Bar -->
           <div class="history-controls-bar" style="margin-bottom: 16px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between;">
-            <div style="display: flex; gap: 8px; flex-wrap: wrap;" id="cleanup-filter-chips">
-              <button class="filter-chip active" id="btn-cleanup-filter-all" data-filter="all">
+            <div class="filter-pills" id="cleanup-filter-chips">
+              <button class="pill filter-chip active" id="btn-cleanup-filter-all" data-filter="all">
                 <span data-i18n="common.all">All</span> (<span id="count-chip-all">0</span>)
               </button>
-              <button class="filter-chip" id="btn-cleanup-filter-movies" data-filter="movie">
+              <button class="pill filter-chip" id="btn-cleanup-filter-movies" data-filter="movie">
                 <span data-i18n="stats.movies">Movies</span> (<span id="count-chip-movies">0</span>)
               </button>
-              <button class="filter-chip" id="btn-cleanup-filter-series" data-filter="series">
+              <button class="pill filter-chip" id="btn-cleanup-filter-series" data-filter="series">
                 <span data-i18n="stats.tv_shows">TV Shows</span> (<span id="count-chip-series">0</span>)
               </button>
             </div>
@@ -1325,7 +1325,7 @@
               <p class="modal-subtitle" id="cleanup-modal-subtitle">Choose cleanup options for this item</p>
             </div>
           </div>
-          <button type="button" class="btn-close" id="btn-close-cleanup-modal">&times;</button>
+          <button type="button" class="modal-close btn-close" id="btn-close-cleanup-modal">&times;</button>
         </div>
 
         <div class="modal-body" id="cleanup-modal-body" style="padding: 16px 20px;">
