@@ -26,6 +26,8 @@ pub struct Scrobble {
     pub cinematographer: Option<String>,
     #[sqlx(default)]
     pub tvdb_id: Option<String>,
+    #[sqlx(default)]
+    pub tmdb_id: Option<String>,
     pub actors: Option<String>,
     pub watch_status: Option<String>,
     pub progress_percent: Option<i64>,
@@ -54,6 +56,7 @@ pub struct NewScrobbleRequest {
     pub director: Option<String>,
     pub cinematographer: Option<String>,
     pub tvdb_id: Option<String>,
+    pub tmdb_id: Option<String>,
     pub actors: Option<String>,
     pub watch_status: Option<String>,
     pub progress_percent: Option<i64>,
@@ -61,9 +64,16 @@ pub struct NewScrobbleRequest {
     pub watched_at: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct FixMatchRequest {
-    pub tvdb_id: String,
+    #[serde(default)]
+    pub tvdb_id: Option<String>,
+    #[serde(default)]
+    pub tmdb_id: Option<String>,
+    #[serde(default)]
+    pub provider: Option<String>,
+    #[serde(default)]
+    pub id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

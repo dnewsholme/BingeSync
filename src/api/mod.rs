@@ -236,6 +236,7 @@ pub fn create_api_router(state: AppState) -> Router {
         .route("/api/v1/history/{id}/rate", post(history::rate_scrobble).put(history::rate_scrobble))
         .route("/api/v1/history/{id}/refresh-metadata", post(history::refresh_scrobble_metadata))
         .route("/api/v1/history/{id}/fix-match", post(history::fix_match_handler).put(history::fix_match_handler))
+        .route("/api/v1/history/{id}/match-search", get(history::search_match_handler))
         .route("/api/v1/history/{id}", delete(history::delete_scrobble))
         // Timeline & Stats
         .route("/api/v1/timeline", get(timeline::get_timeline))

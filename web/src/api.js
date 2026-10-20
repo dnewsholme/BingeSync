@@ -100,11 +100,27 @@ export const api = {
     request(`/history/${id}/refresh-metadata`, {
       method: 'POST',
     }),
-  fixMatch: (id, tvdbId) =>
-    request(`/history/${id}/fix-match`, {
+  searchMatch: (id, query = '', provider = 'auto') => {
+    const q = new URLSearchParams();
+    if (query) q.append('query', query);
+    if (provider && provider !== 'auto') q.append('provider', provider);
+    const qStr = q.toString();
+    return request(qStr ? `/history/${id}/match-search?${qStr}` : `/history/${id}/match-search`);
+  },
+  fixMatch: (id, payloadOrId, provider) => {
+    let body = {};
+    if (typeof payloadOrId === 'object' && payloadOrId !== null) {
+      body = payloadOrId;
+    } else {
+      const idStr = String(payloadOrId).trim();
+      body = { id: idStr, tvdb_id: idStr };
+      if (provider) body.provider = provider;
+    }
+    return request(`/history/${id}/fix-match`, {
       method: 'POST',
-      body: JSON.stringify({ tvdb_id: tvdbId }),
-    }),
+      body: JSON.stringify(body),
+    });
+  },
   getStats: (params = {}) => {
     const query = new URLSearchParams();
     if (params.media_type && params.media_type !== 'all') {

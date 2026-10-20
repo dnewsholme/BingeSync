@@ -146,13 +146,13 @@ impl TmdbClient {
         Ok(candidates)
     }
 
-    /// Search TMDB by query, media_type ("movie" or "series"), and optional year
-    pub async fn search(
+    /// Search TMDB candidates returning multiple sorted matches
+    pub async fn search_candidates(
         &self,
         query: &str,
         media_type: &str,
         year: Option<i32>,
-    ) -> Result<Option<TvdbSearchResult>, String> {
+    ) -> Result<Vec<TvdbSearchResult>, String> {
         let (clean_query, detected_year) = normalize_search_query(query);
         let target_year = year.or(detected_year);
         let is_movie = media_type == "movie";
@@ -192,7 +192,7 @@ impl TmdbClient {
         }
 
         if candidates.is_empty() {
-            return Ok(None);
+            return Ok(Vec::new());
         }
 
         // Rank candidates
@@ -230,14 +230,32 @@ impl TmdbClient {
             std::cmp::Reverse(score)
         });
 
-        let best = candidates.into_iter().next().unwrap();
-        Ok(Some(TvdbSearchResult {
-            id: best.id,
-            name: best.name,
-            overview: best.overview,
-            image_url: best.image_url,
-            entity_type: best.entity_type,
-        }))
+        let out = candidates
+            .into_iter()
+            .take(10)
+            .map(|c| TvdbSearchResult {
+                id: c.id,
+                name: c.name,
+                overview: c.overview,
+                image_url: c.image_url,
+                entity_type: c.entity_type,
+                year: c.year,
+                provider: Some("tmdb".to_string()),
+            })
+            .collect();
+
+        Ok(out)
+    }
+
+    /// Search TMDB by query, media_type ("movie" or "series"), and optional year
+    pub async fn search(
+        &self,
+        query: &str,
+        media_type: &str,
+        year: Option<i32>,
+    ) -> Result<Option<TvdbSearchResult>, String> {
+        let results = self.search_candidates(query, media_type, year).await?;
+        Ok(results.into_iter().next())
     }
 
     /// Fetch movie details and credits from TMDB: /movie/{id}?append_to_response=credits

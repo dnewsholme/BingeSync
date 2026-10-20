@@ -5929,5 +5929,208 @@ async fn test_history_and_timeline_missing_metadata_filter() {
     assert_eq!(days[0]["items"][0]["title"], "Unmatched Mystery Movie");
 }
 
+#[tokio::test]
+async fn test_fix_match_with_tmdb_id_and_search() {
+    let (app, pool, config) = setup_test_app().await;
+
+    let user_a_id = "user_tmdb_fix_a";
+    let token_a = create_jwt(user_a_id, "user_tmdb_a@test.local", &config.jwt_secret).unwrap();
+    sqlx::query("INSERT INTO users (id, email, display_name, webhook_token, role) VALUES (?, ?, ?, ?, 'user')")
+        .bind(user_a_id)
+        .bind("user_tmdb_a@test.local")
+        .bind("User TMDB A")
+        .bind("token_tmdb_a")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let user_b_id = "user_tmdb_fix_b";
+    let token_b = create_jwt(user_b_id, "user_tmdb_b@test.local", &config.jwt_secret).unwrap();
+    sqlx::query("INSERT INTO users (id, email, display_name, webhook_token, role) VALUES (?, ?, ?, ?, 'user')")
+        .bind(user_b_id)
+        .bind("user_tmdb_b@test.local")
+        .bind("User TMDB B")
+        .bind("token_tmdb_b")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let scrobble_1 = "scrobble_tmdb_ep1";
+    let scrobble_2 = "scrobble_tmdb_ep2";
+
+    sqlx::query(
+        r#"
+        INSERT INTO scrobbles (id, user_id, title, media_type, grandparent_title, season_number, episode_number, watched_at)
+        VALUES (?, ?, 'Winter Is Coming', 'episode', 'Game of Thrones', 1, 1, datetime('now', '-2 days'))
+        "#,
+    )
+    .bind(scrobble_1)
+    .bind(user_a_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    sqlx::query(
+        r#"
+        INSERT INTO scrobbles (id, user_id, title, media_type, grandparent_title, season_number, episode_number, watched_at)
+        VALUES (?, ?, 'The Kingsroad', 'episode', 'Game of Thrones', 1, 2, datetime('now', '-1 day'))
+        "#,
+    )
+    .bind(scrobble_2)
+    .bind(user_a_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    // 1. User B tries to search match for User A's scrobble -> 404 Not Found
+    let req = Request::builder()
+        .method("GET")
+        .uri(format!("/api/v1/history/{}/match-search?query=Game+of+Thrones", scrobble_1))
+        .header(header::AUTHORIZATION, format!("Bearer {}", token_b))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+
+    // 2. User A searches match -> 200 OK (returns query and candidates array)
+    let req = Request::builder()
+        .method("GET")
+        .uri(format!("/api/v1/history/{}/match-search?query=Game+of+Thrones&provider=tmdb", scrobble_1))
+        .header(header::AUTHORIZATION, format!("Bearer {}", token_a))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let res: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    assert_eq!(res["query"], "Game of Thrones");
+    assert!(res["results"].is_array());
+
+    // 3. User B tries to fix match User A's scrobble -> 404
+    let req = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/history/{}/fix-match", scrobble_1))
+        .header(header::AUTHORIZATION, format!("Bearer {}", token_b))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(serde_json::to_vec(&serde_json::json!({
+            "tmdb_id": "1399",
+            "provider": "tmdb"
+        })).unwrap()))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+
+    // 4. User A fixes match with TMDB ID "1399"
+    let req = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/history/{}/fix-match", scrobble_1))
+        .header(header::AUTHORIZATION, format!("Bearer {}", token_a))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(serde_json::to_vec(&serde_json::json!({
+            "tmdb_id": "1399",
+            "provider": "tmdb"
+        })).unwrap()))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let res: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    assert_eq!(res["status"], "fixed");
+    assert_eq!(res["tmdb_id"], "1399");
+    assert_eq!(res["provider"], "tmdb");
+    assert_eq!(res["scrobble"]["tmdb_id"], "1399");
+
+    // 5. Verify sibling episode also has tmdb_id set
+    let sibling_tmdb_id: Option<String> = sqlx::query_scalar("SELECT tmdb_id FROM scrobbles WHERE id = ?")
+        .bind(scrobble_2)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(sibling_tmdb_id.as_deref(), Some("1399"));
+}
+
+#[tokio::test]
+async fn test_metadata_enrichment_worker_supports_tmdb_and_resolves_missing() {
+    let (app, pool, config) = setup_test_app().await;
+
+    let user_id = "user_worker_tmdb_test";
+    let token = create_jwt(user_id, "user_worker@test.local", &config.jwt_secret).unwrap();
+    sqlx::query("INSERT INTO users (id, email, display_name, webhook_token, role) VALUES (?, ?, ?, ?, 'user')")
+        .bind(user_id)
+        .bind("user_worker@test.local")
+        .bind("User Worker")
+        .bind("token_worker")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let scrobble_id = "scrobble_missing_meta_1";
+    sqlx::query(
+        r#"
+        INSERT INTO scrobbles (id, user_id, title, media_type, year, watched_at)
+        VALUES (?, ?, 'Inception', 'movie', 2010, datetime('now'))
+        "#,
+    )
+    .bind(scrobble_id)
+    .bind(user_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    // Verify it is initially returned by missing_metadata filter
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/history?all=true&missing_metadata=true")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    assert_eq!(json["total"], 1);
+
+    // Call fix match with TMDB id
+    let req = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/history/{}/fix-match", scrobble_id))
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(serde_json::to_vec(&serde_json::json!({
+            "id": "27205",
+            "provider": "tmdb"
+        })).unwrap()))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // Populate metadata
+    sqlx::query(
+        r#"
+        UPDATE scrobbles
+        SET genres = 'Action, Sci-Fi',
+            overview = 'A thief who steals corporate secrets through the use of dream-sharing technology...',
+            thumb_url = 'https://image.tmdb.org/t/p/w500/edv5CZvWj09upOsy2Y6IwDhK8bt.jpg',
+            metadata_updated_at = datetime('now')
+        WHERE id = ?
+        "#
+    )
+    .bind(scrobble_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    // Verify it is NO LONGER returned by missing_metadata filter
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/history?all=true&missing_metadata=true")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    assert_eq!(json["total"], 0);
+}
+
 
 

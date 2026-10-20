@@ -992,29 +992,159 @@ pub async fn refresh_scrobble_metadata(
     })))
 }
 
+#[derive(Debug, Deserialize)]
+pub struct MatchSearchQuery {
+    pub query: Option<String>,
+    pub provider: Option<String>,
+}
+
+pub async fn search_match_handler(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path(id): Path<String>,
+    Query(query_params): Query<MatchSearchQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let scrobble = match sqlx::query_as::<_, Scrobble>(
+        "SELECT * FROM scrobbles WHERE id = ? AND (user_id = ? OR ? = 'admin')",
+    )
+    .bind(&id)
+    .bind(&auth.user_id)
+    .bind(&auth.role)
+    .fetch_optional(&state.pool)
+    .await
+    {
+        Ok(Some(s)) => s,
+        Ok(None) => {
+            return Err((
+                StatusCode::NOT_FOUND,
+                Json(serde_json::json!({ "error": "Scrobble not found or unauthorized" })),
+            ));
+        }
+        Err(e) => {
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": format!("Database query error: {}", e) })),
+            ));
+        }
+    };
+
+    let is_episode = scrobble.media_type == "episode";
+    let default_title = if is_episode {
+        scrobble.grandparent_title.as_deref().unwrap_or(&scrobble.title)
+    } else {
+        &scrobble.title
+    };
+
+    let search_query = query_params
+        .query
+        .as_deref()
+        .map(|q| q.trim())
+        .filter(|q| !q.is_empty())
+        .unwrap_or(default_title);
+
+    let requested_provider = query_params
+        .provider
+        .as_deref()
+        .unwrap_or("auto")
+        .to_lowercase();
+
+    let mut results: Vec<crate::api::tvdb::TvdbSearchResult> = Vec::new();
+    let effective_source = state.get_effective_metadata_source().await;
+
+    let should_query_tmdb = requested_provider == "tmdb" || (requested_provider == "auto" && effective_source == "tmdb");
+    let should_query_tvdb = requested_provider == "tvdb" || (requested_provider == "auto" && effective_source == "tvdb");
+
+    if should_query_tmdb {
+        if let Some(key) = state.get_effective_tmdb_api_key().await.filter(|k| !k.trim().is_empty()) {
+            let base_url = state.get_effective_tmdb_base_url().await;
+            let client = crate::api::tmdb::TmdbClient::new(base_url, key);
+            if let Ok(cands) = client.search_candidates(search_query, &scrobble.media_type, scrobble.year).await {
+                results.extend(cands);
+            }
+        }
+    }
+
+    if should_query_tvdb || (requested_provider == "auto" && results.is_empty()) {
+        if let Some(key) = state.get_effective_tvdb_api_key().await.filter(|k| !k.trim().is_empty()) {
+            let pin = state.get_effective_tvdb_pin().await;
+            let base_url = state.get_effective_tvdb_base_url().await;
+            let client = crate::api::tvdb::TvdbClient::new(base_url, key, pin);
+            if let Ok(cands) = client.search_candidates(search_query, &scrobble.media_type, scrobble.year).await {
+                results.extend(cands);
+            }
+        }
+    }
+
+    if results.is_empty() && requested_provider == "auto" && effective_source == "tvdb" {
+        if let Some(key) = state.get_effective_tmdb_api_key().await.filter(|k| !k.trim().is_empty()) {
+            let base_url = state.get_effective_tmdb_base_url().await;
+            let client = crate::api::tmdb::TmdbClient::new(base_url, key);
+            if let Ok(cands) = client.search_candidates(search_query, &scrobble.media_type, scrobble.year).await {
+                results.extend(cands);
+            }
+        }
+    }
+
+    Ok(Json(serde_json::json!({
+        "query": search_query,
+        "media_type": scrobble.media_type,
+        "year": scrobble.year,
+        "results": results
+    })))
+}
+
 pub async fn fix_match_handler(
     State(state): State<AppState>,
     auth: AuthUser,
     Path(id): Path<String>,
     Json(payload): Json<crate::models::scrobble::FixMatchRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    let raw_tvdb_id = payload.tvdb_id.trim();
-    if raw_tvdb_id.is_empty() {
+    let raw_id = payload
+        .id
+        .or(payload.tmdb_id.clone())
+        .or(payload.tvdb_id.clone())
+        .unwrap_or_default();
+    let raw_id = raw_id.trim();
+
+    if raw_id.is_empty() {
         return Err((
             StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({ "error": "TheTVDB ID cannot be empty" })),
+            Json(serde_json::json!({ "error": "Match ID cannot be empty" })),
         ));
     }
 
-    let clean_id = raw_tvdb_id
+    let mut provider_choice = payload.provider.as_deref().unwrap_or("auto").to_lowercase();
+    let mut clean_id = raw_id.to_string();
+
+    if clean_id.starts_with("tmdb-") {
+        provider_choice = "tmdb".to_string();
+        clean_id = clean_id.strip_prefix("tmdb-").unwrap().to_string();
+    } else if clean_id.starts_with("tvdb-") {
+        provider_choice = "tvdb".to_string();
+        clean_id = clean_id.strip_prefix("tvdb-").unwrap().to_string();
+    }
+
+    clean_id = clean_id
         .strip_prefix("series-")
-        .or_else(|| raw_tvdb_id.strip_prefix("movie-"))
-        .unwrap_or(raw_tvdb_id)
-        .trim();
+        .or_else(|| clean_id.strip_prefix("movie-"))
+        .unwrap_or(&clean_id)
+        .trim()
+        .to_string();
+
+    if provider_choice == "auto" {
+        if payload.tmdb_id.is_some() {
+            provider_choice = "tmdb".to_string();
+        } else if payload.tvdb_id.is_some() {
+            provider_choice = "tvdb".to_string();
+        } else {
+            provider_choice = state.get_effective_metadata_source().await;
+        }
+    }
 
     tracing::info!(
         user_id = %auth.user_id,
         scrobble_id = %id,
+        provider = %provider_choice,
         target_id = %clean_id,
         "Initiating manual match fix"
     );
@@ -1045,141 +1175,158 @@ pub async fn fix_match_handler(
     };
 
     let is_episode = scrobble.media_type == "episode";
+    let is_tmdb = provider_choice == "tmdb";
 
-    // 2. Update tvdb_id on scrobble (and sibling episodes if it's a TV show)
+    // 2. Update tvdb_id or tmdb_id on scrobble (and sibling episodes if it's a TV show)
     if is_episode {
         let show_name = scrobble.grandparent_title.as_deref().unwrap_or(&scrobble.title);
-        let _ = sqlx::query(
-            "UPDATE scrobbles SET tvdb_id = ? WHERE id = ? OR (grandparent_title IS NOT NULL AND LOWER(TRIM(grandparent_title)) = LOWER(TRIM(?))) OR (media_type = 'episode' AND LOWER(TRIM(title)) = LOWER(TRIM(?)))"
-        )
-        .bind(clean_id)
-        .bind(&scrobble.id)
-        .bind(show_name)
-        .bind(show_name)
-        .execute(&state.pool)
-        .await;
-    } else {
-        let _ = sqlx::query("UPDATE scrobbles SET tvdb_id = ? WHERE id = ?")
-            .bind(clean_id)
+        if is_tmdb {
+            let _ = sqlx::query(
+                "UPDATE scrobbles SET tmdb_id = ? WHERE id = ? OR (grandparent_title IS NOT NULL AND LOWER(TRIM(grandparent_title)) = LOWER(TRIM(?))) OR (media_type = 'episode' AND LOWER(TRIM(title)) = LOWER(TRIM(?)))"
+            )
+            .bind(&clean_id)
             .bind(&scrobble.id)
+            .bind(show_name)
+            .bind(show_name)
             .execute(&state.pool)
             .await;
+        } else {
+            let _ = sqlx::query(
+                "UPDATE scrobbles SET tvdb_id = ? WHERE id = ? OR (grandparent_title IS NOT NULL AND LOWER(TRIM(grandparent_title)) = LOWER(TRIM(?))) OR (media_type = 'episode' AND LOWER(TRIM(title)) = LOWER(TRIM(?)))"
+            )
+            .bind(&clean_id)
+            .bind(&scrobble.id)
+            .bind(show_name)
+            .bind(show_name)
+            .execute(&state.pool)
+            .await;
+        }
+    } else {
+        if is_tmdb {
+            let _ = sqlx::query("UPDATE scrobbles SET tmdb_id = ? WHERE id = ?")
+                .bind(&clean_id)
+                .bind(&scrobble.id)
+                .execute(&state.pool)
+                .await;
+        } else {
+            let _ = sqlx::query("UPDATE scrobbles SET tvdb_id = ? WHERE id = ?")
+                .bind(&clean_id)
+                .bind(&scrobble.id)
+                .execute(&state.pool)
+                .await;
+        }
     }
 
-    // 3. Immediately fetch metadata from active provider with specified ID if API key configured
-    let metadata_source = state.get_effective_metadata_source().await;
-    let provider_owned = if metadata_source == "tmdb" {
+    // 3. Immediately fetch metadata from the selected provider
+    let mut fetched_meta: Option<crate::api::tvdb::TvdbMetadata> = None;
+
+    if is_tmdb {
         if let Some(key) = state.get_effective_tmdb_api_key().await.filter(|k| !k.trim().is_empty()) {
             let base_url = state.get_effective_tmdb_base_url().await;
-            Some(crate::api::tvdb::MetadataProviderOwned::Tmdb(crate::api::tmdb::TmdbClient::new(base_url, key)))
-        } else if let Some(key) = state.get_effective_tvdb_api_key().await.filter(|k| !k.trim().is_empty()) {
-            let pin = state.get_effective_tvdb_pin().await;
-            let base_url = state.get_effective_tvdb_base_url().await;
-            Some(crate::api::tvdb::MetadataProviderOwned::Tvdb(crate::api::tvdb::TvdbClient::new(base_url, key, pin)))
-        } else {
-            None
+            let client = crate::api::tmdb::TmdbClient::new(base_url, key);
+            let meta_res = if is_episode {
+                match client.get_series_details(&clean_id).await {
+                    Ok(m) => Ok(m),
+                    Err(_) => client.get_movie_details(&clean_id).await,
+                }
+            } else {
+                match client.get_movie_details(&clean_id).await {
+                    Ok(m) => Ok(m),
+                    Err(_) => client.get_series_details(&clean_id).await,
+                }
+            };
+            if let Ok(m) = meta_res {
+                fetched_meta = Some(m);
+            }
         }
     } else {
         if let Some(key) = state.get_effective_tvdb_api_key().await.filter(|k| !k.trim().is_empty()) {
             let pin = state.get_effective_tvdb_pin().await;
             let base_url = state.get_effective_tvdb_base_url().await;
-            Some(crate::api::tvdb::MetadataProviderOwned::Tvdb(crate::api::tvdb::TvdbClient::new(base_url, key, pin)))
-        } else if let Some(key) = state.get_effective_tmdb_api_key().await.filter(|k| !k.trim().is_empty()) {
-            let base_url = state.get_effective_tmdb_base_url().await;
-            Some(crate::api::tvdb::MetadataProviderOwned::Tmdb(crate::api::tmdb::TmdbClient::new(base_url, key)))
-        } else {
-            None
+            let client = crate::api::tvdb::TvdbClient::new(base_url, key, pin);
+            let meta_res = if is_episode {
+                match client.get_series_extended(&clean_id).await {
+                    Ok(m) => Ok(m),
+                    Err(_) => client.get_movie_extended(&clean_id).await,
+                }
+            } else {
+                match client.get_movie_extended(&clean_id).await {
+                    Ok(m) => Ok(m),
+                    Err(_) => client.get_series_extended(&clean_id).await,
+                }
+            };
+            if let Ok(m) = meta_res {
+                fetched_meta = Some(m);
+            }
         }
-    };
+    }
+
     let now_str = Utc::now().to_rfc3339();
 
-    if let Some(ref p_owned) = provider_owned {
-        let provider = p_owned.as_ref();
-        let meta_res = if is_episode {
-            match provider.get_series_extended(clean_id).await {
-                Ok(m) => Ok(m),
-                Err(_) => provider.get_movie_extended(clean_id).await,
-            }
+    if let Some(meta) = fetched_meta {
+        let has_image = meta.image_url.is_some();
+        if is_episode {
+            let show_name = scrobble.grandparent_title.as_deref().unwrap_or(&scrobble.title);
+            let _ = sqlx::query(
+                r#"
+                UPDATE scrobbles
+                SET genres = COALESCE(NULLIF(?, ''), NULLIF(genres, '')),
+                    actors = COALESCE(NULLIF(?, ''), NULLIF(actors, '')),
+                    directors = COALESCE(NULLIF(?, ''), NULLIF(directors, '')),
+                    director = COALESCE(NULLIF(?, ''), NULLIF(director, '')),
+                    cinematographer = COALESCE(NULLIF(?, ''), NULLIF(cinematographer, '')),
+                    overview = COALESCE(NULLIF(?, ''), NULLIF(overview, '')),
+                    thumb_url = COALESCE(NULLIF(?, ''), thumb_url),
+                    metadata_updated_at = ?
+                WHERE id = ? OR (grandparent_title IS NOT NULL AND LOWER(TRIM(grandparent_title)) = LOWER(TRIM(?))) OR (media_type = 'episode' AND LOWER(TRIM(title)) = LOWER(TRIM(?)))
+                "#
+            )
+            .bind(&meta.genres)
+            .bind(&meta.actors)
+            .bind(&meta.directors)
+            .bind(&meta.director)
+            .bind(&meta.cinematographer)
+            .bind(&meta.overview)
+            .bind(&meta.image_url)
+            .bind(&now_str)
+            .bind(&scrobble.id)
+            .bind(show_name)
+            .bind(show_name)
+            .execute(&state.pool)
+            .await;
         } else {
-            match provider.get_movie_extended(clean_id).await {
-                Ok(m) => Ok(m),
-                Err(_) => provider.get_series_extended(clean_id).await,
-            }
-        };
-
-            if let Ok(meta) = meta_res {
-                if is_episode {
-                    let show_name = scrobble.grandparent_title.as_deref().unwrap_or(&scrobble.title);
-                    let _ = sqlx::query(
-                        r#"
-                        UPDATE scrobbles
-                        SET genres = COALESCE(NULLIF(?, ''), NULLIF(genres, '')),
-                            actors = COALESCE(NULLIF(?, ''), NULLIF(actors, '')),
-                            directors = COALESCE(NULLIF(?, ''), NULLIF(directors, '')),
-                            director = COALESCE(NULLIF(?, ''), NULLIF(director, '')),
-                            cinematographer = COALESCE(NULLIF(?, ''), NULLIF(cinematographer, '')),
-                            overview = COALESCE(NULLIF(?, ''), NULLIF(overview, '')),
-                            thumb_url = CASE 
-                                WHEN (thumb_url IS NULL OR thumb_url = '' OR thumb_url LIKE '/library/%' OR thumb_url LIKE '/photo/%') AND ? IS NOT NULL 
-                                THEN ? 
-                                ELSE thumb_url 
-                            END,
-                            metadata_updated_at = ?
-                        WHERE id = ? OR (grandparent_title IS NOT NULL AND LOWER(TRIM(grandparent_title)) = LOWER(TRIM(?))) OR (media_type = 'episode' AND LOWER(TRIM(title)) = LOWER(TRIM(?)))
-                        "#,
-                    )
-                    .bind(&meta.genres)
-                    .bind(&meta.actors)
-                    .bind(&meta.directors)
-                    .bind(&meta.director)
-                    .bind(&meta.cinematographer)
-                    .bind(&meta.overview)
-                    .bind(&meta.image_url)
-                    .bind(&meta.image_url)
-                    .bind(&now_str)
-                    .bind(&scrobble.id)
-                    .bind(show_name)
-                    .bind(show_name)
-                    .execute(&state.pool)
-                    .await;
-                } else {
-                    let _ = sqlx::query(
-                        r#"
-                        UPDATE scrobbles
-                        SET genres = COALESCE(NULLIF(?, ''), NULLIF(genres, '')),
-                            actors = COALESCE(NULLIF(?, ''), NULLIF(actors, '')),
-                            directors = COALESCE(NULLIF(?, ''), NULLIF(directors, '')),
-                            director = COALESCE(NULLIF(?, ''), NULLIF(director, '')),
-                            cinematographer = COALESCE(NULLIF(?, ''), NULLIF(cinematographer, '')),
-                            overview = COALESCE(NULLIF(?, ''), NULLIF(overview, '')),
-                            thumb_url = CASE 
-                                WHEN (thumb_url IS NULL OR thumb_url = '' OR thumb_url LIKE '/library/%' OR thumb_url LIKE '/photo/%') AND ? IS NOT NULL 
-                                THEN ? 
-                                ELSE thumb_url 
-                            END,
-                            metadata_updated_at = ?
-                        WHERE id = ?
-                        "#,
-                    )
-                    .bind(&meta.genres)
-                    .bind(&meta.actors)
-                    .bind(&meta.directors)
-                    .bind(&meta.director)
-                    .bind(&meta.cinematographer)
-                    .bind(&meta.overview)
-                    .bind(&meta.image_url)
-                    .bind(&meta.image_url)
-                    .bind(&now_str)
-                    .bind(&scrobble.id)
-                    .execute(&state.pool)
-                    .await;
-                }
-
-                if meta.image_url.is_some() {
-                    state.image_notify.notify_waiters();
-                }
-            }
+            let _ = sqlx::query(
+                r#"
+                UPDATE scrobbles
+                SET genres = COALESCE(NULLIF(?, ''), NULLIF(genres, '')),
+                    actors = COALESCE(NULLIF(?, ''), NULLIF(actors, '')),
+                    directors = COALESCE(NULLIF(?, ''), NULLIF(directors, '')),
+                    director = COALESCE(NULLIF(?, ''), NULLIF(director, '')),
+                    cinematographer = COALESCE(NULLIF(?, ''), NULLIF(cinematographer, '')),
+                    overview = COALESCE(NULLIF(?, ''), NULLIF(overview, '')),
+                    thumb_url = COALESCE(NULLIF(?, ''), thumb_url),
+                    metadata_updated_at = ?
+                WHERE id = ?
+                "#
+            )
+            .bind(&meta.genres)
+            .bind(&meta.actors)
+            .bind(&meta.directors)
+            .bind(&meta.director)
+            .bind(&meta.cinematographer)
+            .bind(&meta.overview)
+            .bind(&meta.image_url)
+            .bind(&now_str)
+            .bind(&scrobble.id)
+            .execute(&state.pool)
+            .await;
         }
+
+        if has_image {
+            crate::api::images::process_missing_images_once(&state).await;
+            state.image_notify.notify_waiters();
+        }
+    }
 
     // 4. Notify background workers if poster or metadata needs processing
     let needs_poster = scrobble.thumb_url.as_deref()
@@ -1202,17 +1349,23 @@ pub async fn fix_match_handler(
             )
         })?;
 
+    let provider_label = if is_tmdb { "TMDB" } else { "TheTVDB" };
+
     tracing::info!(
         user_id = %auth.user_id,
         scrobble_id = %id,
+        provider = %provider_choice,
         target_id = %clean_id,
         "Completed manual match fix"
     );
 
     Ok(Json(serde_json::json!({
         "status": "fixed",
-        "tvdb_id": clean_id,
+        "id": clean_id,
+        "tvdb_id": refreshed.tvdb_id,
+        "tmdb_id": refreshed.tmdb_id,
+        "provider": if is_tmdb { "tmdb" } else { "tvdb" },
         "scrobble": refreshed,
-        "message": format!("Successfully fixed match to TheTVDB ID {}", clean_id)
+        "message": format!("Successfully fixed match to {} ID {}", provider_label, clean_id)
     })))
 }

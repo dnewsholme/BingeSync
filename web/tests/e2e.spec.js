@@ -2000,6 +2000,56 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     // 3. Test One-Click Data Export button
     await expect(page.locator('#btn-export-user-data')).toBeVisible();
   });
+
+  test('fix match supports TMDB ID and searching matching titles', async ({ page }) => {
+    const userEmail = `user_tmdb_fix_${Date.now()}@bingesync.local`;
+    await page.goto('/');
+    await page.fill('#dev-email', userEmail);
+    await page.fill('#dev-name', 'TMDB Fixer');
+    await page.click('#btn-dev-submit');
+
+    await expect(page.locator('#btn-open-log-modal')).toBeVisible();
+
+    // 1. Log a watch item
+    await page.click('#btn-open-log-modal');
+    await expect(page.locator('#modal-log-scrobble')).toBeVisible();
+    await page.fill('#scrobble-title', 'Chernobyl');
+    await page.selectOption('#scrobble-media-type', 'movie');
+    await page.fill('#scrobble-year', '2019');
+    await page.click('#btn-submit-scrobble');
+    await expect(page.locator('#modal-log-scrobble')).toBeHidden();
+
+    // 2. Open item detail modal
+    const card = page.locator('.scrobble-card', { hasText: 'Chernobyl' }).first();
+    await expect(card).toBeVisible();
+    await card.click();
+    await expect(page.locator('#modal-item-detail')).toBeVisible();
+
+    // 3. Click Fix Match
+    await page.click('#btn-fix-match');
+    await expect(page.locator('#detail-fix-match-box')).toBeVisible();
+
+    // 4. Verify provider select and search button exist
+    await expect(page.locator('#select-fix-match-provider')).toBeVisible();
+    await expect(page.locator('#btn-search-fix-match')).toBeVisible();
+
+    // 5. Test search with title
+    await page.fill('#input-fix-match-tvdb-id', 'Chernobyl');
+    await page.click('#btn-search-fix-match');
+    await expect(page.locator('#fix-match-feedback')).toBeVisible();
+
+    // 6. Select TMDB provider, fill TMDB ID, and apply
+    await page.selectOption('#select-fix-match-provider', 'tmdb');
+    await page.fill('#input-fix-match-tvdb-id', '87108');
+    await page.click('#btn-submit-fix-match');
+
+    // 7. Verify TMDB ID is updated on modal footer
+    await expect(page.locator('#modal-item-detail')).toContainText('TMDB ID: 87108');
+
+    // 8. Close modal
+    await page.click('#btn-dismiss-detail-modal');
+    await expect(page.locator('#modal-item-detail')).toBeHidden();
+  });
 });
 
 

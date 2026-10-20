@@ -130,7 +130,7 @@ Plex webhooks send:
 ```bash
 cargo test
 ```
-Tests in `tests/api_tests.rs` (46 integration tests) cover:
+Tests in `tests/api_tests.rs` (49 integration tests) cover:
 - Dev login and `/api/v1/auth/me`
 - Plex movie and TV episode scrobbling
 - Multi-user isolation (User A cannot see User B's data)
@@ -176,6 +176,9 @@ Tests in `tests/api_tests.rs` (46 integration tests) cover:
 - Overseerr media requests and user status check
 - Day-of-week & hourly 7x24 viewing heatmap density matrix and Binge Wrapped annual review metrics
 - Missing metadata query filtering across history and timeline with keyword aliases ("missing:metadata", "missing_metadata", "missing")
+- Fix match with TMDB ID, provider selection, sibling TV episode updates, and multi-user isolation
+- Title candidate search (`/api/v1/history/{id}/match-search`) returning ranked candidates across active metadata sources
+- Full metadata enrichment resolution using TMDB and TVDB with automatic missing metadata clearing
 
 ### Run Playwright E2E UI Tests
 ```bash
@@ -183,7 +186,7 @@ cd web
 npm install
 npx playwright test
 ```
-Playwright tests in `web/tests/e2e.spec.js` (37 browser E2E tests) cover:
+Playwright tests in `web/tests/e2e.spec.js` (38 browser E2E tests) cover:
 - User sign-in flow, "+ Log Watch" modal, and timeline rendering
 - Multi-user separation in the web UI
 - Trakt history and rating import flow in the web UI (pasted JSON)
@@ -221,6 +224,7 @@ Playwright tests in `web/tests/e2e.spec.js` (37 browser E2E tests) cover:
 - Missing metadata filter pill and badge (`⚠️ Needs Match`) in history and timeline for quick match fixing
 - Stats view weekly 7x24 viewing heatmap grid and interactive Binge Wrapped / Year in Review modal with share card copy
 - User settings: Emby webhooks setup and guide, outbound webhooks configuration and test ping, Overseerr credentials, and one-click data export ZIP
+- Fix match modal: search matching titles, provider selector (Auto / TMDB / TheTVDB), candidate card selection, and TMDB ID matching
 
 ### Run the App Locally
 ```bash

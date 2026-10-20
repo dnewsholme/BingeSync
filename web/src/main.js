@@ -3080,11 +3080,18 @@ async function openDetailModal(item) {
       <div style="font-weight:600;font-size:0.88rem;color:#93c5fd;margin-bottom:6px;">${t('modal.fix_match_title')}</div>
       <p style="font-size:0.82rem;color:var(--text-dim);margin-bottom:10px;">${t('modal.fix_match_desc')}</p>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-        <input type="text" id="input-fix-match-tvdb-id" class="form-control font-mono" placeholder="${t('modal.fix_match_placeholder')}" value="${escapeHtml(item.tvdb_id || '')}" style="width:200px;padding:6px 10px;font-size:0.85rem;" />
-        <button type="button" class="btn btn-primary btn-sm" id="btn-submit-fix-match">${t('modal.fix_match_apply')}</button>
-        <button type="button" class="btn btn-outline btn-sm" id="btn-cancel-fix-match">${t('modal.cancel')}</button>
+        <select id="select-fix-match-provider" class="form-control" style="width:auto;min-width:130px;padding:6px 8px;font-size:0.82rem;">
+          <option value="auto">Auto (${state.adminSettings?.metadata_source === 'tmdb' ? 'TMDB' : 'TheTVDB'})</option>
+          <option value="tmdb">The Movie Database (TMDB)</option>
+          <option value="tvdb">TheTVDB</option>
+        </select>
+        <input type="text" id="input-fix-match-tvdb-id" class="form-control font-mono" placeholder="${t('modal.fix_match_placeholder')}" value="${escapeHtml(item.tmdb_id || item.tvdb_id || (item.media_type === 'episode' ? (item.grandparent_title || item.title) : item.title))}" style="flex:1;min-width:180px;padding:6px 10px;font-size:0.85rem;" />
+        <button type="button" class="btn btn-secondary btn-sm" id="btn-search-fix-match" style="padding:6px 12px;font-size:0.82rem;">🔍 ${t('modal.fix_match_search') || 'Search'}</button>
+        <button type="button" class="btn btn-primary btn-sm" id="btn-submit-fix-match" style="padding:6px 12px;font-size:0.82rem;">${t('modal.fix_match_apply')}</button>
+        <button type="button" class="btn btn-outline btn-sm" id="btn-cancel-fix-match" style="padding:6px 10px;font-size:0.82rem;">${t('modal.cancel')}</button>
       </div>
       <div id="fix-match-feedback" style="margin-top:8px;font-size:0.82rem;display:none;"></div>
+      <div id="fix-match-results" class="fix-match-results" style="display:none;margin-top:10px;max-height:280px;overflow-y:auto;flex-direction:column;gap:8px;"></div>
     </div>
     <div id="detail-arr-container"></div>
     <div id="detail-person-watches-container" class="person-watches-section" style="display:none;"></div>
@@ -3092,6 +3099,7 @@ async function openDetailModal(item) {
     <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.78rem;font-family:monospace;color:var(--text-dim);background:#080c14;padding:8px 12px;border-radius:6px;margin-top:14px;flex-wrap:wrap;gap:8px;">
       <span>Scrobble ID: ${item.id}</span>
       ${item.tvdb_id ? `<span style="color:#60a5fa;">TheTVDB ID: ${escapeHtml(item.tvdb_id)}</span>` : ''}
+      ${item.tmdb_id ? `<span style="color:#34d399;">TMDB ID: ${escapeHtml(item.tmdb_id)}</span>` : ''}
       <span class="detail-tvdb-attribution">Metadata & cast via <a href="https://thetvdb.com" target="_blank" rel="noopener noreferrer">TheTVDB</a></span>
     </div>
   `;
@@ -3145,45 +3153,179 @@ async function openDetailModal(item) {
     };
   }
 
-  const btnSubmitFixMatch = document.getElementById('btn-submit-fix-match');
-  if (btnSubmitFixMatch) {
-    btnSubmitFixMatch.onclick = async () => {
-      const inp = document.getElementById('input-fix-match-tvdb-id');
-      const feedback = document.getElementById('fix-match-feedback');
-      const tvdbId = inp ? inp.value.trim() : '';
-      if (!tvdbId) {
-        if (feedback) {
-          feedback.textContent = 'Please enter a valid TheTVDB ID';
-          feedback.style.color = '#ef4444';
-          feedback.style.display = 'block';
+  const btnSearchFixMatch = document.getElementById('btn-search-fix-match');
+  const inpFixMatch = document.getElementById('input-fix-match-tvdb-id');
+  const selProvider = document.getElementById('select-fix-match-provider');
+  const resultsContainer = document.getElementById('fix-match-results');
+  const fixFeedback = document.getElementById('fix-match-feedback');
+
+  const applyFixMatchAction = async (targetId, prov) => {
+    const btnSubmit = document.getElementById('btn-submit-fix-match');
+    if (!targetId) {
+      if (fixFeedback) {
+        fixFeedback.textContent = 'Please enter a valid title or ID';
+        fixFeedback.style.color = '#ef4444';
+        fixFeedback.style.display = 'block';
+      }
+      return;
+    }
+
+    if (btnSubmit) btnSubmit.disabled = true;
+    if (fixFeedback) {
+      fixFeedback.textContent = `Fixing match and downloading metadata (${prov || 'auto'})...`;
+      fixFeedback.style.color = '#60a5fa';
+      fixFeedback.style.display = 'block';
+    }
+
+    try {
+      const res = await api.fixMatch(item.id, { id: targetId, provider: prov });
+      if (fixFeedback) {
+        fixFeedback.textContent = 'Match updated successfully!';
+        fixFeedback.style.color = '#34d399';
+      }
+      if (res && res.scrobble) {
+        state.selectedItem = res.scrobble;
+        await openDetailModal(res.scrobble);
+      }
+      loadTimeline();
+      loadHistory();
+    } catch (err) {
+      if (fixFeedback) {
+        fixFeedback.textContent = `Error: ${err.message}`;
+        fixFeedback.style.color = '#ef4444';
+      }
+    } finally {
+      if (btnSubmit) btnSubmit.disabled = false;
+    }
+  };
+
+  const doSearchAction = async () => {
+    const query = inpFixMatch ? inpFixMatch.value.trim() : '';
+    const prov = selProvider ? selProvider.value : 'auto';
+    if (!query) {
+      if (fixFeedback) {
+        fixFeedback.textContent = 'Please enter a title or ID to search';
+        fixFeedback.style.color = '#ef4444';
+        fixFeedback.style.display = 'block';
+      }
+      return;
+    }
+
+    if (btnSearchFixMatch) btnSearchFixMatch.disabled = true;
+    if (fixFeedback) {
+      fixFeedback.textContent = `Searching for "${query}"...`;
+      fixFeedback.style.color = '#60a5fa';
+      fixFeedback.style.display = 'block';
+    }
+    if (resultsContainer) {
+      resultsContainer.style.display = 'none';
+      resultsContainer.innerHTML = '';
+    }
+
+    try {
+      const res = await api.searchMatch(item.id, query, prov);
+      const candidates = (res && res.results) || [];
+      if (btnSearchFixMatch) btnSearchFixMatch.disabled = false;
+
+      if (candidates.length === 0) {
+        if (fixFeedback) {
+          fixFeedback.textContent = `No matching titles found for "${query}". You can also enter an ID directly and click "${t('modal.fix_match_apply')}".`;
+          fixFeedback.style.color = '#f59e0b';
+          fixFeedback.style.display = 'block';
         }
         return;
       }
-      btnSubmitFixMatch.disabled = true;
-      if (feedback) {
-        feedback.textContent = 'Fixing match and fetching metadata from TheTVDB...';
-        feedback.style.color = '#60a5fa';
-        feedback.style.display = 'block';
+
+      if (fixFeedback) {
+        fixFeedback.textContent = `Found ${candidates.length} candidate(s):`;
+        fixFeedback.style.color = '#34d399';
+        fixFeedback.style.display = 'block';
       }
-      try {
-        const res = await api.fixMatch(item.id, tvdbId);
-        if (feedback) {
-          feedback.textContent = 'Match updated successfully!';
-          feedback.style.color = '#34d399';
+
+      if (resultsContainer) {
+        resultsContainer.innerHTML = candidates.map(c => {
+          const poster = c.image_url
+            ? `<img src="${escapeHtml(c.image_url)}" alt="${escapeHtml(c.name || '')}" style="width:38px;height:54px;object-fit:cover;border-radius:4px;flex-shrink:0;" onerror="this.outerHTML='<div style=\\\'width:38px;height:54px;background:rgba(255,255,255,0.06);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:1.1rem;flex-shrink:0;\\\'>🎬</div>'" />`
+            : `<div style="width:38px;height:54px;background:rgba(255,255,255,0.06);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:1.1rem;flex-shrink:0;">🎬</div>`;
+          const provBadge = c.provider === 'tmdb'
+            ? `<span class="badge" style="background:rgba(16,185,129,0.18);color:#34d399;font-size:0.72rem;padding:2px 6px;border-radius:4px;">TMDB</span>`
+            : `<span class="badge" style="background:rgba(59,130,246,0.18);color:#60a5fa;font-size:0.72rem;padding:2px 6px;border-radius:4px;">TheTVDB</span>`;
+          const yearStr = c.year ? `(${c.year})` : '';
+          const typeStr = c.entity_type ? `<span style="font-size:0.72rem;color:var(--text-dim);text-transform:capitalize;">${escapeHtml(c.entity_type)}</span>` : '';
+          const overviewText = c.overview
+            ? escapeHtml(c.overview.slice(0, 110)) + (c.overview.length > 110 ? '...' : '')
+            : '<span style="color:var(--text-dim);font-style:italic;">No overview available</span>';
+
+          return `
+            <div class="fix-match-candidate-row" style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:rgba(0,0,0,0.35);border:1px solid rgba(255,255,255,0.08);border-radius:6px;">
+              ${poster}
+              <div style="flex:1;min-width:0;">
+                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                  <strong style="font-size:0.86rem;color:var(--text-main);">${escapeHtml(c.name || 'Untitled')}</strong>
+                  <span style="font-size:0.8rem;color:var(--text-muted);">${yearStr}</span>
+                  ${provBadge}
+                  ${typeStr}
+                  <span class="font-mono" style="font-size:0.75rem;color:var(--text-dim);">#${escapeHtml(c.id)}</span>
+                </div>
+                <div style="font-size:0.77rem;color:var(--text-muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">
+                  ${overviewText}
+                </div>
+              </div>
+              <button type="button" class="btn btn-primary btn-sm btn-select-candidate-match" data-id="${escapeHtml(c.id)}" data-provider="${escapeHtml(c.provider || prov)}" style="padding:4px 10px;font-size:0.78rem;white-space:nowrap;flex-shrink:0;">
+                ${t('modal.fix_match_select') || 'Match'}
+              </button>
+            </div>
+          `;
+        }).join('');
+
+        resultsContainer.style.display = 'flex';
+
+        resultsContainer.querySelectorAll('.btn-select-candidate-match').forEach(btn => {
+          btn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const tid = btn.dataset.id;
+            const tprov = btn.dataset.provider;
+            await applyFixMatchAction(tid, tprov);
+          });
+        });
+      }
+    } catch (err) {
+      if (btnSearchFixMatch) btnSearchFixMatch.disabled = false;
+      if (fixFeedback) {
+        fixFeedback.textContent = `Search error: ${err.message}`;
+        fixFeedback.style.color = '#ef4444';
+        fixFeedback.style.display = 'block';
+      }
+    }
+  };
+
+  if (btnSearchFixMatch) {
+    btnSearchFixMatch.onclick = doSearchAction;
+  }
+
+  if (inpFixMatch) {
+    inpFixMatch.onkeydown = (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const val = inpFixMatch.value.trim();
+        if (/^\d+$/.test(val) || /^(tmdb|tvdb|series|movie)-\d+$/i.test(val)) {
+          applyFixMatchAction(val, selProvider ? selProvider.value : 'auto');
+        } else {
+          doSearchAction();
         }
-        if (res && res.scrobble) {
-          state.selectedItem = res.scrobble;
-          await openDetailModal(res.scrobble);
-        }
-        loadTimeline();
-        loadHistory();
-      } catch (err) {
-        if (feedback) {
-          feedback.textContent = `Error: ${err.message}`;
-          feedback.style.color = '#ef4444';
-        }
-      } finally {
-        btnSubmitFixMatch.disabled = false;
+      }
+    };
+  }
+
+  const btnSubmitFixMatch = document.getElementById('btn-submit-fix-match');
+  if (btnSubmitFixMatch) {
+    btnSubmitFixMatch.onclick = async () => {
+      const val = inpFixMatch ? inpFixMatch.value.trim() : '';
+      const prov = selProvider ? selProvider.value : 'auto';
+      if (/^\d+$/.test(val) || /^(tmdb|tvdb|series|movie)-\d+$/i.test(val)) {
+        await applyFixMatchAction(val, prov);
+      } else {
+        await doSearchAction();
       }
     };
   }
