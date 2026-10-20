@@ -1858,26 +1858,69 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     await page.click('#btn-dev-submit');
     await expect(page.locator('#user-display-name')).toContainText('Theme User');
 
-    // Switch theme via navbar select to Plex Amber
-    await page.selectOption('#nav-theme-select', 'amber');
-    await expect(page.locator('body')).toHaveAttribute('data-theme', 'amber');
-
-    // Switch theme to Jellyfin Purple
-    await page.selectOption('#nav-theme-select', 'purple');
-    await expect(page.locator('body')).toHaveAttribute('data-theme', 'purple');
+    // Verify theme selector was removed from header
+    await expect(page.locator('#nav-theme-wrap')).toHaveCount(0);
+    await expect(page.locator('#nav-theme-select')).toHaveCount(0);
 
     // Go to Settings view and test swatch clicks
     await page.click('#tab-settings');
     await expect(page.locator('#view-settings')).toBeVisible();
 
+    // Verify theme swatches have pure colour names
+    await expect(page.locator('.theme-swatch[data-theme="red"] .swatch-name')).toHaveText('Red');
+    await expect(page.locator('.theme-swatch[data-theme="amber"] .swatch-name')).toHaveText('Amber');
+    await expect(page.locator('.theme-swatch[data-theme="purple"] .swatch-name')).toHaveText('Purple');
+    await expect(page.locator('.theme-swatch[data-theme="cyan"] .swatch-name')).toHaveText('Cyan');
+    await expect(page.locator('.theme-swatch[data-theme="emerald"] .swatch-name')).toHaveText('Emerald');
+    await expect(page.locator('.theme-swatch[data-theme="rose"] .swatch-name')).toHaveText('Rose');
+    await expect(page.locator('.theme-swatch[data-theme="oled"] .swatch-name')).toHaveText('Black');
+
+    const amberSwatch = page.locator('.theme-swatch[data-theme="amber"]');
+    await amberSwatch.click();
+    await expect(page.locator('body')).toHaveAttribute('data-theme', 'amber');
+
+    const purpleSwatch = page.locator('.theme-swatch[data-theme="purple"]');
+    await purpleSwatch.click();
+    await expect(page.locator('body')).toHaveAttribute('data-theme', 'purple');
+
     const cyanSwatch = page.locator('.theme-swatch[data-theme="cyan"]');
     await cyanSwatch.click();
     await expect(page.locator('body')).toHaveAttribute('data-theme', 'cyan');
-    await expect(page.locator('#nav-theme-select')).toHaveValue('cyan');
 
     // Reload page to verify persistence
     await page.reload();
     await expect(page.locator('body')).toHaveAttribute('data-theme', 'cyan');
+  });
+
+  test('missing metadata filter and badge in history and timeline', async ({ page }) => {
+    await page.goto('/');
+
+    const testEmail = `missing_meta_ui_${Date.now()}@bingesync.local`;
+    await page.fill('#dev-email', testEmail);
+    await page.fill('#dev-name', 'Missing Meta UI User');
+    await page.click('#btn-dev-submit');
+    await expect(page.locator('#user-display-name')).toContainText('Missing Meta UI User');
+
+    // Log an item with missing metadata (no overview, no genres, default poster)
+    await page.click('#btn-open-log-modal');
+    await page.selectOption('#scrobble-media-type', 'movie');
+    await page.fill('#scrobble-title', 'Unmatched Film 123');
+    await page.fill('#scrobble-year', '2025');
+    await page.click('#btn-submit-scrobble');
+    await expect(page.locator('#modal-log-scrobble')).toBeHidden();
+
+    // Check timeline shows badge "Needs Match"
+    await expect(page.locator('#timeline-container .badge-missing-metadata')).toBeVisible();
+
+    // Go to History tab
+    await page.click('#tab-history');
+    await expect(page.locator('#view-history')).toBeVisible();
+    await expect(page.locator('#history-list .badge-missing-metadata')).toBeVisible();
+
+    // Click Missing Metadata filter pill
+    await page.click('#pill-missing-metadata');
+    await expect(page.locator('#pill-missing-metadata')).toHaveClass(/active/);
+    await expect(page.locator('#history-list')).toContainText('Unmatched Film 123');
   });
 
   test('weekly viewing heatmap and binge wrapped modal flow', async ({ page }) => {

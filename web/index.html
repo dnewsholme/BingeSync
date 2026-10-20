@@ -10,7 +10,7 @@
       }
     })();
   </script>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <title>BingeSync - Self-Hosted Plex Scrobbler & Timeline</title>
   <meta name="description" content="Self-hosted Trakt alternative replicating watch history and timeline using per-user Plex webhooks and SQLite." />
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -76,17 +76,6 @@
               <option value="es">🇪🇸 ES</option>
               <option value="de">🇩🇪 DE</option>
               <option value="fr">🇫🇷 FR</option>
-            </select>
-          </div>
-          <div class="theme-selector-wrap" id="nav-theme-wrap" title="Theme Accent">
-            <select class="theme-select nav-theme-select" id="nav-theme-select" aria-label="Theme Accent">
-              <option value="default">🔴 Red</option>
-              <option value="amber">🟡 Plex Amber</option>
-              <option value="purple">🟣 Jellyfin Purple</option>
-              <option value="cyan">🔵 Emby Cyan</option>
-              <option value="emerald">🟢 Emerald</option>
-              <option value="rose">🌸 Rose Pink</option>
-              <option value="oled">⚫ OLED Black</option>
             </select>
           </div>
           <button class="btn btn-outline btn-sm" id="btn-open-import-modal">
@@ -224,6 +213,9 @@
                 <option value="completed" data-i18n="timeline.status_completed">Completed</option>
                 <option value="in_progress" data-i18n="timeline.status_in_progress">In Progress</option>
               </select>
+              <button type="button" class="btn btn-outline btn-sm filter-ctrl" id="btn-timeline-missing-metadata" title="Filter watches missing metadata or posters">
+                <span>⚠️ Missing Metadata</span>
+              </button>
               <button class="btn btn-outline btn-sm" id="btn-reset-timeline-filters" title="Reset all timeline filters" data-i18n="common.clear">Clear</button>
             </div>
           </div>
@@ -288,6 +280,9 @@
               <button class="pill active" data-type="all" id="pill-all" data-i18n="history.all">All</button>
               <button class="pill" data-type="movie" id="pill-movies" data-i18n="history.movies">Movies</button>
               <button class="pill" data-type="episode" id="pill-episodes" data-i18n="history.episodes">Episodes</button>
+              <button class="pill" id="pill-missing-metadata" title="Filter items missing poster, plot overview, or genres">
+                <span>⚠️ Missing Metadata</span>
+              </button>
               <button class="pill pill-action" id="btn-toggle-select-mode">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
                 <span data-i18n="history.select">Select</span>
@@ -1034,33 +1029,33 @@
             </p>
             <div class="theme-accent-picker" style="margin-top: 14px;">
               <div class="theme-swatches-grid">
-                <button type="button" class="theme-swatch" data-theme="red" title="Trakt Crimson Red">
+                <button type="button" class="theme-swatch" data-theme="red" title="Red">
                   <span class="swatch-color" style="background: #e50914;"></span>
-                  <span class="swatch-name">Trakt Red</span>
+                  <span class="swatch-name">Red</span>
                 </button>
-                <button type="button" class="theme-swatch" data-theme="amber" title="Plex Gold / Amber">
+                <button type="button" class="theme-swatch" data-theme="amber" title="Amber">
                   <span class="swatch-color" style="background: #e5a00d;"></span>
-                  <span class="swatch-name">Plex Amber</span>
+                  <span class="swatch-name">Amber</span>
                 </button>
-                <button type="button" class="theme-swatch" data-theme="purple" title="Jellyfin Neon Purple">
+                <button type="button" class="theme-swatch" data-theme="purple" title="Purple">
                   <span class="swatch-color" style="background: #a855f7;"></span>
-                  <span class="swatch-name">Jellyfin Purple</span>
+                  <span class="swatch-name">Purple</span>
                 </button>
-                <button type="button" class="theme-swatch" data-theme="cyan" title="Emby Electric Cyan">
+                <button type="button" class="theme-swatch" data-theme="cyan" title="Cyan">
                   <span class="swatch-color" style="background: #06b6d4;"></span>
-                  <span class="swatch-name">Emby Cyan</span>
+                  <span class="swatch-name">Cyan</span>
                 </button>
-                <button type="button" class="theme-swatch" data-theme="emerald" title="Nordic Emerald Green">
+                <button type="button" class="theme-swatch" data-theme="emerald" title="Emerald">
                   <span class="swatch-color" style="background: #10b981;"></span>
                   <span class="swatch-name">Emerald</span>
                 </button>
-                <button type="button" class="theme-swatch" data-theme="rose" title="Cyberpunk Rose Pink">
+                <button type="button" class="theme-swatch" data-theme="rose" title="Rose">
                   <span class="swatch-color" style="background: #f43f5e;"></span>
                   <span class="swatch-name">Rose</span>
                 </button>
-                <button type="button" class="theme-swatch" data-theme="oled" title="True Pitch Black OLED">
+                <button type="button" class="theme-swatch" data-theme="oled" title="Black">
                   <span class="swatch-color" style="background: #000000; border: 1px solid #333;"></span>
-                  <span class="swatch-name">True OLED</span>
+                  <span class="swatch-name">Black</span>
                 </button>
               </div>
             </div>

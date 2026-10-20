@@ -175,6 +175,7 @@ Tests in `tests/api_tests.rs` (46 integration tests) cover:
 - Outbound webhooks (Discord, Telegram, ntfy, Gotify, generic) scrobble event notifications and test endpoints
 - Overseerr media requests and user status check
 - Day-of-week & hourly 7x24 viewing heatmap density matrix and Binge Wrapped annual review metrics
+- Missing metadata query filtering across history and timeline with keyword aliases ("missing:metadata", "missing_metadata", "missing")
 
 ### Run Playwright E2E UI Tests
 ```bash
@@ -182,7 +183,7 @@ cd web
 npm install
 npx playwright test
 ```
-Playwright tests in `web/tests/e2e.spec.js` (36 browser E2E tests) cover:
+Playwright tests in `web/tests/e2e.spec.js` (37 browser E2E tests) cover:
 - User sign-in flow, "+ Log Watch" modal, and timeline rendering
 - Multi-user separation in the web UI
 - Trakt history and rating import flow in the web UI (pasted JSON)
@@ -216,7 +217,8 @@ Playwright tests in `web/tests/e2e.spec.js` (36 browser E2E tests) cover:
 - Library cleanup view: list watched items on Radarr & Sonarr, view reclaimable disk space, filter by type, and execute cleanup action modals
 - Admin settings metadata source configuration (TheTVDB or TMDB), credential saving, and TMDB footer attribution
 - Admin database backup creation, backups listing table, and confirmation restore modal
-- Theme accent switcher: Red, Amber, Purple, Cyan, Emerald, Rose Pink, OLED Black with persistent state
+- Theme accent switcher exclusively in Settings with pure colour swatches (Red, Amber, Purple, Cyan, Emerald, Rose, Black) and persistent state
+- Missing metadata filter pill and badge (`⚠️ Needs Match`) in history and timeline for quick match fixing
 - Stats view weekly 7x24 viewing heatmap grid and interactive Binge Wrapped / Year in Review modal with share card copy
 - User settings: Emby webhooks setup and guide, outbound webhooks configuration and test ping, Overseerr credentials, and one-click data export ZIP
 

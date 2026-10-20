@@ -27,6 +27,8 @@ pub struct TimelineQuery {
     pub all: Option<bool>,
     #[serde(default)]
     pub all_dates: Option<bool>,
+    #[serde(default)]
+    pub missing_metadata: Option<bool>,
 }
 
 pub async fn get_timeline(
@@ -42,6 +44,11 @@ pub async fn get_timeline(
 
     let media_type_filter = query.media_type.as_deref().unwrap_or("all");
     let search_filter = query.search.as_deref().unwrap_or("").trim();
+    let is_missing_metadata_keyword = search_filter.eq_ignore_ascii_case("missing:metadata")
+        || search_filter.eq_ignore_ascii_case("missing_metadata")
+        || search_filter.eq_ignore_ascii_case("missing");
+    let missing_metadata_filter = query.missing_metadata.unwrap_or(false) || is_missing_metadata_keyword;
+
     let date_filter = if all_dates {
         ""
     } else {
@@ -60,7 +67,11 @@ pub async fn get_timeline(
         bind_params.push(media_type_filter.to_string());
     }
 
-    if !search_filter.is_empty() {
+    if missing_metadata_filter {
+        sql.push_str(" AND (thumb_url IS NULL OR thumb_url = '' OR overview IS NULL OR overview = '' OR genres IS NULL OR genres = '')");
+    }
+
+    if !search_filter.is_empty() && !is_missing_metadata_keyword {
         let pattern = format!("%{}%", search_filter);
         sql.push_str(" AND (title LIKE ? OR grandparent_title LIKE ? OR overview LIKE ?)");
         bind_params.push(pattern.clone());

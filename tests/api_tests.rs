@@ -5822,5 +5822,112 @@ async fn test_outbound_webhook_test_and_user_settings() {
     assert_eq!(settings_json["overseerr_url"], "http://192.168.1.50:5055");
 }
 
+#[tokio::test]
+async fn test_history_and_timeline_missing_metadata_filter() {
+    let (app, pool, config) = setup_test_app().await;
+    let user_id = "test_user_missing_meta";
+    let token = create_jwt(user_id, "missing_meta_user@example.com", &config.jwt_secret).unwrap();
+
+    sqlx::query(
+        "INSERT INTO users (id, email, display_name, webhook_token, role) VALUES (?, ?, ?, ?, 'user')"
+    )
+    .bind(user_id)
+    .bind("missing_meta_user@example.com")
+    .bind("Missing Meta User")
+    .bind("missing_meta_token_123")
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    // Scrobble 1: Complete metadata
+    let scrobble_complete = serde_json::json!({
+        "media_type": "movie",
+        "title": "Complete Movie",
+        "year": 2024,
+        "thumb_url": "https://image.tmdb.org/t/p/w500/complete.jpg",
+        "overview": "A full overview of this great film.",
+        "genres": "Action, Sci-Fi",
+        "watched_at": "2026-10-20T12:00:00Z"
+    });
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/history")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(serde_json::to_vec(&scrobble_complete).unwrap()))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+
+    // Scrobble 2: Missing metadata (no thumb, no overview, no genres)
+    let scrobble_missing = serde_json::json!({
+        "media_type": "movie",
+        "title": "Unmatched Mystery Movie",
+        "year": 2023,
+        "watched_at": "2026-10-20T14:00:00Z"
+    });
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/history")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(serde_json::to_vec(&scrobble_missing).unwrap()))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+
+    // 1. History: all items
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/history?all=true")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    assert_eq!(json["total"], 2);
+
+    // 2. History: missing_metadata=true
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/history?all=true&missing_metadata=true")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    assert_eq!(json["total"], 1);
+    assert_eq!(json["items"][0]["title"], "Unmatched Mystery Movie");
+
+    // 3. History: search query "missing:metadata"
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/history?all=true&search=missing:metadata")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    assert_eq!(json["total"], 1);
+    assert_eq!(json["items"][0]["title"], "Unmatched Mystery Movie");
+
+    // 4. Timeline: missing_metadata=true
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/timeline?all_dates=true&missing_metadata=true")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let days: Vec<serde_json::Value> = serde_json::from_slice(&body_bytes).unwrap();
+    assert_eq!(days.len(), 1);
+    assert_eq!(days[0]["items"].as_array().unwrap().len(), 1);
+    assert_eq!(days[0]["items"][0]["title"], "Unmatched Mystery Movie");
+}
+
 
 

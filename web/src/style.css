@@ -122,25 +122,30 @@ body[data-theme="oled"] {
   display: inline-block;
 }
 
-.theme-selector-wrap {
-  display: inline-flex;
-  align-items: center;
+.badge-missing-metadata {
+  background: rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  font-weight: 700;
 }
 
-.nav-theme-select {
-  padding: 4px 8px;
-  font-size: 0.78rem;
-  background-color: #0f172a;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-sm);
-  color: var(--text-main);
-  cursor: pointer;
+#pill-missing-metadata.active,
+#btn-timeline-missing-metadata.active {
+  background: rgba(245, 158, 11, 0.25);
+  border-color: #f59e0b;
+  color: #fbbf24;
 }
 
 *, *::before, *::after {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
+}
+
+html, body {
+  overflow-x: hidden;
+  max-width: 100vw;
+  width: 100%;
 }
 
 body {
@@ -154,6 +159,14 @@ body {
   line-height: 1.5;
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
+}
+
+#app {
+  max-width: 100vw;
+  overflow-x: hidden;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
 
 /* Scrollbar */
@@ -3246,8 +3259,8 @@ select option,
 @media (max-width: 768px) {
   /* 1. Header & Navigation */
   .navbar {
-    height: 56px;
-    padding: 0 12px;
+    height: calc(56px + env(safe-area-inset-top, 0px));
+    padding: env(safe-area-inset-top, 0px) 12px 0 12px;
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
     background: #080c14;
@@ -3255,6 +3268,7 @@ select option,
   .nav-container {
     height: 56px;
     gap: 8px;
+    max-width: 100%;
   }
   .brand-logo-icon {
     width: 32px;
@@ -3290,8 +3304,8 @@ select option,
     bottom: 0;
     left: 0;
     right: 0;
-    height: 58px;
-    background: rgba(10, 15, 29, 0.96);
+    height: calc(58px + env(safe-area-inset-bottom, 0px));
+    background: rgba(10, 15, 29, 0.98);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
     border-radius: 0;
@@ -3300,7 +3314,7 @@ select option,
     display: flex;
     justify-content: space-around;
     align-items: center;
-    padding: 4px 6px calc(4px + env(safe-area-inset-bottom, 0px));
+    padding: 4px 6px calc(6px + env(safe-area-inset-bottom, 0px));
     z-index: 150;
     box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.5);
   }
@@ -3328,7 +3342,10 @@ select option,
 
   /* 3. Main Content Spacing */
   .main-content {
-    padding: 16px 14px calc(76px + env(safe-area-inset-bottom, 16px));
+    padding: 16px 12px calc(80px + env(safe-area-inset-bottom, 16px));
+    max-width: 100%;
+    box-sizing: border-box;
+    overflow-x: hidden;
   }
 
   /* 4. Touch-Friendly Swipeable Filter Carousels */
@@ -3498,8 +3515,25 @@ select option,
     padding: 10px;
   }
   .modal-dialog {
-    max-height: calc(100vh - 20px);
+    width: 100% !important;
+    max-width: calc(100vw - 20px) !important;
+    max-height: calc(100vh - 20px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)) !important;
     border-radius: var(--radius-md);
+  }
+  .wrapped-modal-dialog {
+    width: 100% !important;
+    max-width: calc(100vw - 20px) !important;
+  }
+  .cleanup-grid {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+  .stats-charts-grid {
+    grid-template-columns: 1fr !important;
+    gap: 14px !important;
+  }
+  .heatmap-card {
+    padding: 14px 10px !important;
   }
   .modal-header {
     padding: 14px 16px;

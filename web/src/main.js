@@ -39,6 +39,7 @@ const state = {
     watch_status: 'all',
     days: [],
     hasMore: false,
+    missingMetadata: false,
   },
   admin: {
     activeSubview: 'admin-sub-users',
@@ -50,6 +51,7 @@ const state = {
     search: '',
     person: '',
     allResults: false,
+    missingMetadata: false,
     totalPages: 1,
     selectMode: false,
     selectedIds: new Set(),
@@ -194,6 +196,7 @@ const el = {
   timelinePersonFilter: document.getElementById('timeline-person-filter'),
   timelineRatingFilter: document.getElementById('timeline-rating-filter'),
   timelineStatusFilter: document.getElementById('timeline-status-filter'),
+  btnTimelineMissingMetadata: document.getElementById('btn-timeline-missing-metadata'),
   btnResetTimelineFilters: document.getElementById('btn-reset-timeline-filters'),
   timelineScrubber: document.getElementById('timeline-scrubber'),
   timelineScrubberList: document.getElementById('timeline-scrubber-list'),
@@ -211,7 +214,8 @@ const el = {
   paginationInfo: document.getElementById('pagination-info'),
   btnPagePrev: document.getElementById('btn-page-prev'),
   btnPageNext: document.getElementById('btn-page-next'),
-  pills: document.querySelectorAll('.pill:not(.pill-action)'),
+  pills: document.querySelectorAll('#history-filter-pills .pill[data-type]'),
+  pillMissingMetadata: document.getElementById('pill-missing-metadata'),
   btnToggleSelectMode: document.getElementById('btn-toggle-select-mode'),
   historyBulkBar: document.getElementById('history-bulk-bar'),
   bulkSelectAllCheckbox: document.getElementById('bulk-select-all-checkbox'),
@@ -306,7 +310,6 @@ const el = {
   linkGotoUserSettings: document.getElementById('link-goto-user-settings'),
 
   // User Settings & Themes
-  navThemeSelect: document.getElementById('nav-theme-select'),
   formUserSettings: document.getElementById('form-user-settings'),
   btnSaveUserSettings: document.getElementById('btn-save-user-settings'),
   userSettingsStatus: document.getElementById('user-settings-status'),
@@ -682,6 +685,7 @@ async function loadTimeline(append = false) {
       person: state.timeline.person,
       rating: state.timeline.rating,
       watch_status: state.timeline.watch_status,
+      missing_metadata: state.timeline.missingMetadata,
     });
 
     if (append) {
@@ -1287,7 +1291,8 @@ function hasActiveTimelineFilters() {
     state.timeline.genre ||
     state.timeline.person ||
     (state.timeline.rating && state.timeline.rating !== 'all') ||
-    (state.timeline.watch_status && state.timeline.watch_status !== 'all')
+    (state.timeline.watch_status && state.timeline.watch_status !== 'all') ||
+    state.timeline.missingMetadata
   );
 }
 
@@ -1433,8 +1438,18 @@ if (el.btnResetTimelineFilters) {
     if (el.timelinePersonFilter) el.timelinePersonFilter.value = '';
     if (el.timelineRatingFilter) el.timelineRatingFilter.value = 'all';
     if (el.timelineStatusFilter) el.timelineStatusFilter.value = 'all';
+    state.timeline.missingMetadata = false;
+    if (el.btnTimelineMissingMetadata) el.btnTimelineMissingMetadata.classList.remove('active');
 
     hideTimelineFilters();
+    loadTimeline();
+  });
+}
+
+if (el.btnTimelineMissingMetadata) {
+  el.btnTimelineMissingMetadata.addEventListener('click', () => {
+    state.timeline.missingMetadata = !state.timeline.missingMetadata;
+    el.btnTimelineMissingMetadata.classList.toggle('active', state.timeline.missingMetadata);
     loadTimeline();
   });
 }
@@ -1478,6 +1493,11 @@ function renderScrobbleCard(item, isHistory = false) {
     ? `<span class="scrobble-badge badge-in-progress" title="${t('history.in_progress')}: ${item.progress_percent || 0}%">⏳ ${item.progress_percent || 0}%</span>`
     : '';
 
+  const hasMissingMetadata = !item.thumb_url || !item.overview || !item.genres;
+  const missingBadgeHtml = hasMissingMetadata
+    ? `<span class="scrobble-badge badge-missing-metadata" title="Missing metadata or poster — click card to Fix Match">⚠️ Needs Match</span>`
+    : '';
+
   const progressBarHtml = isInProgress && (item.progress_percent != null)
     ? `<div class="scrobble-progress-bar"><div class="scrobble-progress-fill" style="width: ${Math.min(100, Math.max(0, item.progress_percent))}%;"></div></div>`
     : '';
@@ -1490,6 +1510,7 @@ function renderScrobbleCard(item, isHistory = false) {
         <span class="scrobble-badge ${badgeClass}">${badgeText}</span>
         ${progressBadgeHtml}
         ${ratingHtml}
+        ${missingBadgeHtml}
         <div class="card-external-links">
           <a href="${imdbUrl}" target="_blank" rel="noopener noreferrer" class="card-imdb-link" title="Open on IMDb" onclick="event.stopPropagation()">IMDb ↗</a>
           <a href="${tvdbUrl}" target="_blank" rel="noopener noreferrer" class="card-tvdb-link" title="View on TheTVDB" onclick="event.stopPropagation()">TVDB ↗</a>
@@ -1611,6 +1632,7 @@ async function loadHistory() {
       person: state.history.person,
       all: state.history.allResults,
       all_dates: state.history.allResults,
+      missing_metadata: state.history.missingMetadata,
     });
 
     state.history.totalPages = res.total_pages || 1;
@@ -1767,6 +1789,15 @@ el.pills.forEach(pill => {
     loadHistory();
   });
 });
+
+if (el.pillMissingMetadata) {
+  el.pillMissingMetadata.addEventListener('click', () => {
+    state.history.missingMetadata = !state.history.missingMetadata;
+    el.pillMissingMetadata.classList.toggle('active', state.history.missingMetadata);
+    state.history.page = 1;
+    loadHistory();
+  });
+}
 
 el.btnPagePrev.addEventListener('click', () => {
   if (state.history.page > 1) {
@@ -4918,9 +4949,6 @@ function applyTheme(theme) {
     localStorage.setItem('bingesync_theme', activeTheme);
   } catch (e) {}
 
-  if (el.navThemeSelect) {
-    el.navThemeSelect.value = activeTheme;
-  }
   document.querySelectorAll('.theme-swatch').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.theme === activeTheme);
   });
@@ -4932,12 +4960,6 @@ function initTheme() {
     savedTheme = localStorage.getItem('bingesync_theme') || 'red';
   } catch (e) {}
   applyTheme(savedTheme);
-
-  if (el.navThemeSelect) {
-    el.navThemeSelect.addEventListener('change', (e) => {
-      applyTheme(e.target.value);
-    });
-  }
 
   document.querySelectorAll('.theme-swatch').forEach(btn => {
     btn.addEventListener('click', () => {

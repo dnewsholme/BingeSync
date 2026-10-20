@@ -60,6 +60,7 @@ export const api = {
     if (params.rating && params.rating !== 'all') url += `&rating=${encodeURIComponent(params.rating)}`;
     if (params.watch_status && params.watch_status !== 'all') url += `&watch_status=${encodeURIComponent(params.watch_status)}`;
     if (params.media_type && params.media_type !== 'all') url += `&media_type=${encodeURIComponent(params.media_type)}`;
+    if (params.missing_metadata) url += `&missing_metadata=true`;
     return request(url);
   },
   getTimelinePeriods: () => request('/timeline/periods'),
@@ -77,6 +78,7 @@ export const api = {
     if (params.person) url += `&person=${encodeURIComponent(params.person)}`;
     if (params.rating && params.rating !== 'all') url += `&rating=${encodeURIComponent(params.rating)}`;
     if (params.watch_status && params.watch_status !== 'all') url += `&watch_status=${encodeURIComponent(params.watch_status)}`;
+    if (params.missing_metadata) url += `&missing_metadata=true`;
     return request(url);
   },
   createScrobble: (scrobbleData) =>
