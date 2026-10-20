@@ -133,6 +133,41 @@ pub struct TimeOfDayActivity {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HeatmapCell {
+    pub day_index: u32,
+    pub hour: u32,
+    pub count: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LongestMovieItem {
+    pub title: String,
+    pub duration_minutes: i64,
+    pub year: Option<i32>,
+    pub thumb_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WrappedSummary {
+    pub year: i32,
+    pub total_scrobbles: i64,
+    pub total_hours: f64,
+    pub total_minutes: i64,
+    pub total_movies: i64,
+    pub total_episodes: i64,
+    pub unique_shows: i64,
+    pub busiest_day: Option<String>,
+    pub busiest_day_count: i64,
+    pub top_shows: Vec<TopShowItem>,
+    pub top_movies: Vec<TopMovieItem>,
+    pub top_actors: Vec<TopPersonItem>,
+    pub top_directors: Vec<TopPersonItem>,
+    pub top_genres: Vec<GenreCountItem>,
+    pub longest_movie: Option<LongestMovieItem>,
+    pub available_years: Vec<i32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StatsSummary {
     pub total_scrobbles: i64,
     pub movies_watched: i64,
@@ -172,6 +207,8 @@ pub struct StatsSummary {
     pub peak_day: Option<String>,
     #[serde(default)]
     pub peak_day_count: i64,
+    #[serde(default)]
+    pub weekly_heatmap: Vec<HeatmapCell>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]

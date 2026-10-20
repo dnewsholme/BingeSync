@@ -130,7 +130,7 @@ Plex webhooks send:
 ```bash
 cargo test
 ```
-Tests in `tests/api_tests.rs` (40 integration tests) cover:
+Tests in `tests/api_tests.rs` (46 integration tests) cover:
 - Dev login and `/api/v1/auth/me`
 - Plex movie and TV episode scrobbling
 - Multi-user isolation (User A cannot see User B's data)
@@ -161,6 +161,7 @@ Tests in `tests/api_tests.rs` (40 integration tests) cover:
 - Plex webhook username and ID filtering
 - Search across all history regardless of date and return all matching results
 - Jellyfin webhook scrobbles for movies and TV episodes, active sessions, and username filtering
+- Emby webhook scrobbles for movies and TV episodes, active sessions, and username filtering
 - Specific director and cinematographer history fields, filters, and crew metadata enrichment
 - Option to force refresh metadata for all records resetting metadata timestamps and triggering TVDB sync
 - Fix match option on history items specifying TheTVDB ID with sibling episode matching and multi-user isolation
@@ -170,6 +171,10 @@ Tests in `tests/api_tests.rs` (40 integration tests) cover:
 - TMDB metadata enrichment worker (movies, TV shows, credits, and poster formatting)
 - Admin settings metadata source selection (TheTVDB vs TMDB) and credential masking
 - Database backup creation, 7-day retention pruning, pre-restore safety snapshot, transactional restore, and path traversal protection
+- User data export clean ZIP archive containing scrobbles JSON, CSV, and ratings
+- Outbound webhooks (Discord, Telegram, ntfy, Gotify, generic) scrobble event notifications and test endpoints
+- Recommendations ("You Might Also Like") based on user ratings and genres, with Overseerr media requests
+- Day-of-week & hourly 7x24 viewing heatmap density matrix and Binge Wrapped annual review metrics
 
 ### Run Playwright E2E UI Tests
 ```bash
@@ -177,7 +182,7 @@ cd web
 npm install
 npx playwright test
 ```
-Playwright tests in `web/tests/e2e.spec.js` (33 browser E2E tests) cover:
+Playwright tests in `web/tests/e2e.spec.js` (36 browser E2E tests) cover:
 - User sign-in flow, "+ Log Watch" modal, and timeline rendering
 - Multi-user separation in the web UI
 - Trakt history and rating import flow in the web UI (pasted JSON)
@@ -211,6 +216,9 @@ Playwright tests in `web/tests/e2e.spec.js` (33 browser E2E tests) cover:
 - Library cleanup view: list watched items on Radarr & Sonarr, view reclaimable disk space, filter by type, and execute cleanup action modals
 - Admin settings metadata source configuration (TheTVDB or TMDB), credential saving, and TMDB footer attribution
 - Admin database backup creation, backups listing table, and confirmation restore modal
+- Theme accent switcher: Red, Amber, Purple, Cyan, Emerald, Rose Pink, OLED Black with persistent state
+- Stats view weekly 7x24 viewing heatmap grid and interactive Binge Wrapped / Year in Review modal with share card copy
+- User settings: Emby webhooks setup and guide, outbound webhooks configuration and test ping, Overseerr credentials, and one-click data export ZIP
 
 ### Run the App Locally
 ```bash

@@ -1,0 +1,19 @@
+{
+  "name": "BingeSync",
+  "short_name": "BingeSync",
+  "description": "Self-hosted media watch history tracker and Trakt alternative for Plex, Emby, and Jellyfin",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0a0d14",
+  "theme_color": "#e50914",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "./favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -460,6 +460,44 @@ pub async fn get_user_stats(
         })
         .collect();
 
+    // Weekly 7x24 heatmap (Day 0=Sunday .. 6=Saturday, Hour 0..23)
+    let heatmap_sql = format!(
+        r#"
+        SELECT
+            CAST(strftime('%w', watched_at) AS INTEGER) as day_idx,
+            CAST(strftime('%H', watched_at) AS INTEGER) as hr,
+            COUNT(*) as cnt
+        FROM scrobbles
+        WHERE user_id = ?{}{}
+        GROUP BY day_idx, hr
+        "#,
+        time_clause_str,
+        media_clause
+    );
+    let mut q = sqlx::query_as::<_, (i32, i32, i64)>(&heatmap_sql).bind(&auth.user_id);
+    if let Some(ref s) = time_start { q = q.bind(s); }
+    if let Some(ref e) = time_end { q = q.bind(e); }
+    let heatmap_rows = q.fetch_all(&state.pool).await.unwrap_or_default();
+
+    let mut heatmap_map: HashMap<(u32, u32), i64> = HashMap::new();
+    for (d, h, cnt) in heatmap_rows {
+        if (0..=6).contains(&d) && (0..=23).contains(&h) {
+            heatmap_map.insert((d as u32, h as u32), cnt);
+        }
+    }
+
+    let mut weekly_heatmap = Vec::with_capacity(7 * 24);
+    for d in 0..7 {
+        for h in 0..24 {
+            let count = *heatmap_map.get(&(d, h)).unwrap_or(&0);
+            weekly_heatmap.push(crate::models::HeatmapCell {
+                day_index: d,
+                hour: h,
+                count,
+            });
+        }
+    }
+
     Ok(Json(StatsSummary {
         total_scrobbles,
         movies_watched,
@@ -485,5 +523,266 @@ pub async fn get_user_stats(
         time_of_day_activity,
         peak_day,
         peak_day_count,
+        weekly_heatmap,
+    }))
+}
+
+#[derive(Debug, Deserialize, Default)]
+pub struct WrappedQuery {
+    pub year: Option<i32>,
+}
+
+/// GET /api/v1/stats/wrapped
+pub async fn get_user_wrapped(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Query(query): Query<WrappedQuery>,
+) -> Result<Json<crate::models::WrappedSummary>, (StatusCode, Json<serde_json::Value>)> {
+    // 1. Available years for the user
+    let years: Vec<i32> = sqlx::query_scalar::<_, i32>(
+        "SELECT DISTINCT CAST(strftime('%Y', watched_at) AS INTEGER) FROM scrobbles WHERE user_id = ? AND watched_at IS NOT NULL ORDER BY 1 DESC"
+    )
+    .bind(&auth.user_id)
+    .fetch_all(&state.pool)
+    .await
+    .unwrap_or_default();
+
+    let current_year = chrono::Datelike::year(&Utc::now());
+    let target_year = query.year.unwrap_or(if years.is_empty() { current_year } else { years[0] });
+
+    let start_str = format!("{:04}-01-01 00:00:00", target_year);
+    let end_str = format!("{:04}-12-31 23:59:59", target_year);
+
+    // 2. Counts and durations
+    let total_scrobbles: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM scrobbles WHERE user_id = ? AND watched_at >= ? AND watched_at <= ?"
+    )
+    .bind(&auth.user_id)
+    .bind(&start_str)
+    .bind(&end_str)
+    .fetch_one(&state.pool)
+    .await
+    .unwrap_or(0);
+
+    let total_movies: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM scrobbles WHERE user_id = ? AND media_type = 'movie' AND watched_at >= ? AND watched_at <= ?"
+    )
+    .bind(&auth.user_id)
+    .bind(&start_str)
+    .bind(&end_str)
+    .fetch_one(&state.pool)
+    .await
+    .unwrap_or(0);
+
+    let total_episodes: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM scrobbles WHERE user_id = ? AND media_type = 'episode' AND watched_at >= ? AND watched_at <= ?"
+    )
+    .bind(&auth.user_id)
+    .bind(&start_str)
+    .bind(&end_str)
+    .fetch_one(&state.pool)
+    .await
+    .unwrap_or(0);
+
+    let unique_shows: i64 = sqlx::query_scalar(
+        "SELECT COUNT(DISTINCT grandparent_title) FROM scrobbles WHERE user_id = ? AND media_type = 'episode' AND watched_at >= ? AND watched_at <= ?"
+    )
+    .bind(&auth.user_id)
+    .bind(&start_str)
+    .bind(&end_str)
+    .fetch_one(&state.pool)
+    .await
+    .unwrap_or(0);
+
+    let total_dur_ms: Option<i64> = sqlx::query_scalar(
+        "SELECT SUM(duration_ms) FROM scrobbles WHERE user_id = ? AND watched_at >= ? AND watched_at <= ?"
+    )
+    .bind(&auth.user_id)
+    .bind(&start_str)
+    .bind(&end_str)
+    .fetch_one(&state.pool)
+    .await
+    .unwrap_or(None);
+
+    let total_minutes = total_dur_ms.unwrap_or(0) / 60_000;
+    let total_hours = ((total_minutes as f64 / 60.0) * 10.0).round() / 10.0;
+
+    // 3. Busiest day
+    let busiest: Option<(String, i64)> = sqlx::query_as(
+        r#"
+        SELECT substr(watched_at, 1, 10) as dt, COUNT(*) as cnt
+        FROM scrobbles
+        WHERE user_id = ? AND watched_at >= ? AND watched_at <= ?
+        GROUP BY dt
+        ORDER BY cnt DESC, dt DESC
+        LIMIT 1
+        "#
+    )
+    .bind(&auth.user_id)
+    .bind(&start_str)
+    .bind(&end_str)
+    .fetch_optional(&state.pool)
+    .await
+    .unwrap_or(None);
+
+    let (busiest_day, busiest_day_count) = match busiest {
+        Some((dt, cnt)) => (Some(dt), cnt),
+        None => (None, 0),
+    };
+
+    // 4. Top Shows (top 5)
+    let top_shows: Vec<crate::models::TopShowItem> = sqlx::query_as::<_, (String, i64, Option<String>)>(
+        r#"
+        SELECT grandparent_title, COUNT(*) as cnt, MAX(thumb_url) as thumb
+        FROM scrobbles
+        WHERE user_id = ? AND media_type = 'episode' AND grandparent_title IS NOT NULL AND watched_at >= ? AND watched_at <= ?
+        GROUP BY grandparent_title
+        ORDER BY cnt DESC
+        LIMIT 5
+        "#
+    )
+    .bind(&auth.user_id)
+    .bind(&start_str)
+    .bind(&end_str)
+    .fetch_all(&state.pool)
+    .await
+    .unwrap_or_default()
+    .into_iter()
+    .map(|(show_title, count, thumb_url)| crate::models::TopShowItem {
+        show_title,
+        count,
+        thumb_url,
+    })
+    .collect();
+
+    // 5. Top Movies (top 5)
+    let top_movies: Vec<crate::models::TopMovieItem> = sqlx::query_as::<_, (String, i64, Option<String>, Option<i32>)>(
+        r#"
+        SELECT title, COUNT(*) as cnt, MAX(thumb_url) as thumb, MAX(year) as yr
+        FROM scrobbles
+        WHERE user_id = ? AND media_type = 'movie' AND watched_at >= ? AND watched_at <= ?
+        GROUP BY title
+        ORDER BY cnt DESC
+        LIMIT 5
+        "#
+    )
+    .bind(&auth.user_id)
+    .bind(&start_str)
+    .bind(&end_str)
+    .fetch_all(&state.pool)
+    .await
+    .unwrap_or_default()
+    .into_iter()
+    .map(|(title, count, thumb_url, year)| crate::models::TopMovieItem {
+        title,
+        count,
+        thumb_url,
+        year,
+    })
+    .collect();
+
+    // 6. Longest Movie
+    let longest_movie: Option<crate::models::LongestMovieItem> = sqlx::query_as::<_, (String, Option<i64>, Option<i32>, Option<String>)>(
+        r#"
+        SELECT title, duration_ms, year, thumb_url
+        FROM scrobbles
+        WHERE user_id = ? AND media_type = 'movie' AND duration_ms IS NOT NULL AND duration_ms > 0 AND watched_at >= ? AND watched_at <= ?
+        ORDER BY duration_ms DESC
+        LIMIT 1
+        "#
+    )
+    .bind(&auth.user_id)
+    .bind(&start_str)
+    .bind(&end_str)
+    .fetch_optional(&state.pool)
+    .await
+    .unwrap_or(None)
+    .map(|(title, dur, year, thumb_url)| crate::models::LongestMovieItem {
+        title,
+        duration_minutes: dur.unwrap_or(0) / 60_000,
+        year,
+        thumb_url,
+    });
+
+    // 7. Top Genres, Actors, Directors
+    let meta_rows: Vec<(Option<String>, Option<String>, Option<String>)> = sqlx::query_as(
+        "SELECT genres, actors, directors FROM scrobbles WHERE user_id = ? AND watched_at >= ? AND watched_at <= ?"
+    )
+    .bind(&auth.user_id)
+    .bind(&start_str)
+    .bind(&end_str)
+    .fetch_all(&state.pool)
+    .await
+    .unwrap_or_default();
+
+    let mut genre_counts: HashMap<String, i64> = HashMap::new();
+    let mut actor_counts: HashMap<String, i64> = HashMap::new();
+    let mut director_counts: HashMap<String, i64> = HashMap::new();
+
+    for (g_opt, a_opt, d_opt) in meta_rows {
+        if let Some(g_str) = g_opt {
+            for g in g_str.split(',') {
+                let trimmed = g.trim();
+                if !trimmed.is_empty() {
+                    *genre_counts.entry(trimmed.to_string()).or_insert(0) += 1;
+                }
+            }
+        }
+        if let Some(a_str) = a_opt {
+            for a in a_str.split(',') {
+                let trimmed = a.trim();
+                if !trimmed.is_empty() {
+                    *actor_counts.entry(trimmed.to_string()).or_insert(0) += 1;
+                }
+            }
+        }
+        if let Some(d_str) = d_opt {
+            for d in d_str.split(',') {
+                let trimmed = d.trim();
+                if !trimmed.is_empty() {
+                    *director_counts.entry(trimmed.to_string()).or_insert(0) += 1;
+                }
+            }
+        }
+    }
+
+    let mut top_genres: Vec<crate::models::GenreCountItem> = genre_counts
+        .into_iter()
+        .map(|(genre, count)| crate::models::GenreCountItem { genre, count })
+        .collect();
+    top_genres.sort_by(|a, b| b.count.cmp(&a.count));
+    top_genres.truncate(5);
+
+    let mut top_actors: Vec<crate::models::TopPersonItem> = actor_counts
+        .into_iter()
+        .map(|(name, count)| crate::models::TopPersonItem { name, count })
+        .collect();
+    top_actors.sort_by(|a, b| b.count.cmp(&a.count));
+    top_actors.truncate(5);
+
+    let mut top_directors: Vec<crate::models::TopPersonItem> = director_counts
+        .into_iter()
+        .map(|(name, count)| crate::models::TopPersonItem { name, count })
+        .collect();
+    top_directors.sort_by(|a, b| b.count.cmp(&a.count));
+    top_directors.truncate(5);
+
+    Ok(Json(crate::models::WrappedSummary {
+        year: target_year,
+        total_scrobbles,
+        total_hours,
+        total_minutes,
+        total_movies,
+        total_episodes,
+        unique_shows,
+        busiest_day,
+        busiest_day_count,
+        top_shows,
+        top_movies,
+        top_actors,
+        top_directors,
+        top_genres,
+        longest_movie,
+        available_years: if years.is_empty() { vec![target_year] } else { years },
     }))
 }

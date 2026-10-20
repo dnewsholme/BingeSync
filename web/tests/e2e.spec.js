@@ -1847,5 +1847,116 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     // 7. Modal closes and backups table is visible
     await expect(page.locator('#modal-restore-backup')).not.toBeVisible({ timeout: 5000 });
   });
+
+  test('theme accent switcher changes theme and persists', async ({ page }) => {
+    await page.goto('/');
+
+    // Sign in
+    const testEmail = `theme_${Date.now()}@bingesync.local`;
+    await page.fill('#dev-email', testEmail);
+    await page.fill('#dev-name', 'Theme User');
+    await page.click('#btn-dev-submit');
+    await expect(page.locator('#user-display-name')).toContainText('Theme User');
+
+    // Switch theme via navbar select to Plex Amber
+    await page.selectOption('#nav-theme-select', 'amber');
+    await expect(page.locator('body')).toHaveAttribute('data-theme', 'amber');
+
+    // Switch theme to Jellyfin Purple
+    await page.selectOption('#nav-theme-select', 'purple');
+    await expect(page.locator('body')).toHaveAttribute('data-theme', 'purple');
+
+    // Go to Settings view and test swatch clicks
+    await page.click('#tab-settings');
+    await expect(page.locator('#view-settings')).toBeVisible();
+
+    const cyanSwatch = page.locator('.theme-swatch[data-theme="cyan"]');
+    await cyanSwatch.click();
+    await expect(page.locator('body')).toHaveAttribute('data-theme', 'cyan');
+    await expect(page.locator('#nav-theme-select')).toHaveValue('cyan');
+
+    // Reload page to verify persistence
+    await page.reload();
+    await expect(page.locator('body')).toHaveAttribute('data-theme', 'cyan');
+  });
+
+  test('weekly viewing heatmap and binge wrapped modal flow', async ({ page }) => {
+    await page.goto('/');
+
+    const testEmail = `wrapped_${Date.now()}@bingesync.local`;
+    await page.fill('#dev-email', testEmail);
+    await page.fill('#dev-name', 'Wrapped User');
+    await page.click('#btn-dev-submit');
+    await expect(page.locator('#user-display-name')).toContainText('Wrapped User');
+
+    // Log a watch to have data
+    await page.click('#btn-open-log-modal');
+    await page.fill('#scrobble-title', 'Interstellar');
+    await page.fill('#scrobble-year', '2014');
+    await page.fill('#scrobble-duration', '169');
+    await page.click('#btn-submit-scrobble');
+    await expect(page.locator('#modal-log-scrobble')).toBeHidden();
+
+    // Navigate to Stats view
+    await page.click('#tab-stats');
+    await expect(page.locator('#view-stats')).toBeVisible();
+
+    // Verify weekly heatmap grid is rendered with cells
+    await expect(page.locator('#weekly-heatmap-grid')).toBeVisible();
+    const cellCount = await page.locator('#weekly-heatmap-grid .heatmap-cell').count();
+    expect(cellCount).toBe(168); // 7 days * 24 hours
+
+    // Open Binge Wrapped modal
+    await page.click('#btn-open-wrapped');
+    await expect(page.locator('#modal-wrapped')).toBeVisible();
+    await expect(page.locator('#wrapped-metrics-grid')).toBeVisible();
+    await expect(page.locator('#wrapped-year-badge')).toBeVisible();
+    await expect(page.locator('#wrapped-longest-movie-title')).toContainText('Interstellar');
+
+    // Test copy share card button
+    await page.locator('#btn-copy-wrapped-summary').scrollIntoViewIfNeeded();
+    await page.click('#btn-copy-wrapped-summary');
+    await expect(page.locator('#btn-copy-wrapped-summary')).toContainText(/Copied/);
+
+    // Close modal
+    await page.click('#btn-close-wrapped-modal');
+    await expect(page.locator('#modal-wrapped')).toBeHidden();
+  });
+
+  test('settings view: emby webhooks, outbound webhooks, overseerr, and data export', async ({ page }) => {
+    await page.goto('/');
+
+    const testEmail = `settings_ext_${Date.now()}@bingesync.local`;
+    await page.fill('#dev-email', testEmail);
+    await page.fill('#dev-name', 'Settings Tester');
+    await page.click('#btn-dev-submit');
+    await expect(page.locator('#user-display-name')).toContainText('Settings Tester');
+
+    // Navigate to Settings
+    await page.click('#tab-settings');
+    await expect(page.locator('#view-settings')).toBeVisible();
+
+    // 1. Verify Emby Webhook URL input and copy button exist
+    await expect(page.locator('#emby-webhook-url-input')).toBeVisible();
+    const embyUrl = await page.locator('#emby-webhook-url-input').inputValue();
+    expect(embyUrl).toContain('/api/v1/webhooks/emby');
+
+    await page.click('#btn-copy-emby-webhook');
+    await expect(page.locator('#emby-copy-status')).toBeVisible();
+
+    // 2. Configure Emby username, Overseerr, and Outbound webhooks
+    await page.fill('#user-setting-emby-username', 'emby_tester');
+    await page.fill('#user-setting-overseerr-url', 'http://192.168.1.100:5055');
+    await page.fill('#user-setting-overseerr-api-key', 'overseerr_test_key_123');
+    await page.selectOption('#user-setting-outbound-type', 'discord');
+    await page.fill('#user-setting-outbound-url', 'https://discord.com/api/webhooks/123/abc');
+
+    await page.click('#btn-save-user-settings');
+    await expect(page.locator('#user-settings-status')).toContainText('Settings saved successfully');
+
+    // 3. Test One-Click Data Export button
+    await expect(page.locator('#btn-export-user-data')).toBeVisible();
+  });
 });
+
 

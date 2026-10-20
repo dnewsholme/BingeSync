@@ -5429,5 +5429,411 @@ async fn test_admin_database_backup_and_restore() {
     let _ = std::fs::remove_file(&db_file);
 }
 
+#[tokio::test]
+async fn test_emby_webhook_scrobble_movie_episode_and_filtering() {
+    let (app, pool, config) = setup_test_app().await;
+
+    let user_id = "test_user_emby";
+    let _token = create_jwt(user_id, "emby_user@test.local", &config.jwt_secret).unwrap();
+
+    sqlx::query(
+        "INSERT INTO users (id, email, display_name, preferred_username, webhook_token, role) VALUES (?, ?, ?, ?, ?, 'user')"
+    )
+    .bind(user_id)
+    .bind("emby_user@test.local")
+    .bind("Emby Tester")
+    .bind("emby_tester")
+    .bind("emby_wh_token_123")
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    // Configure Emby username filter
+    sqlx::query("INSERT INTO user_settings (user_id, key, value) VALUES (?, 'emby_username', 'emby_tester')")
+        .bind(user_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    // 1. Send Emby webhook via path: /api/v1/webhooks/emby/emby_wh_token_123
+    let emby_movie_payload = json!({
+        "Event": "playback.stop",
+        "User": {
+            "Name": "emby_tester",
+            "Id": "emby_user_guid_1"
+        },
+        "Item": {
+            "Type": "Movie",
+            "Name": "Interstellar",
+            "ProductionYear": 2014,
+            "RunTimeTicks": 101400000000i64,
+            "ProviderIds": {
+                "Tmdb": "157336",
+                "Imdb": "tt0816692"
+            }
+        },
+        "PlaybackInfo": {
+            "PositionTicks": 95000000000i64
+        }
+    });
+
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/webhooks/emby/emby_wh_token_123")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(serde_json::to_vec(&emby_movie_payload).unwrap()))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let res_json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    assert_eq!(res_json["status"], "scrobbled");
+
+    // Verify scrobble in database
+    let scrobble_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE user_id = ? AND title = 'Interstellar'")
+        .bind(user_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(scrobble_count, 1);
+
+    // 2. Send Emby webhook via query parameter: /api/v1/webhooks/emby?token=emby_wh_token_123 (TV Episode)
+    let emby_episode_payload = json!({
+        "Event": "playback.stop",
+        "User": {
+            "Name": "emby_tester"
+        },
+        "Item": {
+            "Type": "Episode",
+            "Name": "Ozymandias",
+            "SeriesName": "Breaking Bad",
+            "SeasonName": "Season 5",
+            "IndexNumber": 14,
+            "ParentIndexNumber": 5,
+            "ProductionYear": 2013,
+            "RunTimeTicks": 28200000000i64
+        },
+        "PlaybackInfo": {
+            "PositionTicks": 28200000000i64
+        }
+    });
+
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/webhooks/emby?token=emby_wh_token_123")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(serde_json::to_vec(&emby_episode_payload).unwrap()))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let res_json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    assert_eq!(res_json["status"], "scrobbled");
+
+    let ep_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE user_id = ? AND grandparent_title = 'Breaking Bad'")
+        .bind(user_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(ep_count, 1);
+
+    // 3. Send Emby webhook for mismatched username -> should be ignored
+    let emby_mismatched_payload = json!({
+        "Event": "playback.stop",
+        "User": {
+            "Name": "other_family_member"
+        },
+        "Item": {
+            "Type": "Movie",
+            "Name": "Avatar",
+            "ProductionYear": 2009
+        },
+        "PlaybackInfo": {
+            "PositionTicks": 99999999999i64
+        }
+    });
+
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/webhooks/emby/emby_wh_token_123")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(serde_json::to_vec(&emby_mismatched_payload).unwrap()))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let res_json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    assert_eq!(res_json["status"], "ignored");
+    assert_eq!(res_json["reason"], "username_mismatch");
+}
+
+#[tokio::test]
+async fn test_user_data_export_zip() {
+    let (app, pool, config) = setup_test_app().await;
+
+    let user_id = "test_user_export";
+    let token = create_jwt(user_id, "export_user@test.local", &config.jwt_secret).unwrap();
+
+    sqlx::query(
+        "INSERT INTO users (id, email, display_name, webhook_token, role) VALUES (?, ?, ?, ?, 'user')"
+    )
+    .bind(user_id)
+    .bind("export_user@test.local")
+    .bind("Export User")
+    .bind("export_token_abc")
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    // Insert scrobbles
+    sqlx::query(
+        "INSERT INTO scrobbles (id, user_id, media_type, title, year, watched_at, user_rating) VALUES ('scrobble_exp_1', ?, 'movie', 'Dune', 2021, '2026-03-01T20:00:00Z', 9)"
+    )
+    .bind(user_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    sqlx::query(
+        "INSERT INTO scrobbles (id, user_id, media_type, title, grandparent_title, season_number, episode_number, year, watched_at, user_rating) VALUES ('scrobble_exp_2', ?, 'episode', 'Pilot', 'Severance', 1, 1, 2022, '2026-03-02T21:00:00Z', 10)"
+    )
+    .bind(user_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    // GET /api/v1/user/export
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/user/export")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert_eq!(resp.headers().get(header::CONTENT_TYPE).unwrap(), "application/zip");
+
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    assert!(!body_bytes.is_empty());
+
+    // Validate that the ZIP contains the 4 expected files
+    let cursor = std::io::Cursor::new(body_bytes);
+    let mut zip = zip::ZipArchive::new(cursor).expect("Must be valid zip archive");
+    let mut file_names: Vec<String> = Vec::new();
+    for i in 0..zip.len() {
+        let file = zip.by_index(i).unwrap();
+        file_names.push(file.name().unwrap().to_string());
+    }
+
+    assert!(file_names.contains(&"scrobbles.json".to_string()));
+    assert!(file_names.contains(&"scrobbles.csv".to_string()));
+    assert!(file_names.contains(&"ratings.json".to_string()));
+    assert!(file_names.contains(&"ratings.csv".to_string()));
+}
+
+#[tokio::test]
+async fn test_weekly_heatmap_matrix_and_wrapped_endpoint() {
+    let (app, pool, config) = setup_test_app().await;
+
+    let user_id = "test_user_heatmap_wrapped";
+    let token = create_jwt(user_id, "wrapped@test.local", &config.jwt_secret).unwrap();
+
+    sqlx::query(
+        "INSERT INTO users (id, email, display_name, webhook_token, role) VALUES (?, ?, ?, ?, 'user')"
+    )
+    .bind(user_id)
+    .bind("wrapped@test.local")
+    .bind("Wrapped Tester")
+    .bind("wrapped_token_abc")
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    // 2026-01-05 is a Monday (day_of_week in SQLite strftime('%w'): Sunday=0, Monday=1)
+    // 2026-01-05T14:30:00Z -> Hour 14
+    sqlx::query(
+        "INSERT INTO scrobbles (id, user_id, media_type, title, year, watched_at, duration_ms) VALUES ('h1', ?, 'movie', 'Oppenheimer', 2023, '2026-01-05T14:30:00Z', 10800000)"
+    )
+    .bind(user_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    sqlx::query(
+        "INSERT INTO scrobbles (id, user_id, media_type, title, grandparent_title, year, watched_at, duration_ms) VALUES ('h2', ?, 'episode', 'Ep1', 'Succession', 2023, '2026-01-05T14:45:00Z', 3600000)"
+    )
+    .bind(user_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    // 1. Test GET /api/v1/stats includes weekly_heatmap with 7x24 = 168 cells
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/stats")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let stats_json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+
+    let heatmap = stats_json["weekly_heatmap"].as_array().expect("weekly_heatmap array");
+    assert_eq!(heatmap.len(), 168);
+
+    // Find cell for Monday (1) hour 14
+    let target_cell = heatmap.iter().find(|c| (c["day_index"] == 1 || c["day_of_week"] == 1) && c["hour"] == 14);
+    assert!(target_cell.is_some());
+    let cell = target_cell.unwrap();
+    assert_eq!(cell["count"], 2);
+
+    // 2. Test GET /api/v1/stats/wrapped?year=2026
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/stats/wrapped?year=2026")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let wrapped_json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+
+    assert_eq!(wrapped_json["year"], 2026);
+    assert_eq!(wrapped_json["total_scrobbles"], 2);
+    assert_eq!(wrapped_json["total_movies"], 1);
+    assert_eq!(wrapped_json["total_episodes"], 1);
+    assert_eq!(wrapped_json["total_hours"], 4.0);
+    assert_eq!(wrapped_json["longest_movie"]["title"], "Oppenheimer");
+    assert_eq!(wrapped_json["longest_movie"]["duration_minutes"], 180);
+    assert_eq!(wrapped_json["top_shows"][0]["show_title"], "Succession");
+    assert_eq!(wrapped_json["top_movies"][0]["title"], "Oppenheimer");
+}
+
+#[tokio::test]
+async fn test_recommendations_and_overseerr_endpoints() {
+    let (app, pool, config) = setup_test_app().await;
+
+    let user_id = "test_user_recs_overseerr";
+    let token = create_jwt(user_id, "recs@test.local", &config.jwt_secret).unwrap();
+
+    sqlx::query(
+        "INSERT INTO users (id, email, display_name, webhook_token, role) VALUES (?, ?, ?, ?, 'user')"
+    )
+    .bind(user_id)
+    .bind("recs@test.local")
+    .bind("Recs Tester")
+    .bind("recs_token_abc")
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    // 1. GET /api/v1/recommendations -> returns array
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/recommendations")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let recs_json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    assert!(recs_json.is_array());
+
+    // 2. GET /api/v1/integrations/overseerr/status -> not configured initially
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/integrations/overseerr/status")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let status_json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    assert_eq!(status_json["configured"], false);
+
+    // 3. Save overseerr settings
+    sqlx::query("INSERT INTO user_settings (user_id, key, value) VALUES (?, 'overseerr_url', 'http://192.168.1.100:5055')")
+        .bind(user_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO user_settings (user_id, key, value) VALUES (?, 'overseerr_api_key', 'test_overseerr_key')")
+        .bind(user_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    // Check status again -> configured = true
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/integrations/overseerr/status")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let status_json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    assert_eq!(status_json["configured"], true);
+}
+
+#[tokio::test]
+async fn test_outbound_webhook_test_and_user_settings() {
+    let (app, pool, config) = setup_test_app().await;
+
+    let user_id = "test_user_outbound";
+    let token = create_jwt(user_id, "outbound@test.local", &config.jwt_secret).unwrap();
+
+    sqlx::query(
+        "INSERT INTO users (id, email, display_name, webhook_token, role) VALUES (?, ?, ?, ?, 'user')"
+    )
+    .bind(user_id)
+    .bind("outbound@test.local")
+    .bind("Outbound Tester")
+    .bind("outbound_token_abc")
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    // 1. Update user settings with outbound webhook and emby username
+    let update_req = json!({
+        "emby_username": "emby_superfan",
+        "outbound_webhook_type": "generic",
+        "outbound_webhook_url": "https://example.com/webhook",
+        "overseerr_url": "http://192.168.1.50:5055"
+    });
+
+    let req = Request::builder()
+        .method("PUT")
+        .uri("/api/v1/user/settings")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(serde_json::to_vec(&update_req).unwrap()))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // 2. GET user settings and verify values
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/user/settings")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let settings_json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+
+    assert_eq!(settings_json["emby_username"], "emby_superfan");
+    assert_eq!(settings_json["outbound_webhook_type"], "generic");
+    assert_eq!(settings_json["outbound_webhook_url"], "https://example.com/webhook");
+    assert_eq!(settings_json["overseerr_url"], "http://192.168.1.50:5055");
+}
+
 
 

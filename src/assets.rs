@@ -22,12 +22,20 @@ pub async fn static_handler(uri: Uri) -> Response {
     match WebAssets::get(file_path) {
         Some(content) => {
             let mime = mime_guess::from_path(file_path).first_or_octet_stream();
-            Response::builder()
+            let mut builder = Response::builder()
                 .status(StatusCode::OK)
                 .header(header::CONTENT_TYPE, HeaderValue::from_str(mime.as_ref()).unwrap())
                 .header("X-Content-Type-Options", "nosniff")
                 .header("X-Frame-Options", "SAMEORIGIN")
-                .header("Referrer-Policy", "strict-origin-when-cross-origin")
+                .header("Referrer-Policy", "strict-origin-when-cross-origin");
+
+            if file_path == "sw.js" || file_path.ends_with("/sw.js") {
+                builder = builder
+                    .header("Service-Worker-Allowed", "/")
+                    .header(header::CACHE_CONTROL, "no-cache, no-store, must-revalidate");
+            }
+
+            builder
                 .body(Body::from(content.data.into_owned()))
                 .unwrap_or_else(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Error").into_response())
         }

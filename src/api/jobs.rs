@@ -431,8 +431,6 @@ pub async fn trigger_admin_task_handler(
         }
         "db_backup" | "backup" => {
             state.task_tracker.set_db_backup_running("Manual backup triggered...").await;
-            state.db_backup_notify.notify_waiters();
-            state.db_backup_notify.notify_one();
             state.log_buffer.push("INFO", "bingesync::tasks", "Manual run triggered for Database Backup worker");
 
             match crate::api::backup::create_database_backup(&state, None).await {

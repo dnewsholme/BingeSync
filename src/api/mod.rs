@@ -19,6 +19,9 @@ pub mod user_settings;
 pub mod user_sync;
 pub mod backup;
 pub mod webhooks;
+pub mod outbound_webhooks;
+pub mod recommendations;
+pub mod overseerr;
 pub mod ssrf;
 pub mod rate_limit;
 
@@ -199,6 +202,8 @@ pub fn create_api_router(state: AppState) -> Router {
         .route("/plex/{token}", post(webhooks::handle_plex_webhook_path))
         .route("/jellyfin", post(webhooks::handle_jellyfin_webhook_query))
         .route("/jellyfin/{token}", post(webhooks::handle_jellyfin_webhook_path))
+        .route("/emby", post(webhooks::handle_emby_webhook_query))
+        .route("/emby/{token}", post(webhooks::handle_emby_webhook_path))
         .layer(axum::middleware::from_fn(rate_limit::webhook_rate_limit_middleware));
 
     let import_routes = Router::new()
@@ -237,11 +242,15 @@ pub fn create_api_router(state: AppState) -> Router {
         .route("/api/v1/timeline", get(timeline::get_timeline))
         .route("/api/v1/timeline/periods", get(timeline::get_timeline_periods))
         .route("/api/v1/stats", get(stats::get_user_stats))
+        .route("/api/v1/stats/wrapped", get(stats::get_user_wrapped))
+        .route("/api/v1/recommendations", get(recommendations::get_user_recommendations))
         .route("/api/v1/now-playing", get(now_playing::get_now_playing))
-        // User settings
+        // User settings & data export
         .route("/api/v1/user/webhook", get(user::get_webhook_info))
         .route("/api/v1/user/regenerate-token", post(user::regenerate_webhook_token))
+        .route("/api/v1/user/export", get(user::export_user_data))
         .route("/api/v1/user/settings", get(user_settings::get_user_settings_handler).post(user_settings::update_user_settings_handler).put(user_settings::update_user_settings_handler))
+        .route("/api/v1/user/settings/test-outbound-webhook", post(outbound_webhooks::test_outbound_webhook_handler))
         // Image cache (serves cached posters from disk)
         .route("/api/v1/images/{filename}", get(images::get_image_handler))
         // Radarr / Sonarr Integrations (Cleanup after watching)
@@ -250,6 +259,8 @@ pub fn create_api_router(state: AppState) -> Router {
         .route("/api/v1/integrations/cleanup", get(integrations::get_cleanup_items))
         .route("/api/v1/integrations/radarr/delete", post(integrations::delete_from_radarr))
         .route("/api/v1/integrations/sonarr/delete-series", post(integrations::delete_from_sonarr))
+        .route("/api/v1/integrations/overseerr/status", get(overseerr::get_overseerr_status_handler))
+        .route("/api/v1/integrations/overseerr/request", post(overseerr::request_overseerr_media_handler))
         // Admin management: Users, Settings, Logs, and Tasks
         .route("/api/v1/admin/users", get(admin::list_users))
         .route("/api/v1/admin/users/{id}", delete(admin::delete_user))

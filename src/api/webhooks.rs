@@ -49,7 +49,7 @@ pub async fn handle_jellyfin_webhook_path(
     headers: HeaderMap,
     body_bytes: axum::body::Bytes,
 ) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
-    process_jellyfin_webhook(state, token, body_bytes, headers).await
+    process_jellyfin_or_emby_webhook(state, token, body_bytes, headers, "jellyfin").await
 }
 
 pub async fn handle_jellyfin_webhook_query(
@@ -65,7 +65,32 @@ pub async fn handle_jellyfin_webhook_query(
         )
     })?;
 
-    process_jellyfin_webhook(state, token, body_bytes, headers).await
+    process_jellyfin_or_emby_webhook(state, token, body_bytes, headers, "jellyfin").await
+}
+
+pub async fn handle_emby_webhook_path(
+    State(state): State<AppState>,
+    Path(token): Path<String>,
+    headers: HeaderMap,
+    body_bytes: axum::body::Bytes,
+) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
+    process_jellyfin_or_emby_webhook(state, token, body_bytes, headers, "emby").await
+}
+
+pub async fn handle_emby_webhook_query(
+    State(state): State<AppState>,
+    Query(query): Query<WebhookQuery>,
+    headers: HeaderMap,
+    body_bytes: axum::body::Bytes,
+) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
+    let token = query.token.ok_or_else(|| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": "Missing webhook token in query parameter 'token'" })),
+        )
+    })?;
+
+    process_jellyfin_or_emby_webhook(state, token, body_bytes, headers, "emby").await
 }
 
 async fn process_webhook(
@@ -494,6 +519,23 @@ async fn process_webhook(
                 .execute(&state.pool)
                 .await;
 
+            // Dispatch outbound notification
+            crate::api::outbound_webhooks::dispatch_scrobble_notification(
+                state.pool.clone(),
+                user.id.clone(),
+                crate::api::outbound_webhooks::ScrobbleNotificationData {
+                    title: title.clone(),
+                    grandparent_title: grandparent_title.clone(),
+                    media_type: media_type.clone(),
+                    season_number,
+                    episode_number,
+                    year,
+                    progress_percent: 100,
+                    thumb_url: thumb_url.clone(),
+                    user_rating: None,
+                },
+            );
+
             Ok((
                 StatusCode::CREATED,
                 Json(serde_json::json!({
@@ -654,11 +696,12 @@ fn get_default_user_candidates(user: &User) -> Vec<String> {
     candidates
 }
 
-async fn process_jellyfin_webhook(
+async fn process_jellyfin_or_emby_webhook(
     state: AppState,
     token: String,
     body_bytes: axum::body::Bytes,
     _headers: axum::http::HeaderMap,
+    source: &str,
 ) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
     // 1. Authenticate user by webhook_token
     let user: User = sqlx::query_as::<_, User>(
@@ -684,7 +727,7 @@ async fn process_jellyfin_webhook(
     let payload: JellyfinWebhookPayload = serde_json::from_slice(&body_bytes).map_err(|e| {
         (
             StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({ "error": format!("Failed to parse JSON Jellyfin payload: {}", e) })),
+            Json(serde_json::json!({ "error": format!("Failed to parse JSON {} payload: {}", source, e) })),
         )
     })?;
 
@@ -695,37 +738,30 @@ async fn process_jellyfin_webhook(
 
     tracing::info!(
         user_id = %user.id,
+        source = %source,
         event = %event_name,
-        name = ?payload.name.as_deref(),
-        series = ?payload.series_name.as_deref(),
-        "Received Jellyfin webhook"
+        name = ?payload.resolved_name(),
+        series = ?payload.resolved_series_name(),
+        "Received media webhook"
     );
 
-    // 3. Filter by Jellyfin account username or User ID if configured or present
-    let notif_user = payload
-        .notification_username
-        .as_deref()
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty());
-
-    let notif_id = payload
-        .user_id
-        .as_deref()
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty());
+    // 3. Filter by account username or User ID if configured or present
+    let notif_user = payload.resolved_notification_username();
+    let notif_id = payload.resolved_user_id();
 
     if notif_user.is_some() || notif_id.is_some() {
         if let (Some(ref un), Some(ref uid)) = (&notif_user, &notif_id) {
             let _ = sqlx::query(
                 r#"
                 INSERT INTO plex_user_cache (plex_id, username, friendly_name, source, updated_at)
-                VALUES (?, ?, ?, 'jellyfin', datetime('now'))
-                ON CONFLICT(plex_id) DO UPDATE SET username = excluded.username, friendly_name = excluded.friendly_name, source = 'jellyfin', updated_at = excluded.updated_at
+                VALUES (?, ?, ?, ?, datetime('now'))
+                ON CONFLICT(plex_id) DO UPDATE SET username = excluded.username, friendly_name = excluded.friendly_name, source = excluded.source, updated_at = excluded.updated_at
                 "#
             )
             .bind(uid)
             .bind(un)
             .bind(un)
+            .bind(source)
             .execute(&state.pool)
             .await;
 
@@ -734,22 +770,26 @@ async fn process_jellyfin_webhook(
                 let _ = sqlx::query(
                     r#"
                     INSERT INTO plex_user_cache (plex_id, username, friendly_name, source, updated_at)
-                    VALUES (?, ?, ?, 'jellyfin', datetime('now'))
-                    ON CONFLICT(plex_id) DO UPDATE SET username = excluded.username, friendly_name = excluded.friendly_name, source = 'jellyfin', updated_at = excluded.updated_at
+                    VALUES (?, ?, ?, ?, datetime('now'))
+                    ON CONFLICT(plex_id) DO UPDATE SET username = excluded.username, friendly_name = excluded.friendly_name, source = excluded.source, updated_at = excluded.updated_at
                     "#
                 )
                 .bind(&unhyphenated)
                 .bind(un)
                 .bind(un)
+                .bind(source)
                 .execute(&state.pool)
                 .await;
             }
         }
 
-        let configured_jellyfin_user =
-            crate::api::user_settings::get_user_setting(&state.pool, &user.id, "jellyfin_username").await;
-        let configured_user = if let Some(j_user) = configured_jellyfin_user {
-            Some(j_user)
+        let configured_source_user = if source == "emby" {
+            crate::api::user_settings::get_user_setting(&state.pool, &user.id, "emby_username").await
+        } else {
+            crate::api::user_settings::get_user_setting(&state.pool, &user.id, "jellyfin_username").await
+        };
+        let configured_user = if let Some(s_user) = configured_source_user {
+            Some(s_user)
         } else {
             crate::api::user_settings::get_user_setting(&state.pool, &user.id, "plex_username").await
         };
@@ -826,10 +866,11 @@ async fn process_jellyfin_webhook(
         if !matches {
             tracing::info!(
                 user_id = %user.id,
+                source = %source,
                 notification_username = ?notif_user,
-                jellyfin_user_id = ?notif_id,
+                user_id_param = ?notif_id,
                 allowed = ?allowed_usernames,
-                "Ignored Jellyfin webhook: username/ID does not match allowed Jellyfin user(s)"
+                "Ignored webhook: username/ID does not match allowed user(s)"
             );
             return Ok((
                 StatusCode::OK,
@@ -844,7 +885,7 @@ async fn process_jellyfin_webhook(
     }
 
     // 4. Resolve media metadata
-    let raw_type = payload.item_type.as_deref().unwrap_or("Movie");
+    let raw_type = payload.resolved_item_type().unwrap_or_else(|| "Movie".to_string());
     let is_episode = raw_type.eq_ignore_ascii_case("Episode");
     let media_type = if is_episode { "episode".to_string() } else { "movie".to_string() };
 
@@ -854,27 +895,27 @@ async fn process_jellyfin_webhook(
     let guid = if let Some(imdb) = payload.resolved_imdb_id() {
         Some(format!("imdb://{}", imdb))
     } else if let Some(ref item_id) = payload.item_id {
-        Some(format!("jellyfin://{}", item_id))
+        Some(format!("{}://{}", source, item_id))
     } else {
         None
     };
 
-    let title = payload.name.unwrap_or_else(|| "Unknown Title".to_string());
-    let grandparent_title = if is_episode { payload.series_name } else { None };
-    let season_number = if is_episode { payload.season_number } else { None };
-    let episode_number = if is_episode { payload.episode_number } else { None };
+    let title = payload.resolved_name().unwrap_or_else(|| "Unknown Title".to_string());
+    let grandparent_title = if is_episode { payload.resolved_series_name() } else { None };
+    let season_number = if is_episode { payload.resolved_season_number() } else { None };
+    let episode_number = if is_episode { payload.resolved_episode_number() } else { None };
     let parent_title = if is_episode {
         season_number.map(|s| format!("Season {}", s))
     } else {
         None
     };
 
-    let year = payload.year;
-    let overview = payload.overview;
+    let year = payload.resolved_year();
+    let overview = payload.resolved_overview();
 
-    // Jellyfin ticks: 10,000 ticks = 1 ms
-    let duration_ms = payload.runtime_ticks.map(|t| t / 10_000);
-    let view_offset_val = payload.playback_position_ticks.map(|t| t / 10_000).unwrap_or(0);
+    // Jellyfin / Emby ticks: 10,000 ticks = 1 ms
+    let duration_ms = payload.resolved_runtime_ticks().map(|t| t / 10_000);
+    let view_offset_val = payload.resolved_playback_position_ticks().map(|t| t / 10_000).unwrap_or(0);
     let duration_val = duration_ms.unwrap_or(0);
 
     let threshold = state.get_effective_scrobble_threshold().await;
@@ -885,13 +926,13 @@ async fn process_jellyfin_webhook(
     };
 
     let lower_event = event_name.to_lowercase();
-    let is_stop = lower_event.contains("stop");
-    let is_start = lower_event.contains("start");
+    let is_stop = lower_event.contains("stop") || lower_event.contains("scrobble") || lower_event.contains("markplayed");
+    let is_start = lower_event.contains("start") || lower_event.contains("unpause") || lower_event.contains("resume");
     let is_pause = lower_event.contains("pause");
     let is_progress = lower_event.contains("progress");
     let is_saved = lower_event.contains("userdatasaved");
 
-    let played_flag = payload.played_to_completion == Some(true) || payload.played == Some(true);
+    let played_flag = payload.played_to_completion == Some(true) || payload.played == Some(true) || lower_event.contains("scrobble") || lower_event.contains("markplayed");
     let is_completed = played_flag || (is_stop && calculated_pct >= threshold) || (is_saved && played_flag);
 
     let progress_percent = if is_completed {
@@ -1069,6 +1110,24 @@ async fn process_jellyfin_webhook(
 
         new_id
     };
+
+    if is_completed {
+        crate::api::outbound_webhooks::dispatch_scrobble_notification(
+            state.pool.clone(),
+            user.id.clone(),
+            crate::api::outbound_webhooks::ScrobbleNotificationData {
+                title: title.clone(),
+                grandparent_title: grandparent_title.clone(),
+                media_type: media_type.clone(),
+                season_number,
+                episode_number,
+                year,
+                progress_percent,
+                thumb_url: thumb_url.clone(),
+                user_rating: None,
+            },
+        );
+    }
 
     // 5. Handle active playback session state
     if is_stop || (is_saved && is_completed) {

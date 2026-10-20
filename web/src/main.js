@@ -263,6 +263,9 @@ const el = {
   jellyfinWebhookUrlInput: document.getElementById('jellyfin-webhook-url-input'),
   btnCopyJellyfinWebhook: document.getElementById('btn-copy-jellyfin-webhook'),
   jellyfinCopyStatus: document.getElementById('jellyfin-copy-status'),
+  embyWebhookUrlInput: document.getElementById('emby-webhook-url-input'),
+  btnCopyEmbyWebhook: document.getElementById('btn-copy-emby-webhook'),
+  embyCopyStatus: document.getElementById('emby-copy-status'),
   btnRegenToken: document.getElementById('btn-regen-token'),
 
   // Modals
@@ -302,7 +305,8 @@ const el = {
   btnSubmitTautulliImport: document.getElementById('btn-submit-tautulli-import'),
   linkGotoUserSettings: document.getElementById('link-goto-user-settings'),
 
-  // User Settings
+  // User Settings & Themes
+  navThemeSelect: document.getElementById('nav-theme-select'),
   formUserSettings: document.getElementById('form-user-settings'),
   btnSaveUserSettings: document.getElementById('btn-save-user-settings'),
   userSettingsStatus: document.getElementById('user-settings-status'),
@@ -310,6 +314,7 @@ const el = {
   navLanguageSelect: document.getElementById('nav-language-select'),
   userSettingPlexUsername: document.getElementById('user-setting-plex-username'),
   userSettingJellyfinUsername: document.getElementById('user-setting-jellyfin-username'),
+  userSettingEmbyUsername: document.getElementById('user-setting-emby-username'),
   userSettingJellyfinUrl: document.getElementById('user-setting-jellyfin-url'),
   userSettingJellyfinApiKey: document.getElementById('user-setting-jellyfin-api-key'),
   userSettingRadarrUrl: document.getElementById('user-setting-radarr-url'),
@@ -318,6 +323,36 @@ const el = {
   userSettingSonarrApiKey: document.getElementById('user-setting-sonarr-api-key'),
   userSettingTautulliUrl: document.getElementById('user-setting-tautulli-url'),
   userSettingTautulliApiKey: document.getElementById('user-setting-tautulli-api-key'),
+  userSettingOverseerrUrl: document.getElementById('user-setting-overseerr-url'),
+  userSettingOverseerrApiKey: document.getElementById('user-setting-overseerr-api-key'),
+  userSettingOutboundType: document.getElementById('user-setting-outbound-type'),
+  userSettingOutboundUrl: document.getElementById('user-setting-outbound-url'),
+  btnTestOutboundWebhook: document.getElementById('btn-test-outbound-webhook'),
+  outboundWebhookTestStatus: document.getElementById('outbound-webhook-test-status'),
+  btnExportUserData: document.getElementById('btn-export-user-data'),
+  exportUserDataStatus: document.getElementById('export-user-data-status'),
+
+  // Recommendations & Heatmap & Wrapped
+  weeklyHeatmapGrid: document.getElementById('weekly-heatmap-grid'),
+  btnOpenWrapped: document.getElementById('btn-open-wrapped'),
+  modalWrapped: document.getElementById('modal-wrapped'),
+  btnCloseWrappedModal: document.getElementById('btn-close-wrapped-modal'),
+  btnDoneWrappedModal: document.getElementById('btn-done-wrapped-modal'),
+  wrappedYearSelect: document.getElementById('wrapped-year-select'),
+  wrappedYearBadge: document.getElementById('wrapped-year-badge'),
+  wrappedValHours: document.getElementById('wrapped-val-hours'),
+  wrappedValScrobbles: document.getElementById('wrapped-val-scrobbles'),
+  wrappedValMovies: document.getElementById('wrapped-val-movies'),
+  wrappedValEpisodes: document.getElementById('wrapped-val-episodes'),
+  wrappedLongestMovieCard: document.getElementById('wrapped-longest-movie-card'),
+  wrappedLongestMovieTitle: document.getElementById('wrapped-longest-movie-title'),
+  wrappedLongestMovieDur: document.getElementById('wrapped-longest-movie-dur'),
+  wrappedTopShowsList: document.getElementById('wrapped-top-shows-list'),
+  wrappedTopMoviesList: document.getElementById('wrapped-top-movies-list'),
+  btnCopyWrappedSummary: document.getElementById('btn-copy-wrapped-summary'),
+  recommendationsShelfSection: document.getElementById('recommendations-shelf-section'),
+  recommendationsGrid: document.getElementById('recommendations-grid'),
+  btnRefreshRecommendations: document.getElementById('btn-refresh-recommendations'),
 
   modalItemDetail: document.getElementById('modal-item-detail'),
   btnCloseDetailModal: document.getElementById('btn-close-detail-modal'),
@@ -421,6 +456,8 @@ const el = {
 // Initialization
 async function init() {
   initI18n();
+  initTheme();
+  initServiceWorker();
   updateMonthNames();
 
   document.querySelectorAll('.language-select').forEach((sel) => {
@@ -520,6 +557,9 @@ function onUserAuthenticated(user) {
   if (el.jellyfinWebhookUrlInput) {
     el.jellyfinWebhookUrlInput.value = user.jellyfin_webhook_url || (user.webhook_url ? user.webhook_url.replace('/webhooks/plex/', '/webhooks/jellyfin/') : '');
   }
+  if (el.embyWebhookUrlInput) {
+    el.embyWebhookUrlInput.value = user.emby_webhook_url || (user.webhook_url ? user.webhook_url.replace('/webhooks/plex/', '/webhooks/emby/') : '');
+  }
 
   // Show Admin tab if user has admin role
   if (user.role === 'admin') {
@@ -527,6 +567,8 @@ function onUserAuthenticated(user) {
   } else {
     if (el.tabAdmin) el.tabAdmin.style.display = 'none';
   }
+
+  checkOverseerrStatus();
 
   // Load Initial Data
   loadTimeline();
@@ -605,6 +647,7 @@ async function loadTimeline(append = false) {
       } catch (e) {
         console.warn('Failed to load timeline periods:', e);
       }
+      loadRecommendationsShelf();
     }
 
     renderTimelineHierarchyNav();
@@ -2107,6 +2150,9 @@ function renderStats() {
       `).join('');
     }
   }
+
+  // Render Weekly Viewing Heatmap (7x24)
+  renderWeeklyHeatmap(s.weekly_heatmap);
 }
 
 // Stats media type filter pills event listeners (All, Movies, TV Shows)
@@ -2169,6 +2215,9 @@ async function loadWebhookInfo() {
     el.webhookUrlInput.value = info.webhook_url;
     if (el.jellyfinWebhookUrlInput) {
       el.jellyfinWebhookUrlInput.value = info.jellyfin_webhook_url || info.webhook_url.replace('/webhooks/plex/', '/webhooks/jellyfin/');
+    }
+    if (el.embyWebhookUrlInput) {
+      el.embyWebhookUrlInput.value = info.emby_webhook_url || info.webhook_url.replace('/webhooks/plex/', '/webhooks/emby/');
     }
   } catch (err) {
     console.error('Error loading webhook info:', err);
@@ -2261,13 +2310,39 @@ if (el.btnCopyJellyfinWebhook && el.jellyfinWebhookUrlInput) {
   });
 }
 
+if (el.btnCopyEmbyWebhook && el.embyWebhookUrlInput) {
+  el.btnCopyEmbyWebhook.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(el.embyWebhookUrlInput.value);
+      if (el.embyCopyStatus) {
+        el.embyCopyStatus.style.display = 'block';
+        setTimeout(() => {
+          if (el.embyCopyStatus) el.embyCopyStatus.style.display = 'none';
+        }, 2500);
+      }
+    } catch (err) {
+      el.embyWebhookUrlInput.select();
+      document.execCommand('copy');
+      if (el.embyCopyStatus) {
+        el.embyCopyStatus.style.display = 'block';
+        setTimeout(() => {
+          if (el.embyCopyStatus) el.embyCopyStatus.style.display = 'none';
+        }, 2500);
+      }
+    }
+  });
+}
+
 el.btnRegenToken.addEventListener('click', async () => {
-  if (confirm('Are you sure you want to regenerate your webhook token? You will need to update the webhook URLs in Plex and Jellyfin.')) {
+  if (confirm('Are you sure you want to regenerate your webhook token? You will need to update the webhook URLs in Plex, Jellyfin, and Emby.')) {
     try {
       const res = await api.regenerateWebhookToken();
       el.webhookUrlInput.value = res.webhook_url;
       if (el.jellyfinWebhookUrlInput) {
         el.jellyfinWebhookUrlInput.value = res.jellyfin_webhook_url || res.webhook_url.replace('/webhooks/plex/', '/webhooks/jellyfin/');
+      }
+      if (el.embyWebhookUrlInput) {
+        el.embyWebhookUrlInput.value = res.emby_webhook_url || res.webhook_url.replace('/webhooks/plex/', '/webhooks/emby/');
       }
       alert('Webhook token regenerated successfully!');
     } catch (err) {
@@ -2276,7 +2351,7 @@ el.btnRegenToken.addEventListener('click', async () => {
   }
 });
 
-// User Settings (Connected Services: Plex, Jellyfin, Radarr, Sonarr, Tautulli)
+// User Settings (Connected Services: Plex, Jellyfin, Emby, Radarr, Sonarr, Tautulli, Overseerr, Outbound Webhooks)
 async function loadUserSettings() {
   if (!el.formUserSettings) return;
   try {
@@ -2284,6 +2359,7 @@ async function loadUserSettings() {
     if (el.userSettingLanguage) el.userSettingLanguage.value = getLanguage();
     if (el.userSettingPlexUsername) el.userSettingPlexUsername.value = s.plex_username || '';
     if (el.userSettingJellyfinUsername) el.userSettingJellyfinUsername.value = s.jellyfin_username || '';
+    if (el.userSettingEmbyUsername) el.userSettingEmbyUsername.value = s.emby_username || '';
 
     if (el.userSettingJellyfinUrl) el.userSettingJellyfinUrl.value = s.jellyfin_url || '';
     applySecretField(el.userSettingJellyfinApiKey, s.jellyfin_api_key, s.jellyfin_api_key_masked);
@@ -2296,6 +2372,12 @@ async function loadUserSettings() {
 
     if (el.userSettingTautulliUrl) el.userSettingTautulliUrl.value = s.tautulli_url || '';
     applySecretField(el.userSettingTautulliApiKey, s.tautulli_api_key, s.tautulli_api_key_masked);
+
+    if (el.userSettingOverseerrUrl) el.userSettingOverseerrUrl.value = s.overseerr_url || '';
+    applySecretField(el.userSettingOverseerrApiKey, s.overseerr_api_key, s.overseerr_api_key_masked);
+
+    if (el.userSettingOutboundType) el.userSettingOutboundType.value = s.outbound_webhook_type || '';
+    if (el.userSettingOutboundUrl) el.userSettingOutboundUrl.value = s.outbound_webhook_url || '';
   } catch (err) {
     console.error('Failed to load user settings:', err);
     if (el.userSettingsStatus) {
@@ -2318,6 +2400,7 @@ if (el.formUserSettings) {
       const payload = {
         plex_username: el.userSettingPlexUsername ? el.userSettingPlexUsername.value.trim() : null,
         jellyfin_username: el.userSettingJellyfinUsername ? el.userSettingJellyfinUsername.value.trim() : null,
+        emby_username: el.userSettingEmbyUsername ? el.userSettingEmbyUsername.value.trim() : null,
         jellyfin_url: el.userSettingJellyfinUrl ? el.userSettingJellyfinUrl.value.trim() : null,
         jellyfin_api_key: getSecretValue(el.userSettingJellyfinApiKey),
         radarr_url: el.userSettingRadarrUrl ? el.userSettingRadarrUrl.value.trim() : null,
@@ -2326,10 +2409,15 @@ if (el.formUserSettings) {
         sonarr_api_key: getSecretValue(el.userSettingSonarrApiKey),
         tautulli_url: el.userSettingTautulliUrl ? el.userSettingTautulliUrl.value.trim() : null,
         tautulli_api_key: getSecretValue(el.userSettingTautulliApiKey),
+        overseerr_url: el.userSettingOverseerrUrl ? el.userSettingOverseerrUrl.value.trim() : null,
+        overseerr_api_key: getSecretValue(el.userSettingOverseerrApiKey),
+        outbound_webhook_type: el.userSettingOutboundType ? el.userSettingOutboundType.value : null,
+        outbound_webhook_url: el.userSettingOutboundUrl ? el.userSettingOutboundUrl.value.trim() : null,
       };
 
       await api.updateUserSettings(payload);
       await loadUserSettings();
+      checkOverseerrStatus();
       if (el.userSettingsStatus) {
         el.userSettingsStatus.style.color = '#34d399';
         el.userSettingsStatus.textContent = 'Settings saved successfully!';
@@ -2348,6 +2436,74 @@ if (el.formUserSettings) {
         el.btnSaveUserSettings.disabled = false;
         el.btnSaveUserSettings.textContent = 'Save Settings';
       }
+    }
+  });
+}
+
+if (el.btnTestOutboundWebhook) {
+  el.btnTestOutboundWebhook.addEventListener('click', async () => {
+    const url = el.userSettingOutboundUrl ? el.userSettingOutboundUrl.value.trim() : '';
+    const type = el.userSettingOutboundType ? el.userSettingOutboundType.value : '';
+    if (!url) {
+      if (el.outboundWebhookTestStatus) {
+        el.outboundWebhookTestStatus.style.display = 'block';
+        el.outboundWebhookTestStatus.style.color = 'var(--accent-red)';
+        el.outboundWebhookTestStatus.textContent = 'Please enter a webhook URL first.';
+      }
+      return;
+    }
+
+    el.btnTestOutboundWebhook.disabled = true;
+    if (el.outboundWebhookTestStatus) {
+      el.outboundWebhookTestStatus.style.display = 'block';
+      el.outboundWebhookTestStatus.style.color = 'var(--text-muted)';
+      el.outboundWebhookTestStatus.textContent = 'Sending test notification...';
+    }
+
+    try {
+      await api.testOutboundWebhook({ webhook_url: url, webhook_type: type || 'generic' });
+      if (el.outboundWebhookTestStatus) {
+        el.outboundWebhookTestStatus.style.color = '#34d399';
+        el.outboundWebhookTestStatus.textContent = 'Test notification sent successfully!';
+        setTimeout(() => {
+          if (el.outboundWebhookTestStatus) el.outboundWebhookTestStatus.style.display = 'none';
+        }, 5000);
+      }
+    } catch (err) {
+      if (el.outboundWebhookTestStatus) {
+        el.outboundWebhookTestStatus.style.color = 'var(--accent-red)';
+        el.outboundWebhookTestStatus.textContent = 'Failed: ' + err.message;
+      }
+    } finally {
+      el.btnTestOutboundWebhook.disabled = false;
+    }
+  });
+}
+
+if (el.btnExportUserData) {
+  el.btnExportUserData.addEventListener('click', async () => {
+    el.btnExportUserData.disabled = true;
+    if (el.exportUserDataStatus) {
+      el.exportUserDataStatus.textContent = 'Preparing your export archive...';
+      el.exportUserDataStatus.style.color = 'var(--text-muted)';
+    }
+    try {
+      await api.downloadUserData();
+      if (el.exportUserDataStatus) {
+        el.exportUserDataStatus.textContent = 'Export downloaded successfully!';
+        el.exportUserDataStatus.style.color = '#34d399';
+        setTimeout(() => {
+          if (el.exportUserDataStatus) el.exportUserDataStatus.textContent = '';
+        }, 4000);
+      }
+    } catch (err) {
+      console.error('Data export error:', err);
+      if (el.exportUserDataStatus) {
+        el.exportUserDataStatus.textContent = 'Failed to download export: ' + err.message;
+        el.exportUserDataStatus.style.color = 'var(--accent-red)';
+      }
+    } finally {
+      el.btnExportUserData.disabled = false;
     }
   });
 }
@@ -3834,6 +3990,7 @@ function renderAdminTasks(tasks) {
           <button class="btn btn-outline btn-sm btn-trigger-task" data-task-id="${t.id}">
             ${isRunning ? 'Running... (Run Again)' : 'Run Now'}
           </button>
+          ${t.id !== 'db_backup' && t.id !== 'backup' ? `
           <button class="btn btn-outline btn-sm btn-force-task" data-task-id="${t.id}" title="${
             t.id === 'image_cache'
               ? 'Reset poster thumbnails and re-download posters for all records'
@@ -3843,6 +4000,7 @@ function renderAdminTasks(tasks) {
           }">
             Force Refresh All
           </button>
+          ` : ''}
         </div>
       </div>
     `;
@@ -4749,6 +4907,348 @@ if (el.cleanupSortSelect) {
   el.cleanupSortSelect.addEventListener('change', (e) => {
     state.cleanup.sort = e.target.value;
     renderCleanupItems();
+  });
+}
+
+// ==========================================================================
+// Theme Accent System (Trakt Red, Plex Amber, Jellyfin Purple, Emby Cyan, Emerald, Rose, OLED)
+// ==========================================================================
+function applyTheme(theme) {
+  const validThemes = ['red', 'amber', 'purple', 'cyan', 'emerald', 'rose', 'oled'];
+  const activeTheme = validThemes.includes(theme) ? theme : 'red';
+  document.documentElement.setAttribute('data-theme', activeTheme);
+  document.body.setAttribute('data-theme', activeTheme);
+  try {
+    localStorage.setItem('bingesync_theme', activeTheme);
+  } catch (e) {}
+
+  if (el.navThemeSelect) {
+    el.navThemeSelect.value = activeTheme;
+  }
+  document.querySelectorAll('.theme-swatch').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.theme === activeTheme);
+  });
+}
+
+function initTheme() {
+  let savedTheme = 'red';
+  try {
+    savedTheme = localStorage.getItem('bingesync_theme') || 'red';
+  } catch (e) {}
+  applyTheme(savedTheme);
+
+  if (el.navThemeSelect) {
+    el.navThemeSelect.addEventListener('change', (e) => {
+      applyTheme(e.target.value);
+    });
+  }
+
+  document.querySelectorAll('.theme-swatch').forEach(btn => {
+    btn.addEventListener('click', () => {
+      applyTheme(btn.dataset.theme);
+    });
+  });
+}
+
+// ==========================================================================
+// PWA Service Worker Registration
+// ==========================================================================
+function initServiceWorker() {
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./sw.js').catch(err => {
+        console.warn('Service worker registration failed:', err);
+      });
+    });
+  }
+}
+
+// ==========================================================================
+// Weekly Viewing Heatmap (7 Days x 24 Hours)
+// ==========================================================================
+function renderWeeklyHeatmap(heatmapData) {
+  if (!el.weeklyHeatmapGrid) return;
+  if (!heatmapData || heatmapData.length === 0) {
+    el.weeklyHeatmapGrid.innerHTML = '<div class="empty-state" style="padding:20px;grid-column:1/-1;"><p>No viewing activity recorded yet.</p></div>';
+    return;
+  }
+
+  const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const map = new Map();
+  for (const cell of heatmapData) {
+    map.set(`${cell.day_of_week}-${cell.hour}`, cell);
+  }
+
+  let html = '<div></div>'; // top-left empty cell
+  for (let h = 0; h < 24; h++) {
+    const hh = h < 10 ? `0${h}` : `${h}`;
+    html += `<div class="heatmap-hour-header">${hh}</div>`;
+  }
+
+  for (let d = 0; d < 7; d++) {
+    html += `<div class="heatmap-day-label">${days[d]}</div>`;
+    for (let h = 0; h < 24; h++) {
+      const cell = map.get(`${d}-${h}`);
+      const count = cell ? cell.count : 0;
+      let level = 0;
+      if (cell && cell.intensity !== undefined) {
+        if (cell.intensity > 0.75) level = 4;
+        else if (cell.intensity > 0.5) level = 3;
+        else if (cell.intensity > 0.25) level = 2;
+        else if (cell.intensity > 0) level = 1;
+      } else if (count > 0) {
+        level = count >= 4 ? 4 : count;
+      }
+      const hh = h < 10 ? `0${h}:00` : `${h}:00`;
+      const tip = `${days[d]} at ${hh} — ${count} ${count === 1 ? 'watch' : 'watches'}`;
+      html += `<div class="heatmap-cell" data-level="${level}" title="${escapeHtml(tip)}" data-day="${d}" data-hour="${h}" data-count="${count}"></div>`;
+    }
+  }
+
+  el.weeklyHeatmapGrid.innerHTML = html;
+}
+
+// ==========================================================================
+// Recommendations & Overseerr Request Integration
+// ==========================================================================
+let overseerrConfigured = false;
+
+async function checkOverseerrStatus() {
+  try {
+    const st = await api.getOverseerrStatus();
+    overseerrConfigured = Boolean(st && st.configured);
+  } catch (e) {
+    overseerrConfigured = false;
+  }
+}
+
+async function loadRecommendationsShelf() {
+  if (!el.recommendationsShelfSection || !el.recommendationsGrid) return;
+  try {
+    const recs = await api.getRecommendations();
+    if (!recs || recs.length === 0) {
+      el.recommendationsShelfSection.style.display = 'none';
+      return;
+    }
+
+    el.recommendationsShelfSection.style.display = 'block';
+    el.recommendationsGrid.innerHTML = recs.map(r => {
+      const poster = r.poster_path
+        ? (r.poster_path.startsWith('http') ? r.poster_path : `https://image.tmdb.org/t/p/w342${r.poster_path}`)
+        : '';
+      const score = r.vote_average ? r.vote_average.toFixed(1) : null;
+      const mediaLabel = r.media_type === 'tv' ? 'TV Series' : 'Movie';
+      const year = r.release_date ? r.release_date.slice(0, 4) : (r.first_air_date ? r.first_air_date.slice(0, 4) : '');
+
+      return `
+        <div class="rec-card" data-tmdb-id="${r.id}" data-type="${r.media_type}">
+          <div class="rec-poster-wrap">
+            ${poster ? `<img src="${escapeHtml(poster)}" alt="${escapeHtml(r.title)}" class="rec-poster-img" loading="lazy" onerror="this.outerHTML='<div style=\\'display:flex;align-items:center;justify-content:center;height:100%;font-size:2rem;\\'>🍿</div>'" />` : `<div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:2rem;">🍿</div>`}
+            <span class="rec-type-badge">${mediaLabel}</span>
+            ${score ? `<span class="rec-score-badge">★ ${score}</span>` : ''}
+          </div>
+          <div class="rec-body">
+            <div class="rec-title" title="${escapeHtml(r.title)}">${escapeHtml(r.title)}${year ? ` (${year})` : ''}</div>
+            <div class="rec-reason" title="${escapeHtml(r.recommendation_reason || '')}">${escapeHtml(r.recommendation_reason || 'Trending Recommendation')}</div>
+            <div class="rec-desc" title="${escapeHtml(r.overview || '')}">${escapeHtml(r.overview || '')}</div>
+            <div class="rec-actions">
+              ${overseerrConfigured ? `
+                <button type="button" class="btn-overseerr-req" data-id="${r.id}" data-type="${r.media_type}" data-title="${escapeHtml(r.title)}" data-year="${year}">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+                  <span>Request on Overseerr</span>
+                </button>
+              ` : ''}
+            </div>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    // Wire Overseerr request buttons
+    el.recommendationsGrid.querySelectorAll('.btn-overseerr-req').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        const tmdbId = parseInt(btn.dataset.id, 10);
+        const mediaType = btn.dataset.type;
+        const title = btn.dataset.title;
+        const year = btn.dataset.year ? parseInt(btn.dataset.year, 10) : null;
+
+        btn.disabled = true;
+        btn.innerHTML = '<span>Requesting...</span>';
+        try {
+          await api.requestOverseerrMedia({
+            media_type: mediaType,
+            tmdb_id: tmdbId,
+            title: title,
+            year: year,
+          });
+          btn.classList.add('requested');
+          btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg><span>Requested!</span>';
+        } catch (err) {
+          btn.disabled = false;
+          btn.innerHTML = '<span>Failed (Retry)</span>';
+          alert('Overseerr request error: ' + err.message);
+        }
+      });
+    });
+  } catch (err) {
+    console.warn('Failed to load recommendations:', err);
+    if (el.recommendationsShelfSection) {
+      el.recommendationsShelfSection.style.display = 'none';
+    }
+  }
+}
+
+if (el.btnRefreshRecommendations) {
+  el.btnRefreshRecommendations.addEventListener('click', () => loadRecommendationsShelf());
+}
+
+// ==========================================================================
+// Binge Wrapped / Year in Review Modal
+// ==========================================================================
+let currentWrappedData = null;
+
+async function openWrappedModal(targetYear) {
+  if (!el.modalWrapped) return;
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const year = targetYear || currentYear;
+
+  // Populate year select options
+  if (el.wrappedYearSelect) {
+    el.wrappedYearSelect.innerHTML = '';
+    for (let y = currentYear; y >= currentYear - 5; y--) {
+      const opt = document.createElement('option');
+      opt.value = y;
+      opt.textContent = y;
+      if (y === year) opt.selected = true;
+      el.wrappedYearSelect.appendChild(opt);
+    }
+  }
+
+  el.modalWrapped.style.display = 'flex';
+  await loadWrappedYear(year);
+}
+
+async function loadWrappedYear(year) {
+  if (el.wrappedYearBadge) el.wrappedYearBadge.textContent = year;
+  if (el.wrappedValHours) el.wrappedValHours.textContent = '...';
+  if (el.wrappedValScrobbles) el.wrappedValScrobbles.textContent = '...';
+  if (el.wrappedValMovies) el.wrappedValMovies.textContent = '...';
+  if (el.wrappedValEpisodes) el.wrappedValEpisodes.textContent = '...';
+
+  try {
+    const w = await api.getWrapped(year);
+    currentWrappedData = w;
+    if (el.wrappedValHours) el.wrappedValHours.textContent = (w.total_hours || 0).toLocaleString();
+    if (el.wrappedValScrobbles) el.wrappedValScrobbles.textContent = (w.total_scrobbles || 0).toLocaleString();
+    if (el.wrappedValMovies) el.wrappedValMovies.textContent = ((w.total_movies ?? w.movies_watched) || 0).toLocaleString();
+    if (el.wrappedValEpisodes) el.wrappedValEpisodes.textContent = ((w.total_episodes ?? w.episodes_watched) || 0).toLocaleString();
+
+    if (w.longest_movie && el.wrappedLongestMovieCard) {
+      el.wrappedLongestMovieCard.style.display = 'block';
+      if (el.wrappedLongestMovieTitle) el.wrappedLongestMovieTitle.textContent = `${w.longest_movie.title} (${w.longest_movie.year})`;
+      if (el.wrappedLongestMovieDur) el.wrappedLongestMovieDur.textContent = `${w.longest_movie.duration_minutes || w.longest_movie.runtime_minutes} minutes`;
+    } else if (el.wrappedLongestMovieCard) {
+      el.wrappedLongestMovieCard.style.display = 'none';
+    }
+
+    if (el.wrappedTopShowsList) {
+      if (!w.top_shows || w.top_shows.length === 0) {
+        el.wrappedTopShowsList.innerHTML = '<div style="color:var(--text-muted);font-size:0.85rem;padding:8px 0;">No series watched this year.</div>';
+      } else {
+        el.wrappedTopShowsList.innerHTML = w.top_shows.map((s, idx) => `
+          <div class="top-show-item">
+            <span style="font-weight:800;color:var(--accent);width:20px;font-size:0.9rem;">#${idx + 1}</span>
+            <div class="top-show-thumb">
+              ${resolveImageUrl(s.thumb_url) ? `<img src="${escapeHtml(resolveImageUrl(s.thumb_url))}" alt="${escapeHtml(s.show_title)}" onerror="this.outerHTML='📺'"/>` : '📺'}
+            </div>
+            <div class="top-show-info">
+              <div class="top-show-name">${escapeHtml(s.show_title)}</div>
+              <div class="top-show-count">${s.count} episodes</div>
+            </div>
+          </div>
+        `).join('');
+      }
+    }
+
+    if (el.wrappedTopMoviesList) {
+      if (!w.top_movies || w.top_movies.length === 0) {
+        el.wrappedTopMoviesList.innerHTML = '<div style="color:var(--text-muted);font-size:0.85rem;padding:8px 0;">No movies watched this year.</div>';
+      } else {
+        el.wrappedTopMoviesList.innerHTML = w.top_movies.map((m, idx) => `
+          <div class="top-show-item">
+            <span style="font-weight:800;color:var(--accent);width:20px;font-size:0.9rem;">#${idx + 1}</span>
+            <div class="top-show-thumb">
+              ${resolveImageUrl(m.thumb_url) ? `<img src="${escapeHtml(resolveImageUrl(m.thumb_url))}" alt="${escapeHtml(m.title)}" onerror="this.outerHTML='🎬'"/>` : '🎬'}
+            </div>
+            <div class="top-show-info">
+              <div class="top-show-name">${escapeHtml(m.title)}${m.year ? ` (${m.year})` : ''}</div>
+              <div class="top-show-count">${m.count} ${m.count === 1 ? 'play' : 'plays'}</div>
+            </div>
+          </div>
+        `).join('');
+      }
+    }
+  } catch (err) {
+    console.error('Failed to load wrapped:', err);
+  }
+}
+
+function closeWrappedModal() {
+  if (el.modalWrapped) el.modalWrapped.style.display = 'none';
+}
+
+if (el.btnOpenWrapped) {
+  el.btnOpenWrapped.addEventListener('click', () => openWrappedModal());
+}
+
+if (el.btnCloseWrappedModal) {
+  el.btnCloseWrappedModal.addEventListener('click', closeWrappedModal);
+}
+
+if (el.btnDoneWrappedModal) {
+  el.btnDoneWrappedModal.addEventListener('click', closeWrappedModal);
+}
+
+if (el.modalWrapped) {
+  el.modalWrapped.addEventListener('click', (e) => {
+    if (e.target === el.modalWrapped) closeWrappedModal();
+  });
+}
+
+if (el.wrappedYearSelect) {
+  el.wrappedYearSelect.addEventListener('change', (e) => {
+    loadWrappedYear(parseInt(e.target.value, 10));
+  });
+}
+
+if (el.btnCopyWrappedSummary) {
+  el.btnCopyWrappedSummary.addEventListener('click', async () => {
+    if (!currentWrappedData) return;
+    const w = currentWrappedData;
+    const totalMovies = w.total_movies ?? w.movies_watched ?? 0;
+    const totalEpisodes = w.total_episodes ?? w.episodes_watched ?? 0;
+    const text = `✨ My BingeSync Wrapped ${w.year} ✨\n` +
+      `⏱️ ${w.total_hours} Hours Watched\n` +
+      `🍿 ${totalMovies} Movies Explored\n` +
+      `📺 ${totalEpisodes} Episodes Binged\n` +
+      `🎯 ${w.total_scrobbles} Total Completed Watches\n` +
+      (w.top_shows && w.top_shows.length > 0 ? `🏆 Top Show: ${w.top_shows[0].show_title} (${w.top_shows[0].count} eps)\n` : '') +
+      (w.top_movies && w.top_movies.length > 0 ? `🎬 Top Movie: ${w.top_movies[0].title}\n` : '') +
+      `Tracked with BingeSync`;
+
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (e) {
+      // In headless browser / restricted environments, writeText may be unavailable
+    }
+    el.btnCopyWrappedSummary.innerHTML = '<span>Copied to Clipboard!</span>';
+    setTimeout(() => {
+      if (el.btnCopyWrappedSummary) {
+        el.btnCopyWrappedSummary.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg><span>Copy / Share Card</span>';
+      }
+    }, 2500);
   });
 }
 

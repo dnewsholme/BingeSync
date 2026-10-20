@@ -17,6 +17,11 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
   <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+  <link rel="manifest" href="./manifest.json" />
+  <meta name="theme-color" content="#e50914" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="BingeSync" />
   <link rel="stylesheet" href="/src/style.css" />
 </head>
 <body>
@@ -71,6 +76,17 @@
               <option value="es">🇪🇸 ES</option>
               <option value="de">🇩🇪 DE</option>
               <option value="fr">🇫🇷 FR</option>
+            </select>
+          </div>
+          <div class="theme-selector-wrap" id="nav-theme-wrap" title="Theme Accent">
+            <select class="theme-select nav-theme-select" id="nav-theme-select" aria-label="Theme Accent">
+              <option value="default">🔴 Red</option>
+              <option value="amber">🟡 Plex Amber</option>
+              <option value="purple">🟣 Jellyfin Purple</option>
+              <option value="cyan">🔵 Emby Cyan</option>
+              <option value="emerald">🟢 Emerald</option>
+              <option value="rose">🌸 Rose Pink</option>
+              <option value="oled">⚫ OLED Black</option>
             </select>
           </div>
           <button class="btn btn-outline btn-sm" id="btn-open-import-modal">
@@ -227,6 +243,23 @@
             </div>
           </div>
 
+          <!-- Recommendations / You Might Also Like Shelf -->
+          <div id="recommendations-shelf-section" class="recommendations-section" style="display: none;">
+            <div class="recommendations-header">
+              <div class="recommendations-title">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                <span>You Might Also Like</span>
+              </div>
+              <button class="btn btn-outline btn-sm" id="btn-refresh-recommendations" title="Refresh recommendations">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+                <span>Refresh</span>
+              </button>
+            </div>
+            <div id="recommendations-grid" class="recommendations-grid">
+              <!-- Rendered recommendation cards -->
+            </div>
+          </div>
+
           <div class="timeline-layout-wrap">
             <div id="timeline-container" class="timeline-container">
               <!-- Timeline days injected here -->
@@ -318,11 +351,17 @@
               <h1 class="view-title" data-i18n="stats.title">Binge Statistics</h1>
               <p class="view-subtitle" data-i18n="stats.subtitle">Detailed metrics, TV vs movie breakdown, and watching patterns</p>
             </div>
-            <!-- Media Type Filter Pills -->
-            <div class="filter-pills" id="stats-filter-pills">
-              <button class="pill active" data-type="all" id="pill-stats-all" data-i18n="stats.tab_all">All</button>
-              <button class="pill" data-type="movie" id="pill-stats-movies" data-i18n="stats.tab_movies">Movies</button>
-              <button class="pill" data-type="episode" id="pill-stats-episodes" data-i18n="stats.tab_shows">TV Shows</button>
+            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+              <button class="btn btn-primary btn-sm" id="btn-open-wrapped" style="background: linear-gradient(135deg, var(--accent), #ff5e62); display: flex; align-items: center; gap: 6px;">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                <span>Binge Wrapped</span>
+              </button>
+              <!-- Media Type Filter Pills -->
+              <div class="filter-pills" id="stats-filter-pills">
+                <button class="pill active" data-type="all" id="pill-stats-all" data-i18n="stats.tab_all">All</button>
+                <button class="pill" data-type="movie" id="pill-stats-movies" data-i18n="stats.tab_movies">Movies</button>
+                <button class="pill" data-type="episode" id="pill-stats-episodes" data-i18n="stats.tab_shows">TV Shows</button>
+              </div>
             </div>
           </div>
 
@@ -490,6 +529,30 @@
               <!-- Top movies injected here -->
             </div>
           </div>
+
+          <!-- Row 3: Weekly Viewing Heatmap (7 Days x 24 Hours) -->
+          <div class="heatmap-card" id="heatmap-card">
+            <div class="chart-header-row" style="margin-bottom: 12px;">
+              <div>
+                <h3 class="chart-title">Weekly Viewing Heatmap</h3>
+                <p class="chart-subtitle">Viewing density by day of week and hour of day (00:00 to 23:00)</p>
+              </div>
+            </div>
+            <div class="heatmap-wrapper">
+              <div class="heatmap-grid" id="weekly-heatmap-grid">
+                <!-- Rendered 7x24 heatmap cells -->
+              </div>
+            </div>
+            <div class="heatmap-legend">
+              <span>Less</span>
+              <span class="heatmap-legend-swatch" style="background: rgba(255,255,255,0.04);"></span>
+              <span class="heatmap-legend-swatch" style="background: rgba(229,9,20,0.25);"></span>
+              <span class="heatmap-legend-swatch" style="background: rgba(229,9,20,0.50);"></span>
+              <span class="heatmap-legend-swatch" style="background: rgba(229,9,20,0.75);"></span>
+              <span class="heatmap-legend-swatch" style="background: rgba(229,9,20,1.00);"></span>
+              <span>More</span>
+            </div>
+          </div>
         </section>
 
         <!-- View: Library Cleanup (Radarr & Sonarr) -->
@@ -645,6 +708,21 @@
                   </small>
                 </div>
               </div>
+
+              <!-- Emby Username Filter -->
+              <div class="settings-group-header" style="margin-top: 16px;">
+                <span class="badge-pill" style="background: rgba(6, 182, 212, 0.15); color: #06b6d4; border: 1px solid rgba(6, 182, 212, 0.3);">Emby</span>
+                <strong>Emby Account Filtering</strong>
+              </div>
+              <div class="form-row">
+                <div class="form-group col-full">
+                  <label for="user-setting-emby-username">Emby Username(s) or User ID(s)</label>
+                  <input type="text" id="user-setting-emby-username" class="form-control" placeholder="e.g. your_emby_username, a1b2c3d4... (comma-separated)" spellcheck="false" />
+                  <small style="color: var(--text-muted); font-size: 0.8rem; margin-top: 4px; display: block;">
+                    Only record scrobbles matching these Emby username(s) or user ID(s) (comma-separated).
+                  </small>
+                </div>
+              </div>
               <div class="form-row">
                 <div class="form-group col-half">
                   <label for="user-setting-jellyfin-url">Jellyfin Server URL (Optional for User Sync)</label>
@@ -724,6 +802,62 @@
                 </div>
               </div>
 
+              <!-- Overseerr / Jellyseerr -->
+              <div class="settings-group-header" style="margin-top: 16px;">
+                <span class="arr-badge" style="background: rgba(236, 72, 153, 0.15); color: #f472b6; border: 1px solid rgba(236, 72, 153, 0.3);">Overseerr</span>
+                <strong>Overseerr / Jellyseerr Media Requests</strong>
+              </div>
+              <div class="form-row">
+                <div class="form-group col-half">
+                  <label for="user-setting-overseerr-url">Overseerr / Jellyseerr Base URL</label>
+                  <input type="url" id="user-setting-overseerr-url" class="form-control" placeholder="http://192.168.1.100:5055" />
+                </div>
+                <div class="form-group col-half">
+                  <label for="user-setting-overseerr-api-key">Overseerr API Key</label>
+                  <div class="input-secret-wrapper">
+                    <input type="text" id="user-setting-overseerr-api-key" class="form-control font-mono" placeholder="API Key" autocomplete="off" spellcheck="false" />
+                    <button type="button" class="btn-toggle-secret" data-target="user-setting-overseerr-api-key" title="Unhide / Show full key">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Outbound Webhooks -->
+              <div class="settings-group-header" style="margin-top: 16px;">
+                <span class="badge-pill" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3);">Notifications</span>
+                <strong>Outbound Webhooks (Discord, Telegram, ntfy, Gotify)</strong>
+              </div>
+              <div class="form-row">
+                <div class="form-group col-half">
+                  <label for="user-setting-outbound-type">Webhook Provider</label>
+                  <select id="user-setting-outbound-type" class="form-control">
+                    <option value="">Disabled</option>
+                    <option value="discord">Discord (Rich Embed)</option>
+                    <option value="telegram">Telegram Bot</option>
+                    <option value="ntfy">ntfy.sh</option>
+                    <option value="gotify">Gotify</option>
+                    <option value="generic">Generic JSON Webhook</option>
+                  </select>
+                </div>
+                <div class="form-group col-half">
+                  <label for="user-setting-outbound-url">Webhook URL or Target</label>
+                  <input type="text" id="user-setting-outbound-url" class="form-control font-mono" placeholder="https://discord.com/api/webhooks/... or https://ntfy.sh/topic" spellcheck="false" />
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-group col-full" style="display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;">
+                  <small style="color: var(--text-muted); font-size: 0.8rem;">
+                    For Telegram, format as: <code>https://api.telegram.org/bot&lt;token&gt;/sendMessage?chat_id=&lt;chat_id&gt;</code>.
+                  </small>
+                  <button type="button" class="btn btn-outline btn-sm" id="btn-test-outbound-webhook">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                    <span>Send Test Notification</span>
+                  </button>
+                </div>
+              </div>
+              <div id="outbound-webhook-test-status" style="margin-top: 6px; font-size: 0.85rem; display: none;"></div>
+
               <div style="display:flex;align-items:center;gap:12px;margin-top:20px;">
                 <button type="submit" class="btn btn-primary" id="btn-save-user-settings" data-i18n="settings.save">Save Settings</button>
                 <span id="user-settings-status" style="font-size:0.85rem;"></span>
@@ -774,6 +908,25 @@
                 </button>
               </div>
               <div id="jellyfin-copy-status" class="copy-status" style="display: none;" data-i18n="settings.copied">Copied to clipboard!</div>
+            </div>
+
+            <!-- Emby Webhook -->
+            <div style="margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--border-color);">
+              <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+                <span class="badge-pill" style="background: rgba(6, 182, 212, 0.15); color: #06b6d4; border: 1px solid rgba(6, 182, 212, 0.3);">Emby</span>
+                <strong style="font-size: 0.95rem;">Emby Webhook URL</strong>
+              </div>
+              <p class="card-desc" style="margin-bottom: 8px;">
+                Configure in Emby Server > Manage Server > Webhooks:
+              </p>
+              <div class="webhook-input-group">
+                <input type="text" id="emby-webhook-url-input" class="form-control font-mono" readonly value="" />
+                <button class="btn btn-primary" id="btn-copy-emby-webhook">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                  <span>Copy URL</span>
+                </button>
+              </div>
+              <div id="emby-copy-status" class="copy-status" style="display: none;">Copied to clipboard!</div>
             </div>
 
             <div class="token-regen-wrap" style="margin-top: 20px;">
@@ -849,6 +1002,102 @@
                   <p>Click <strong>Save</strong>. Playback and completed watches from Jellyfin will now automatically scrobble to BingeSync!</p>
                 </div>
               </div>
+            </div>
+          </div>
+
+          <!-- Emby Setup Guide -->
+          <div class="setup-steps-card" style="margin-top: 20px;">
+            <h2 class="card-title">How to connect Emby to BingeSync</h2>
+            <div class="steps-list">
+              <div class="step-item">
+                <div class="step-number">1</div>
+                <div class="step-content">
+                  <h4>Open Emby Server Settings</h4>
+                  <p>In Emby Web, click the <strong>Gear icon</strong> (Settings) > <strong>Server</strong> > <strong>Webhooks</strong>.</p>
+                </div>
+              </div>
+              <div class="step-item">
+                <div class="step-number">2</div>
+                <div class="step-content">
+                  <h4>Add Webhook</h4>
+                  <p>Click <strong>Add Webhook</strong>, paste your personal Emby Webhook URL above.</p>
+                </div>
+              </div>
+              <div class="step-item">
+                <div class="step-number">3</div>
+                <div class="step-content">
+                  <h4>Select Playback & User Events</h4>
+                  <p>Enable <strong>Playback</strong> events (Playback Start, Pause, Unpause, Stopped) and <strong>Scrobble / Watched</strong> events.</p>
+                </div>
+              </div>
+              <div class="step-item">
+                <div class="step-number">4</div>
+                <div class="step-content">
+                  <h4>Save & Enjoy!</h4>
+                  <p>Click <strong>Save</strong>. Media watched on your Emby server will now scrobble in real-time!</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Theme Accent Customization Card -->
+          <div class="card settings-card" style="margin-top: 20px;">
+            <h2 class="card-title">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m4.93 4.93 4.24 4.24"/><path d="m14.83 9.17 4.24-4.24"/><path d="m14.83 14.83 4.24 4.24"/><path d="m9.17 14.83-4.24 4.24"/></svg>
+              <span>Appearance & Theme Accent</span>
+            </h2>
+            <p class="card-desc">
+              Personalize your BingeSync experience with curated color themes inspired by popular media hubs and OLED aesthetics.
+            </p>
+            <div class="theme-accent-picker" style="margin-top: 14px;">
+              <div class="theme-swatches-grid">
+                <button type="button" class="theme-swatch" data-theme="red" title="Trakt Crimson Red">
+                  <span class="swatch-color" style="background: #e50914;"></span>
+                  <span class="swatch-name">Trakt Red</span>
+                </button>
+                <button type="button" class="theme-swatch" data-theme="amber" title="Plex Gold / Amber">
+                  <span class="swatch-color" style="background: #e5a00d;"></span>
+                  <span class="swatch-name">Plex Amber</span>
+                </button>
+                <button type="button" class="theme-swatch" data-theme="purple" title="Jellyfin Neon Purple">
+                  <span class="swatch-color" style="background: #a855f7;"></span>
+                  <span class="swatch-name">Jellyfin Purple</span>
+                </button>
+                <button type="button" class="theme-swatch" data-theme="cyan" title="Emby Electric Cyan">
+                  <span class="swatch-color" style="background: #06b6d4;"></span>
+                  <span class="swatch-name">Emby Cyan</span>
+                </button>
+                <button type="button" class="theme-swatch" data-theme="emerald" title="Nordic Emerald Green">
+                  <span class="swatch-color" style="background: #10b981;"></span>
+                  <span class="swatch-name">Emerald</span>
+                </button>
+                <button type="button" class="theme-swatch" data-theme="rose" title="Cyberpunk Rose Pink">
+                  <span class="swatch-color" style="background: #f43f5e;"></span>
+                  <span class="swatch-name">Rose</span>
+                </button>
+                <button type="button" class="theme-swatch" data-theme="oled" title="True Pitch Black OLED">
+                  <span class="swatch-color" style="background: #000000; border: 1px solid #333;"></span>
+                  <span class="swatch-name">True OLED</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Data Portability / One-Click Export Card -->
+          <div class="card settings-card" style="margin-top: 20px;">
+            <h2 class="card-title">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              <span>Data Portability & Full Export</span>
+            </h2>
+            <p class="card-desc">
+              Download your complete personal watch history, movie ratings, and metadata as a standard ZIP archive containing both structured JSON and spreadsheet-compatible CSV files.
+            </p>
+            <div style="margin-top: 14px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap;">
+              <button type="button" class="btn btn-outline" id="btn-export-user-data">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                <span>Download My Data (ZIP)</span>
+              </button>
+              <span id="export-user-data-status" style="font-size: 0.85rem; color: var(--text-muted);"></span>
             </div>
           </div>
 
@@ -1496,6 +1745,90 @@
         <div class="modal-footer" style="padding: 12px 20px; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; gap: 10px;">
           <button type="button" class="btn btn-outline" id="btn-cancel-restore-modal">Cancel</button>
           <button type="button" class="btn btn-danger" id="btn-confirm-restore-backup">Confirm & Restore</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal: Binge Wrapped / Year in Review -->
+    <div id="modal-wrapped" class="modal-backdrop" style="display: none;">
+      <div class="wrapped-modal-dialog">
+        <div class="wrapped-header-banner">
+          <button type="button" class="modal-close btn-close" id="btn-close-wrapped-modal" style="position: absolute; top: 16px; right: 16px;">&times;</button>
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;">
+            <div>
+              <span class="wrapped-year-pill" id="wrapped-year-badge">2026</span>
+              <h2 class="wrapped-title">✨ Your Binge Wrapped</h2>
+              <p class="wrapped-subtitle">A look back at your watch journey and media milestones</p>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <label for="wrapped-year-select" style="font-size: 0.85rem; color: var(--text-muted);">Year:</label>
+              <select id="wrapped-year-select" class="form-control" style="width: auto; padding: 4px 10px; font-weight: 600;">
+                <!-- Available years -->
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="wrapped-grid" id="wrapped-metrics-grid">
+          <div class="wrapped-metric-card">
+            <div class="wrapped-metric-val" id="wrapped-val-hours">0</div>
+            <div class="wrapped-metric-label">Total Hours Watched</div>
+          </div>
+          <div class="wrapped-metric-card">
+            <div class="wrapped-metric-val" id="wrapped-val-scrobbles">0</div>
+            <div class="wrapped-metric-label">Completed Watches</div>
+          </div>
+          <div class="wrapped-metric-card">
+            <div class="wrapped-metric-val" id="wrapped-val-movies">0</div>
+            <div class="wrapped-metric-label">Movies Explored</div>
+          </div>
+          <div class="wrapped-metric-card">
+            <div class="wrapped-metric-val" id="wrapped-val-episodes">0</div>
+            <div class="wrapped-metric-label">Episodes Binged</div>
+          </div>
+        </div>
+
+        <!-- Longest Movie Card -->
+        <div id="wrapped-longest-movie-card" style="padding: 0 28px 16px; display: none;">
+          <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 12px; padding: 14px 18px; display: flex; align-items: center; gap: 16px;">
+            <div style="font-size: 1.8rem;">🎬</div>
+            <div>
+              <div style="font-size: 0.75rem; text-transform: uppercase; color: var(--accent); font-weight: 700;">Longest Movie Watched</div>
+              <div id="wrapped-longest-movie-title" style="font-weight: 700; color: #fff; font-size: 1rem;">—</div>
+              <div id="wrapped-longest-movie-dur" style="font-size: 0.82rem; color: var(--text-muted);">—</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Top Shows -->
+        <div class="wrapped-top-section" id="wrapped-shows-section">
+          <h3 class="wrapped-top-title">
+            <span>📺 Most Binged Series</span>
+          </h3>
+          <div class="wrapped-top-list" id="wrapped-top-shows-list">
+            <!-- Shows list -->
+          </div>
+        </div>
+
+        <!-- Top Movies -->
+        <div class="wrapped-top-section" id="wrapped-movies-section">
+          <h3 class="wrapped-top-title">
+            <span>🍿 Favorite Movies</span>
+          </h3>
+          <div class="wrapped-top-list" id="wrapped-top-movies-list">
+            <!-- Movies list -->
+          </div>
+        </div>
+
+        <div class="wrapped-footer-actions">
+          <span style="font-size: 0.8rem; color: var(--text-muted);">Crafted by BingeSync</span>
+          <div style="display: flex; gap: 10px;">
+            <button class="btn btn-outline btn-sm" id="btn-copy-wrapped-summary">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+              <span>Copy / Share Card</span>
+            </button>
+            <button class="btn btn-primary btn-sm" id="btn-done-wrapped-modal">Close</button>
+          </div>
         </div>
       </div>
     </div>

@@ -18,6 +18,8 @@ pub struct UserSettingsResponse {
     pub jellyfin_api_key_masked: Option<String>,
     pub jellyfin_api_key: Option<String>,
 
+    pub emby_username: Option<String>,
+
     pub radarr_url: Option<String>,
     pub radarr_api_key_configured: bool,
     pub radarr_api_key_masked: Option<String>,
@@ -32,6 +34,15 @@ pub struct UserSettingsResponse {
     pub tautulli_api_key_configured: bool,
     pub tautulli_api_key_masked: Option<String>,
     pub tautulli_api_key: Option<String>,
+
+    pub outbound_webhook_url: Option<String>,
+    pub outbound_webhook_type: Option<String>,
+    pub outbound_webhook_enabled: bool,
+
+    pub overseerr_url: Option<String>,
+    pub overseerr_api_key_configured: bool,
+    pub overseerr_api_key_masked: Option<String>,
+    pub overseerr_api_key: Option<String>,
 }
 
 pub type UserSettingsView = UserSettingsResponse;
@@ -42,12 +53,18 @@ pub struct UpdateUserSettingsRequest {
     pub jellyfin_username: Option<String>,
     pub jellyfin_url: Option<String>,
     pub jellyfin_api_key: Option<String>,
+    pub emby_username: Option<String>,
     pub radarr_url: Option<String>,
     pub radarr_api_key: Option<String>,
     pub sonarr_url: Option<String>,
     pub sonarr_api_key: Option<String>,
     pub tautulli_url: Option<String>,
     pub tautulli_api_key: Option<String>,
+    pub outbound_webhook_url: Option<String>,
+    pub outbound_webhook_type: Option<String>,
+    pub outbound_webhook_enabled: Option<bool>,
+    pub overseerr_url: Option<String>,
+    pub overseerr_api_key: Option<String>,
 }
 
 pub async fn get_user_setting(pool: &SqlitePool, user_id: &str, key: &str) -> Option<String> {
@@ -106,6 +123,16 @@ pub async fn get_user_settings_handler(
     let tautulli_url = get_user_setting(&state.pool, &auth.user_id, "tautulli_url").await;
     let tautulli_api_key = get_user_setting(&state.pool, &auth.user_id, "tautulli_api_key").await;
 
+    let emby_username = get_user_setting(&state.pool, &auth.user_id, "emby_username").await;
+
+    let outbound_webhook_url = get_user_setting(&state.pool, &auth.user_id, "outbound_webhook_url").await;
+    let outbound_webhook_type = get_user_setting(&state.pool, &auth.user_id, "outbound_webhook_type").await;
+    let outbound_webhook_enabled_str = get_user_setting(&state.pool, &auth.user_id, "outbound_webhook_enabled").await;
+    let outbound_webhook_enabled = outbound_webhook_enabled_str.as_deref().map(|s| s == "true" || s == "1").unwrap_or(false);
+
+    let overseerr_url = get_user_setting(&state.pool, &auth.user_id, "overseerr_url").await;
+    let overseerr_api_key = get_user_setting(&state.pool, &auth.user_id, "overseerr_api_key").await;
+
     let resp = UserSettingsResponse {
         plex_username,
         jellyfin_username,
@@ -113,6 +140,8 @@ pub async fn get_user_settings_handler(
         jellyfin_api_key_configured: jellyfin_api_key.as_ref().map(|k| !k.trim().is_empty()).unwrap_or(false),
         jellyfin_api_key_masked: jellyfin_api_key.as_deref().map(mask_secret),
         jellyfin_api_key: None,
+
+        emby_username,
 
         radarr_url,
         radarr_api_key_configured: radarr_api_key.as_ref().map(|k| !k.trim().is_empty()).unwrap_or(false),
@@ -128,6 +157,15 @@ pub async fn get_user_settings_handler(
         tautulli_api_key_configured: tautulli_api_key.as_ref().map(|k| !k.trim().is_empty()).unwrap_or(false),
         tautulli_api_key_masked: tautulli_api_key.as_deref().map(mask_secret),
         tautulli_api_key: None,
+
+        outbound_webhook_url,
+        outbound_webhook_type,
+        outbound_webhook_enabled,
+
+        overseerr_url,
+        overseerr_api_key_configured: overseerr_api_key.as_ref().map(|k| !k.trim().is_empty()).unwrap_or(false),
+        overseerr_api_key_masked: overseerr_api_key.as_deref().map(mask_secret),
+        overseerr_api_key: None,
     };
 
     Ok(Json(resp))
@@ -161,6 +199,10 @@ pub async fn update_user_settings_handler(
         if !val.contains('•') {
             let _ = set_user_setting(&state.pool, &auth.user_id, "jellyfin_api_key", val.trim()).await;
         }
+    }
+
+    if let Some(ref val) = payload.emby_username {
+        let _ = set_user_setting(&state.pool, &auth.user_id, "emby_username", val.trim()).await;
     }
 
     if let Some(ref val) = payload.radarr_url {
@@ -214,6 +256,43 @@ pub async fn update_user_settings_handler(
     if let Some(ref val) = payload.tautulli_api_key {
         if !val.contains('•') {
             let _ = set_user_setting(&state.pool, &auth.user_id, "tautulli_api_key", val.trim()).await;
+        }
+    }
+
+    if let Some(ref val) = payload.outbound_webhook_url {
+        let trimmed = val.trim();
+        if !trimmed.is_empty() {
+            crate::api::ssrf::validate_integration_url(trimmed).map_err(|e| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({ "error": format!("Invalid Outbound Webhook URL: {}", e) })),
+                )
+            })?;
+        }
+        let _ = set_user_setting(&state.pool, &auth.user_id, "outbound_webhook_url", trimmed).await;
+    }
+    if let Some(ref val) = payload.outbound_webhook_type {
+        let _ = set_user_setting(&state.pool, &auth.user_id, "outbound_webhook_type", val.trim()).await;
+    }
+    if let Some(enabled) = payload.outbound_webhook_enabled {
+        let _ = set_user_setting(&state.pool, &auth.user_id, "outbound_webhook_enabled", if enabled { "true" } else { "false" }).await;
+    }
+
+    if let Some(ref val) = payload.overseerr_url {
+        let trimmed = val.trim();
+        if !trimmed.is_empty() {
+            crate::api::ssrf::validate_integration_url(trimmed).map_err(|e| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({ "error": format!("Invalid Overseerr URL: {}", e) })),
+                )
+            })?;
+        }
+        let _ = set_user_setting(&state.pool, &auth.user_id, "overseerr_url", trimmed).await;
+    }
+    if let Some(ref val) = payload.overseerr_api_key {
+        if !val.contains('•') {
+            let _ = set_user_setting(&state.pool, &auth.user_id, "overseerr_api_key", val.trim()).await;
         }
     }
 

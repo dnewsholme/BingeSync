@@ -247,4 +247,39 @@ export const api = {
     }),
   deleteBackup: (filename) =>
     request(`/admin/backups/${encodeURIComponent(filename)}`, { method: 'DELETE' }),
+  downloadUserData: async () => {
+    const token = localStorage.getItem('bingesync_token');
+    const headers = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const res = await fetch('./api/v1/user/export', { headers });
+    if (!res.ok) throw new Error(`Export failed (${res.status})`);
+    const blob = await res.blob();
+    const disposition = res.headers.get('content-disposition');
+    let filename = 'bingesync_export.zip';
+    if (disposition && disposition.includes('filename=')) {
+      const match = disposition.match(/filename="?([^";]+)"?/);
+      if (match && match[1]) filename = match[1];
+    }
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    a.remove();
+  },
+  getWrapped: (year) => request('/stats/wrapped' + (year ? `?year=${year}` : '')),
+  getRecommendations: () => request('/recommendations'),
+  getOverseerrStatus: () => request('/integrations/overseerr/status'),
+  requestOverseerrMedia: (payload) =>
+    request('/integrations/overseerr/request', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  testOutboundWebhook: (payload) =>
+    request('/user/settings/test-outbound-webhook', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
 };
