@@ -385,23 +385,57 @@ fn parse_tmdb_metadata(data: &serde_json::Value) -> TvdbMetadata {
                     _ => continue,
                 };
 
-                let job = c.get("job").and_then(|v| v.as_str()).map(|s| s.to_lowercase()).unwrap_or_default();
-                let dept = c.get("department").and_then(|v| v.as_str()).map(|s| s.to_lowercase()).unwrap_or_default();
+                let job_raw = c.get("job").and_then(|v| v.as_str()).unwrap_or_default().trim();
+                let job = job_raw.to_lowercase();
 
-                if job == "director" || dept == "directing" {
-                    if !directors_list.contains(&name) {
-                        directors_list.push(name.clone());
-                    }
+                // Directors: only actual directors (avoid assistant directors, casting, second unit, technical, art directors)
+                let is_director = (job == "director"
+                    || job == "co-director"
+                    || job == "series director"
+                    || (job.contains("director")
+                        && !job.contains("assistant")
+                        && !job.contains("associate")
+                        && !job.contains("casting")
+                        && !job.contains("art")
+                        && !job.contains("technical")
+                        && !job.contains("photography")
+                        && !job.contains("lighting")
+                        && !job.contains("second unit")))
+                    && !job.contains("assistant")
+                    && !job.contains("associate");
+
+                if is_director && !directors_list.contains(&name) && directors_list.len() < 5 {
+                    directors_list.push(name.clone());
                 }
 
-                if job.contains("cinematograph")
-                    || job.contains("director of photography")
-                    || dept == "camera"
-                    || job.contains("camera operator")
+                // Cinematographers: only Director of Photography / Cinematographer
+                // Strictly exclude camera operators, assistant camera, grips, technicians, still photographers, loaders, drones, etc.
+                let is_cinematographer = (job == "director of photography"
+                    || job == "cinematographer"
+                    || job == "cinematography"
+                    || job == "dop"
+                    || (job.contains("director of photography") && !job.contains("assistant"))
+                    || (job.contains("cinematograph") && !job.contains("assistant") && !job.contains("associate")))
+                    && !job.contains("operator")
+                    && !job.contains("assistant")
+                    && !job.contains("technician")
+                    && !job.contains("loader")
+                    && !job.contains("grip")
+                    && !job.contains("photographer")
+                    && !job.contains("puller")
+                    && !job.contains("trainee")
+                    && !job.contains("electrician")
+                    && !job.contains("gaffer")
+                    && !job.contains("clapper")
+                    && !job.contains("drone")
+                    && !job.contains("aerial")
+                    && !job.contains("underwater");
+
+                if is_cinematographer
+                    && !cinematographers_list.contains(&name)
+                    && cinematographers_list.len() < 3
                 {
-                    if !cinematographers_list.contains(&name) {
-                        cinematographers_list.push(name);
-                    }
+                    cinematographers_list.push(name);
                 }
             }
         }

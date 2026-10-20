@@ -6132,5 +6132,135 @@ async fn test_metadata_enrichment_worker_supports_tmdb_and_resolves_missing() {
     assert_eq!(json["total"], 0);
 }
 
+#[tokio::test]
+async fn test_tmdb_fix_match_cinematographer_filtering() {
+    let pool = init_db("sqlite::memory:").await.unwrap();
+
+    // 1. Mock TMDB API server with a large camera & directing crew
+    let mock_tmdb_router = axum::Router::new()
+        .route(
+            "/movie/{id}",
+            axum::routing::get(|axum::extract::Path(id): axum::extract::Path<String>, axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>| async move {
+                if params.get("api_key").map(|s| s.as_str()) == Some("test_tmdb_key") && id == "99999" {
+                    return (
+                        StatusCode::OK,
+                        axum::Json(serde_json::json!({
+                            "id": 99999,
+                            "title": "Blade Runner 2049",
+                            "overview": "Thirty years after the events of the first film, a new blade runner unearths a long-buried secret.",
+                            "poster_path": "/gajva2L0rPYkEWjzgFlBXCAVBE5.jpg",
+                            "genres": [
+                                { "id": 878, "name": "Science Fiction" },
+                                { "id": 18, "name": "Drama" }
+                            ],
+                            "credits": {
+                                "cast": [
+                                    { "name": "Ryan Gosling", "character": "K" },
+                                    { "name": "Harrison Ford", "character": "Rick Deckard" }
+                                ],
+                                "crew": [
+                                    { "name": "Denis Villeneuve", "job": "Director", "department": "Directing" },
+                                    { "name": "Donald Murphy", "job": "First Assistant Director", "department": "Directing" },
+                                    { "name": "Lucie Brossard", "job": "Second Assistant Director", "department": "Directing" },
+                                    { "name": "Roger Deakins", "job": "Director of Photography", "department": "Camera" },
+                                    { "name": "Bob Grip", "job": "Key Grip", "department": "Camera" },
+                                    { "name": "Alice Operator", "job": "Camera Operator", "department": "Camera" },
+                                    { "name": "Charlie Assistant", "job": "First Assistant Camera", "department": "Camera" },
+                                    { "name": "Dave Steadicam", "job": "Steadicam Operator", "department": "Camera" },
+                                    { "name": "Eve Still", "job": "Still Photographer", "department": "Camera" },
+                                    { "name": "Frank Drone", "job": "Drone Operator", "department": "Camera" },
+                                    { "name": "Grace Loader", "job": "Clapper Loader", "department": "Camera" },
+                                    { "name": "Heidi DIT", "job": "Digital Imaging Technician", "department": "Camera" },
+                                    { "name": "Ivan Trainee", "job": "Camera Trainee", "department": "Camera" }
+                                ]
+                            }
+                        })),
+                    );
+                }
+                (StatusCode::NOT_FOUND, axum::Json(serde_json::json!({ "error": "Not found" })))
+            }),
+        );
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, mock_tmdb_router).await.unwrap();
+    });
+
+    let mut config = Config::from_env();
+    config.jwt_secret = "test-secret-key-12345".to_string();
+    config.metadata_source = "tmdb".to_string();
+    config.tmdb_api_key = Some("test_tmdb_key".to_string());
+    config.tmdb_base_url = format!("http://{}", addr);
+    let config = Arc::new(config);
+
+    let state = AppState {
+        pool: pool.clone(),
+        config: config.clone(),
+        oidc_client: None,
+        image_notify: Arc::new(tokio::sync::Notify::new()),
+        metadata_notify: Arc::new(tokio::sync::Notify::new()),
+        user_sync_notify: Arc::new(tokio::sync::Notify::new()),
+        log_buffer: Arc::new(bingesync::api::logs::LogBuffer::new(500)),
+        task_tracker: Arc::new(bingesync::api::jobs::BackgroundTaskTracker::new()),
+        db_backup_notify: Arc::new(tokio::sync::Notify::new()),
+    };
+
+    let app = create_api_router(state.clone());
+
+    let user_id = "user_cinematographer_test";
+    let token = create_jwt(user_id, "user_dp@test.local", &config.jwt_secret).unwrap();
+    sqlx::query("INSERT INTO users (id, email, display_name, webhook_token, role) VALUES (?, ?, ?, ?, 'user')")
+        .bind(user_id)
+        .bind("user_dp@test.local")
+        .bind("User DP")
+        .bind("token_dp_test")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let scrobble_id = "scrobble_br2049";
+    sqlx::query(
+        r#"
+        INSERT INTO scrobbles (id, user_id, title, media_type, watched_at)
+        VALUES (?, ?, 'Blade Runner 2049', 'movie', datetime('now'))
+        "#
+    )
+    .bind(scrobble_id)
+    .bind(user_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    // Fix match using TMDB ID 99999
+    let req = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/history/{}/fix-match", scrobble_id))
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(serde_json::to_string(&serde_json::json!({
+            "tvdb_id": "99999",
+            "provider": "tmdb"
+        })).unwrap()))
+        .unwrap();
+
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // Fetch scrobble and verify cinematographer and director fields
+    let updated: Scrobble = sqlx::query_as("SELECT * FROM scrobbles WHERE id = ?")
+        .bind(scrobble_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+    // Cinematographer must only be Roger Deakins - NOT any of the camera operators, assistants, grips, loaders, etc.
+    assert_eq!(updated.cinematographer.as_deref(), Some("Roger Deakins"));
+
+    // Directors must only be Denis Villeneuve - NOT assistant directors
+    assert_eq!(updated.director.as_deref(), Some("Denis Villeneuve"));
+    assert_eq!(updated.directors.as_deref(), Some("Denis Villeneuve"));
+}
+
 
 

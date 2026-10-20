@@ -673,17 +673,49 @@ fn parse_extended_metadata(data: &serde_json::Value) -> TvdbMetadata {
             .unwrap_or_else(|| "actor".to_string());
 
         if let Some(name) = person_name {
-            if role_type.contains("cinematograph")
-                || role_type.contains("director of photography")
-                || role_type.contains("camera")
-                || role_type.contains("dop")
-            {
-                if !cinematographers_list.contains(&name) {
+            let role_clean = role_type.trim().to_lowercase();
+            let is_cinematographer = (role_clean == "cinematographer"
+                || role_clean == "director of photography"
+                || role_clean == "cinematography"
+                || role_clean == "dop"
+                || (role_clean.contains("director of photography") && !role_clean.contains("assistant"))
+                || (role_clean.contains("cinematograph") && !role_clean.contains("assistant") && !role_clean.contains("associate")))
+                && !role_clean.contains("operator")
+                && !role_clean.contains("assistant")
+                && !role_clean.contains("technician")
+                && !role_clean.contains("loader")
+                && !role_clean.contains("grip")
+                && !role_clean.contains("photographer")
+                && !role_clean.contains("puller")
+                && !role_clean.contains("trainee")
+                && !role_clean.contains("electrician")
+                && !role_clean.contains("gaffer")
+                && !role_clean.contains("clapper")
+                && !role_clean.contains("drone")
+                && !role_clean.contains("aerial")
+                && !role_clean.contains("underwater");
+
+            if is_cinematographer {
+                if !cinematographers_list.contains(&name) && cinematographers_list.len() < 3 {
                     cinematographers_list.push(name.clone());
                 }
-            }
-            if role_type.contains("director") || role_type.contains("creator") {
-                if !directors_list.contains(&name) {
+            } else if (role_clean == "director"
+                || role_clean == "co-director"
+                || role_clean == "series director"
+                || role_clean == "creator"
+                || (role_clean.contains("director")
+                    && !role_clean.contains("photography")
+                    && !role_clean.contains("assistant")
+                    && !role_clean.contains("associate")
+                    && !role_clean.contains("casting")
+                    && !role_clean.contains("art")
+                    && !role_clean.contains("technical")
+                    && !role_clean.contains("lighting")
+                    && !role_clean.contains("second unit")))
+                && !role_clean.contains("assistant")
+                && !role_clean.contains("associate")
+            {
+                if !directors_list.contains(&name) && directors_list.len() < 5 {
                     directors_list.push(name);
                 }
             } else if role_type.contains("actor")
