@@ -350,9 +350,6 @@ const el = {
   wrappedTopShowsList: document.getElementById('wrapped-top-shows-list'),
   wrappedTopMoviesList: document.getElementById('wrapped-top-movies-list'),
   btnCopyWrappedSummary: document.getElementById('btn-copy-wrapped-summary'),
-  recommendationsShelfSection: document.getElementById('recommendations-shelf-section'),
-  recommendationsGrid: document.getElementById('recommendations-grid'),
-  btnRefreshRecommendations: document.getElementById('btn-refresh-recommendations'),
 
   modalItemDetail: document.getElementById('modal-item-detail'),
   btnCloseDetailModal: document.getElementById('btn-close-detail-modal'),
@@ -647,7 +644,6 @@ async function loadTimeline(append = false) {
       } catch (e) {
         console.warn('Failed to load timeline periods:', e);
       }
-      loadRecommendationsShelf();
     }
 
     renderTimelineHierarchyNav();
@@ -5020,87 +5016,6 @@ async function checkOverseerrStatus() {
   } catch (e) {
     overseerrConfigured = false;
   }
-}
-
-async function loadRecommendationsShelf() {
-  if (!el.recommendationsShelfSection || !el.recommendationsGrid) return;
-  try {
-    const recs = await api.getRecommendations();
-    if (!recs || recs.length === 0) {
-      el.recommendationsShelfSection.style.display = 'none';
-      return;
-    }
-
-    el.recommendationsShelfSection.style.display = 'block';
-    el.recommendationsGrid.innerHTML = recs.map(r => {
-      const poster = r.poster_path
-        ? (r.poster_path.startsWith('http') ? r.poster_path : `https://image.tmdb.org/t/p/w342${r.poster_path}`)
-        : '';
-      const score = r.vote_average ? r.vote_average.toFixed(1) : null;
-      const mediaLabel = r.media_type === 'tv' ? 'TV Series' : 'Movie';
-      const year = r.release_date ? r.release_date.slice(0, 4) : (r.first_air_date ? r.first_air_date.slice(0, 4) : '');
-
-      return `
-        <div class="rec-card" data-tmdb-id="${r.id}" data-type="${r.media_type}">
-          <div class="rec-poster-wrap">
-            ${poster ? `<img src="${escapeHtml(poster)}" alt="${escapeHtml(r.title)}" class="rec-poster-img" loading="lazy" onerror="this.outerHTML='<div style=\\'display:flex;align-items:center;justify-content:center;height:100%;font-size:2rem;\\'>🍿</div>'" />` : `<div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:2rem;">🍿</div>`}
-            <span class="rec-type-badge">${mediaLabel}</span>
-            ${score ? `<span class="rec-score-badge">★ ${score}</span>` : ''}
-          </div>
-          <div class="rec-body">
-            <div class="rec-title" title="${escapeHtml(r.title)}">${escapeHtml(r.title)}${year ? ` (${year})` : ''}</div>
-            <div class="rec-reason" title="${escapeHtml(r.recommendation_reason || '')}">${escapeHtml(r.recommendation_reason || 'Trending Recommendation')}</div>
-            <div class="rec-desc" title="${escapeHtml(r.overview || '')}">${escapeHtml(r.overview || '')}</div>
-            <div class="rec-actions">
-              ${overseerrConfigured ? `
-                <button type="button" class="btn-overseerr-req" data-id="${r.id}" data-type="${r.media_type}" data-title="${escapeHtml(r.title)}" data-year="${year}">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
-                  <span>Request on Overseerr</span>
-                </button>
-              ` : ''}
-            </div>
-          </div>
-        </div>
-      `;
-    }).join('');
-
-    // Wire Overseerr request buttons
-    el.recommendationsGrid.querySelectorAll('.btn-overseerr-req').forEach(btn => {
-      btn.addEventListener('click', async (e) => {
-        e.preventDefault();
-        const tmdbId = parseInt(btn.dataset.id, 10);
-        const mediaType = btn.dataset.type;
-        const title = btn.dataset.title;
-        const year = btn.dataset.year ? parseInt(btn.dataset.year, 10) : null;
-
-        btn.disabled = true;
-        btn.innerHTML = '<span>Requesting...</span>';
-        try {
-          await api.requestOverseerrMedia({
-            media_type: mediaType,
-            tmdb_id: tmdbId,
-            title: title,
-            year: year,
-          });
-          btn.classList.add('requested');
-          btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg><span>Requested!</span>';
-        } catch (err) {
-          btn.disabled = false;
-          btn.innerHTML = '<span>Failed (Retry)</span>';
-          alert('Overseerr request error: ' + err.message);
-        }
-      });
-    });
-  } catch (err) {
-    console.warn('Failed to load recommendations:', err);
-    if (el.recommendationsShelfSection) {
-      el.recommendationsShelfSection.style.display = 'none';
-    }
-  }
-}
-
-if (el.btnRefreshRecommendations) {
-  el.btnRefreshRecommendations.addEventListener('click', () => loadRecommendationsShelf());
 }
 
 // ==========================================================================

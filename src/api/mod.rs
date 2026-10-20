@@ -20,7 +20,6 @@ pub mod user_sync;
 pub mod backup;
 pub mod webhooks;
 pub mod outbound_webhooks;
-pub mod recommendations;
 pub mod overseerr;
 pub mod ssrf;
 pub mod rate_limit;
@@ -243,7 +242,6 @@ pub fn create_api_router(state: AppState) -> Router {
         .route("/api/v1/timeline/periods", get(timeline::get_timeline_periods))
         .route("/api/v1/stats", get(stats::get_user_stats))
         .route("/api/v1/stats/wrapped", get(stats::get_user_wrapped))
-        .route("/api/v1/recommendations", get(recommendations::get_user_recommendations))
         .route("/api/v1/now-playing", get(now_playing::get_now_playing))
         // User settings & data export
         .route("/api/v1/user/webhook", get(user::get_webhook_info))

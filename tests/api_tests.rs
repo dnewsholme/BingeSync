@@ -5712,37 +5712,24 @@ async fn test_weekly_heatmap_matrix_and_wrapped_endpoint() {
 }
 
 #[tokio::test]
-async fn test_recommendations_and_overseerr_endpoints() {
+async fn test_overseerr_endpoints() {
     let (app, pool, config) = setup_test_app().await;
 
-    let user_id = "test_user_recs_overseerr";
-    let token = create_jwt(user_id, "recs@test.local", &config.jwt_secret).unwrap();
+    let user_id = "test_user_overseerr";
+    let token = create_jwt(user_id, "overseerr@test.local", &config.jwt_secret).unwrap();
 
     sqlx::query(
         "INSERT INTO users (id, email, display_name, webhook_token, role) VALUES (?, ?, ?, ?, 'user')"
     )
     .bind(user_id)
-    .bind("recs@test.local")
-    .bind("Recs Tester")
-    .bind("recs_token_abc")
+    .bind("overseerr@test.local")
+    .bind("Overseerr Tester")
+    .bind("overseerr_token_abc")
     .execute(&pool)
     .await
     .unwrap();
 
-    // 1. GET /api/v1/recommendations -> returns array
-    let req = Request::builder()
-        .method("GET")
-        .uri("/api/v1/recommendations")
-        .header(header::AUTHORIZATION, format!("Bearer {}", token))
-        .body(Body::empty())
-        .unwrap();
-    let resp = app.clone().oneshot(req).await.unwrap();
-    assert_eq!(resp.status(), StatusCode::OK);
-    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
-    let recs_json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
-    assert!(recs_json.is_array());
-
-    // 2. GET /api/v1/integrations/overseerr/status -> not configured initially
+    // 1. GET /api/v1/integrations/overseerr/status -> not configured initially
     let req = Request::builder()
         .method("GET")
         .uri("/api/v1/integrations/overseerr/status")

@@ -270,7 +270,6 @@ export const api = {
     a.remove();
   },
   getWrapped: (year) => request('/stats/wrapped' + (year ? `?year=${year}` : '')),
-  getRecommendations: () => request('/recommendations'),
   getOverseerrStatus: () => request('/integrations/overseerr/status'),
   requestOverseerrMedia: (payload) =>
     request('/integrations/overseerr/request', {

@@ -173,7 +173,7 @@ Tests in `tests/api_tests.rs` (46 integration tests) cover:
 - Database backup creation, 7-day retention pruning, pre-restore safety snapshot, transactional restore, and path traversal protection
 - User data export clean ZIP archive containing scrobbles JSON, CSV, and ratings
 - Outbound webhooks (Discord, Telegram, ntfy, Gotify, generic) scrobble event notifications and test endpoints
-- Recommendations ("You Might Also Like") based on user ratings and genres, with Overseerr media requests
+- Overseerr media requests and user status check
 - Day-of-week & hourly 7x24 viewing heatmap density matrix and Binge Wrapped annual review metrics
 
 ### Run Playwright E2E UI Tests
