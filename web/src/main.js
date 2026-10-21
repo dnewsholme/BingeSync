@@ -1989,19 +1989,21 @@ function renderStats() {
   // Render Top Shows
   if (!isMovie && el.topShowsList) {
     if (!s.top_shows || s.top_shows.length === 0) {
-      el.topShowsList.innerHTML = `<div class="empty-state"><p>No TV show history recorded yet.</p></div>`;
+      el.topShowsList.innerHTML = `<div class="empty-state" style="padding:15px;"><p>No TV show history recorded yet.</p></div>`;
     } else {
-      el.topShowsList.innerHTML = s.top_shows.map(show => `
+      el.topShowsList.innerHTML = s.top_shows.map((show, idx) => `
         <div class="top-show-item">
+          <span class="top-show-rank">#${idx + 1}</span>
           <div class="top-show-thumb">
             ${resolveImageUrl(show.thumb_url)
               ? `<img src="${escapeHtml(resolveImageUrl(show.thumb_url))}" alt="${escapeHtml(show.show_title)}" onerror="this.outerHTML='📺'"/>`
               : '📺'}
           </div>
           <div class="top-show-info">
-            <div class="top-show-name">${escapeHtml(show.show_title)}</div>
+            <div class="top-show-name" title="${escapeHtml(show.show_title)}">${escapeHtml(show.show_title)}</div>
             <div class="top-show-count">${show.count} ${show.count === 1 ? 'episode' : 'episodes'} watched</div>
           </div>
+          <span class="top-show-badge">${show.count} ${show.count === 1 ? 'ep' : 'eps'}</span>
         </div>
       `).join('');
     }
@@ -2015,19 +2017,21 @@ function renderStats() {
   // Render Top Movies
   if (!isTv && el.topMoviesList) {
     if (!s.top_movies || s.top_movies.length === 0) {
-      el.topMoviesList.innerHTML = `<div class="empty-state"><p>No movie history recorded yet.</p></div>`;
+      el.topMoviesList.innerHTML = `<div class="empty-state" style="padding:15px;"><p>No movie history recorded yet.</p></div>`;
     } else {
-      el.topMoviesList.innerHTML = s.top_movies.map(movie => `
+      el.topMoviesList.innerHTML = s.top_movies.map((movie, idx) => `
         <div class="top-show-item">
+          <span class="top-show-rank">#${idx + 1}</span>
           <div class="top-show-thumb">
             ${resolveImageUrl(movie.thumb_url)
               ? `<img src="${escapeHtml(resolveImageUrl(movie.thumb_url))}" alt="${escapeHtml(movie.title)}" onerror="this.outerHTML='🎬'"/>`
               : '🎬'}
           </div>
           <div class="top-show-info">
-            <div class="top-show-name">${escapeHtml(movie.title)}${movie.year ? ` (${movie.year})` : ''}</div>
+            <div class="top-show-name" title="${escapeHtml(movie.title)}${movie.year ? ` (${movie.year})` : ''}">${escapeHtml(movie.title)}${movie.year ? ` (${movie.year})` : ''}</div>
             <div class="top-show-count">${movie.count} ${movie.count === 1 ? 'play' : 'plays'}</div>
           </div>
+          <span class="top-show-badge">${movie.count} ${movie.count === 1 ? 'play' : 'plays'}</span>
         </div>
       `).join('');
     }
