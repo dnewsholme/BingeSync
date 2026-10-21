@@ -115,10 +115,10 @@ pub async fn export_user_data(
     })?;
 
     // Build scrobbles.csv
-    let mut scrobbles_csv = String::from("id,title,media_type,grandparent_title,parent_title,season_number,episode_number,year,user_rating,watch_status,progress_percent,duration_ms,watched_at,created_at,genres,director,cinematographer,actors,tvdb_id\n");
+    let mut scrobbles_csv = String::from("id,title,media_type,grandparent_title,parent_title,season_number,episode_number,year,user_rating,watch_status,progress_percent,duration_ms,watched_at,created_at,genres,director,cinematographer,actors,tvdb_id,tags,notes\n");
     for s in &scrobbles {
         scrobbles_csv.push_str(&format!(
-            "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}\n",
+            "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}\n",
             escape_csv(&s.id),
             escape_csv(&s.title),
             escape_csv(&s.media_type),
@@ -138,6 +138,8 @@ pub async fn export_user_data(
             escape_csv(s.cinematographer.as_deref().unwrap_or("")),
             escape_csv(s.actors.as_deref().unwrap_or("")),
             escape_csv(s.tvdb_id.as_deref().unwrap_or("")),
+            escape_csv(s.tags.as_deref().unwrap_or("")),
+            escape_csv(s.notes.as_deref().unwrap_or("")),
         ));
     }
 

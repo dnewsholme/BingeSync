@@ -27,6 +27,7 @@ pub struct HistoryQuery {
     pub cinematographer: Option<String>,
     pub rating: Option<String>,
     pub watch_status: Option<String>,
+    pub tag: Option<String>,
     #[serde(default, alias = "all_results")]
     pub all: Option<bool>,
     #[serde(default)]
@@ -65,6 +66,7 @@ pub async fn list_history(
     let cinematographer_filter = query.cinematographer.as_deref().unwrap_or("").trim();
     let rating_filter = query.rating.as_deref().unwrap_or("all").trim();
     let watch_status_filter = query.watch_status.as_deref().unwrap_or("all").trim();
+    let tag_filter = query.tag.as_deref().unwrap_or("").trim();
 
     let mut count_sql = "SELECT COUNT(*) FROM scrobbles WHERE user_id = ?".to_string();
     let mut data_sql = "SELECT * FROM scrobbles WHERE user_id = ?".to_string();
@@ -84,8 +86,10 @@ pub async fn list_history(
 
     if !search_filter.is_empty() && !is_missing_metadata_keyword {
         let pattern = format!("%{}%", search_filter);
-        count_sql.push_str(" AND (title LIKE ? OR grandparent_title LIKE ? OR overview LIKE ?)");
-        data_sql.push_str(" AND (title LIKE ? OR grandparent_title LIKE ? OR overview LIKE ?)");
+        count_sql.push_str(" AND (title LIKE ? OR grandparent_title LIKE ? OR overview LIKE ? OR tags LIKE ? OR notes LIKE ?)");
+        data_sql.push_str(" AND (title LIKE ? OR grandparent_title LIKE ? OR overview LIKE ? OR tags LIKE ? OR notes LIKE ?)");
+        bind_params.push(pattern.clone());
+        bind_params.push(pattern.clone());
         bind_params.push(pattern.clone());
         bind_params.push(pattern.clone());
         bind_params.push(pattern);
@@ -128,6 +132,13 @@ pub async fn list_history(
         bind_params.push(pattern.clone());
         bind_params.push(pattern.clone());
         bind_params.push(pattern.clone());
+        bind_params.push(pattern);
+    }
+
+    if !tag_filter.is_empty() {
+        let pattern = format!("%{}%", tag_filter);
+        count_sql.push_str(" AND tags LIKE ?");
+        data_sql.push_str(" AND tags LIKE ?");
         bind_params.push(pattern);
     }
 
@@ -242,6 +253,8 @@ pub async fn create_scrobble(
     let director = payload.director.clone().or_else(|| payload.directors.clone());
     let directors = payload.directors.or_else(|| director.clone());
     let cinematographer = payload.cinematographer;
+    let tags = payload.tags;
+    let notes = payload.notes;
 
     sqlx::query(
         r#"
@@ -250,8 +263,8 @@ pub async fn create_scrobble(
             season_number, episode_number, year, overview, thumb_url,
             rating_key, guid, duration_ms, user_rating,
             genres, directors, director, cinematographer, actors, watch_status, progress_percent, view_offset_ms,
-            watched_at, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            tags, notes, watched_at, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
     )
     .bind(&scrobble_id)
@@ -277,6 +290,8 @@ pub async fn create_scrobble(
     .bind(&watch_status)
     .bind(payload.progress_percent)
     .bind(payload.view_offset_ms)
+    .bind(&tags)
+    .bind(&notes)
     .bind(&watched_at)
     .bind(&now)
     .execute(&state.pool)
@@ -380,6 +395,50 @@ pub async fn rate_scrobble(
         "status": "success",
         "id": id,
         "rating": payload.rating
+    })))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateUserDataRequest {
+    pub tags: Option<String>,
+    pub notes: Option<String>,
+}
+
+pub async fn update_scrobble_user_data(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path(id): Path<String>,
+    Json(payload): Json<UpdateUserDataRequest>,
+) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
+    let clean_tags = payload.tags.as_deref().map(|s| s.trim()).filter(|s| !s.is_empty()).map(|s| s.to_string());
+    let clean_notes = payload.notes.as_deref().map(|s| s.trim()).filter(|s| !s.is_empty()).map(|s| s.to_string());
+
+    let res = sqlx::query("UPDATE scrobbles SET tags = ?, notes = ? WHERE id = ? AND user_id = ?")
+        .bind(&clean_tags)
+        .bind(&clean_notes)
+        .bind(&id)
+        .bind(&auth.user_id)
+        .execute(&state.pool)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": format!("Database error updating user data: {}", e) })),
+            )
+        })?;
+
+    if res.rows_affected() == 0 {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": "Scrobble not found" })),
+        ));
+    }
+
+    Ok(Json(serde_json::json!({
+        "status": "success",
+        "id": id,
+        "tags": clean_tags,
+        "notes": clean_notes,
     })))
 }
 

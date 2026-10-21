@@ -48,6 +48,8 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
             progress_percent INTEGER DEFAULT NULL,
             view_offset_ms INTEGER DEFAULT NULL,
             metadata_updated_at TEXT DEFAULT NULL,
+            tags TEXT,
+            notes TEXT,
             watched_at TEXT NOT NULL DEFAULT (datetime('now')),
             created_at TEXT NOT NULL DEFAULT (datetime('now'))
         );
@@ -157,6 +159,15 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
         .execute(pool)
         .await;
     let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_scrobbles_metadata_updated ON scrobbles(metadata_updated_at)")
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("ALTER TABLE scrobbles ADD COLUMN tags TEXT")
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("ALTER TABLE scrobbles ADD COLUMN notes TEXT")
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_scrobbles_tags ON scrobbles(tags)")
         .execute(pool)
         .await;
 

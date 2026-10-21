@@ -60,6 +60,7 @@ export const api = {
     if (params.rating && params.rating !== 'all') url += `&rating=${encodeURIComponent(params.rating)}`;
     if (params.watch_status && params.watch_status !== 'all') url += `&watch_status=${encodeURIComponent(params.watch_status)}`;
     if (params.media_type && params.media_type !== 'all') url += `&media_type=${encodeURIComponent(params.media_type)}`;
+    if (params.tag) url += `&tag=${encodeURIComponent(params.tag)}`;
     if (params.missing_metadata) url += `&missing_metadata=true`;
     return request(url);
   },
@@ -76,6 +77,7 @@ export const api = {
     if (params.date && !params.all_dates) url += `&date=${encodeURIComponent(params.date)}`;
     if (params.genre) url += `&genre=${encodeURIComponent(params.genre)}`;
     if (params.person) url += `&person=${encodeURIComponent(params.person)}`;
+    if (params.tag) url += `&tag=${encodeURIComponent(params.tag)}`;
     if (params.rating && params.rating !== 'all') url += `&rating=${encodeURIComponent(params.rating)}`;
     if (params.watch_status && params.watch_status !== 'all') url += `&watch_status=${encodeURIComponent(params.watch_status)}`;
     if (params.missing_metadata) url += `&missing_metadata=true`;
@@ -94,6 +96,11 @@ export const api = {
     request(`/history/${id}/rate`, {
       method: 'POST',
       body: JSON.stringify({ rating }),
+    }),
+  updateScrobbleUserData: (id, data) =>
+    request(`/history/${id}/user-data`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
     }),
   getItemWatches: (id) => request(`/history/${id}/watches`),
   refreshScrobbleMetadata: (id) =>

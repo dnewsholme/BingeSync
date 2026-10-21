@@ -50,6 +50,7 @@ const state = {
     mediaType: 'all',
     search: '',
     person: '',
+    tag: '',
     allResults: false,
     missingMetadata: false,
     totalPages: 1,
@@ -1524,6 +1525,18 @@ function renderScrobbleCard(item, isHistory = false) {
         <span>${formatTime(item.watched_at)}</span>
         <span>${durationMin}</span>
       </div>
+      ${item.tags ? `
+        <div class="scrobble-card-tags" onclick="event.stopPropagation()">
+          ${item.tags.split(',').map(t => t.trim()).filter(Boolean).map(t => `
+            <button type="button" class="tag-chip-card" data-tag="${escapeHtml(t)}" title="Filter by tag: ${escapeHtml(t)}">🏷️ ${escapeHtml(t)}</button>
+          `).join('')}
+        </div>
+      ` : ''}
+      ${item.notes ? `
+        <div class="scrobble-card-notes" title="${escapeHtml(item.notes)}">
+          <span style="opacity:0.8;">📝</span> <em>${escapeHtml(item.notes.length > 55 ? item.notes.substring(0, 52) + '...' : item.notes)}</em>
+        </div>
+      ` : ''}
       ${progressBarHtml}
     </div>
   `;
@@ -1538,6 +1551,15 @@ function attachScrobbleCardListeners(container, items, isHistory = false) {
         e.stopPropagation();
         const p = pt.dataset.person;
         if (p) filterHistoryByPerson(p);
+      });
+    });
+
+    // Click on personal tag chip on card
+    card.querySelectorAll('.tag-chip-card').forEach(tc => {
+      tc.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const tag = tc.dataset.tag;
+        if (tag) filterHistoryByTag(tag);
       });
     });
 
@@ -1600,6 +1622,21 @@ function updateHistoryPersonBadge() {
         loadHistory();
       };
     }
+  } else if (state.history.tag) {
+    el.historyPersonBadge.style.display = 'inline-flex';
+    el.historyPersonBadge.innerHTML = `
+      <span>Tag: <strong>${escapeHtml(state.history.tag)}</strong></span>
+      <button type="button" id="btn-clear-history-tag" title="Clear tag filter">✕</button>
+    `;
+    const btn = el.historyPersonBadge.querySelector('#btn-clear-history-tag');
+    if (btn) {
+      btn.onclick = () => {
+        state.history.tag = '';
+        updateHistoryPersonBadge();
+        state.history.page = 1;
+        loadHistory();
+      };
+    }
   } else {
     el.historyPersonBadge.style.display = 'none';
     el.historyPersonBadge.innerHTML = '';
@@ -1609,9 +1646,25 @@ function updateHistoryPersonBadge() {
 function filterHistoryByPerson(personName) {
   if (el.modalItemDetail) el.modalItemDetail.style.display = 'none';
   state.history.person = personName;
+  state.history.tag = '';
   state.history.page = 1;
   state.history.search = '';
   if (el.historySearch) el.historySearch.value = '';
+
+  const tabHistory = document.getElementById('tab-history');
+  if (tabHistory) tabHistory.click();
+
+  updateHistoryPersonBadge();
+  loadHistory();
+}
+
+function filterHistoryByTag(tag) {
+  if (el.modalItemDetail) el.modalItemDetail.style.display = 'none';
+  state.history.tag = tag;
+  state.history.person = '';
+  state.history.page = 1;
+  state.history.search = '';
+  if (el.historySearch) el.historySearch.value = `tag:${tag}`;
 
   const tabHistory = document.getElementById('tab-history');
   if (tabHistory) tabHistory.click();
@@ -1630,6 +1683,7 @@ async function loadHistory() {
       media_type: state.history.mediaType,
       search: state.history.search,
       person: state.history.person,
+      tag: state.history.tag,
       all: state.history.allResults,
       all_dates: state.history.allResults,
       missing_metadata: state.history.missingMetadata,
@@ -3076,6 +3130,28 @@ async function openDetailModal(item) {
       </div>
       <span id="detail-rating-feedback" style="font-size:0.82rem;font-weight:500;display:none;"></span>
     </div>
+
+    <!-- Personal Tags & Notes Widget -->
+    <div class="detail-user-data-widget" style="margin:14px 0;padding:12px 14px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:8px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+        <span style="font-size:0.88rem;font-weight:600;color:var(--text-main);display:flex;align-items:center;gap:6px;">
+          🏷️ Tags & Review Notes
+        </span>
+        <button type="button" class="btn btn-primary btn-sm" id="btn-save-detail-user-data" style="padding:4px 12px;font-size:0.82rem;">Save Notes & Tags</button>
+      </div>
+      <div style="margin-bottom:8px;">
+        <label for="detail-tags-input" style="font-size:0.75rem;color:var(--text-dim);display:block;margin-bottom:4px;font-weight:600;text-transform:uppercase;">Personal Tags (comma-separated)</label>
+        <input type="text" id="detail-tags-input" class="form-control" placeholder="e.g. Rewatch, Plane Movie, Watched with Daryl" value="${escapeHtml(item.tags || '')}" style="font-size:0.85rem;padding:6px 10px;" />
+        <div id="detail-tags-preview" style="display:flex;flex-wrap:wrap;gap:5px;margin-top:6px;">
+          ${(item.tags || '').split(',').map(t => t.trim()).filter(Boolean).map(t => `<button type="button" class="tag-chip-card" data-tag="${escapeHtml(t)}" title="Filter by tag: ${escapeHtml(t)}">🏷️ ${escapeHtml(t)}</button>`).join('')}
+        </div>
+      </div>
+      <div>
+        <label for="detail-notes-input" style="font-size:0.75rem;color:var(--text-dim);display:block;margin-bottom:4px;font-weight:600;text-transform:uppercase;">Review Notes</label>
+        <textarea id="detail-notes-input" class="form-control" rows="2" placeholder="Write thoughts, review notes, or memorable moments..." style="font-size:0.85rem;padding:6px 10px;resize:vertical;">${escapeHtml(item.notes || '')}</textarea>
+      </div>
+      <span id="detail-user-data-feedback" style="font-size:0.82rem;font-weight:500;display:none;margin-top:6px;"></span>
+    </div>
     <div id="detail-fix-match-box" class="fix-match-box" style="display:none;margin:14px 0;padding:12px 14px;background:rgba(59,130,246,0.06);border:1px solid rgba(59,130,246,0.25);border-radius:8px;">
       <div style="font-weight:600;font-size:0.88rem;color:#93c5fd;margin-bottom:6px;">${t('modal.fix_match_title')}</div>
       <p style="font-size:0.82rem;color:var(--text-dim);margin-bottom:10px;">${t('modal.fix_match_desc')}</p>
@@ -3141,6 +3217,59 @@ async function openDetailModal(item) {
         }
       } finally {
         btnSaveRating.disabled = false;
+      }
+    };
+  }
+
+  // Tags and notes click / save handlers
+  const prevTags = document.getElementById('detail-tags-preview');
+  if (prevTags) {
+    prevTags.querySelectorAll('.tag-chip-card').forEach(tc => {
+      tc.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const tag = tc.dataset.tag;
+        if (tag) filterHistoryByTag(tag);
+      });
+    });
+  }
+
+  const btnSaveUserData = document.getElementById('btn-save-detail-user-data');
+  if (btnSaveUserData) {
+    btnSaveUserData.onclick = async () => {
+      const tagsVal = document.getElementById('detail-tags-input')?.value?.trim() || null;
+      const notesVal = document.getElementById('detail-notes-input')?.value?.trim() || null;
+      const feedback = document.getElementById('detail-user-data-feedback');
+      btnSaveUserData.disabled = true;
+      try {
+        await api.updateScrobbleUserData(item.id, { tags: tagsVal, notes: notesVal });
+        item.tags = tagsVal;
+        item.notes = notesVal;
+        if (feedback) {
+          feedback.textContent = 'Tags & notes saved successfully';
+          feedback.style.color = '#34d399';
+          feedback.style.display = 'block';
+        }
+        const prevContainer = document.getElementById('detail-tags-preview');
+        if (prevContainer) {
+          prevContainer.innerHTML = (tagsVal || '').split(',').map(t => t.trim()).filter(Boolean).map(t => `<button type="button" class="tag-chip-card" data-tag="${escapeHtml(t)}" title="Filter by tag: ${escapeHtml(t)}">🏷️ ${escapeHtml(t)}</button>`).join('');
+          prevContainer.querySelectorAll('.tag-chip-card').forEach(tc => {
+            tc.addEventListener('click', (e) => {
+              e.stopPropagation();
+              const tag = tc.dataset.tag;
+              if (tag) filterHistoryByTag(tag);
+            });
+          });
+        }
+        loadTimeline();
+        loadHistory();
+      } catch (err) {
+        if (feedback) {
+          feedback.textContent = `Error: ${err.message}`;
+          feedback.style.color = '#ef4444';
+          feedback.style.display = 'block';
+        }
+      } finally {
+        btnSaveUserData.disabled = false;
       }
     };
   }
@@ -5237,14 +5366,14 @@ async function loadWrappedYear(year) {
         el.wrappedTopShowsList.innerHTML = '<div style="color:var(--text-muted);font-size:0.85rem;padding:8px 0;">No series watched this year.</div>';
       } else {
         el.wrappedTopShowsList.innerHTML = w.top_shows.map((s, idx) => `
-          <div class="top-show-item">
-            <span style="font-weight:800;color:var(--accent);width:20px;font-size:0.9rem;">#${idx + 1}</span>
-            <div class="top-show-thumb">
-              ${resolveImageUrl(s.thumb_url) ? `<img src="${escapeHtml(resolveImageUrl(s.thumb_url))}" alt="${escapeHtml(s.show_title)}" onerror="this.outerHTML='📺'"/>` : '📺'}
+          <div class="wrapped-top-card">
+            <div class="wrapped-card-poster">
+              <span class="wrapped-card-rank">#${idx + 1}</span>
+              ${resolveImageUrl(s.thumb_url) ? `<img src="${escapeHtml(resolveImageUrl(s.thumb_url))}" alt="${escapeHtml(s.show_title)}" onerror="this.parentElement.innerHTML='<div class=\\'wrapped-poster-fallback\\'>📺</div>'"/>` : '<div class="wrapped-poster-fallback">📺</div>'}
             </div>
-            <div class="top-show-info">
-              <div class="top-show-name">${escapeHtml(s.show_title)}</div>
-              <div class="top-show-count">${s.count} episodes</div>
+            <div class="wrapped-card-info">
+              <div class="wrapped-card-title" title="${escapeHtml(s.show_title)}">${escapeHtml(s.show_title)}</div>
+              <div class="wrapped-card-subtitle">${s.count} episodes</div>
             </div>
           </div>
         `).join('');
@@ -5256,14 +5385,14 @@ async function loadWrappedYear(year) {
         el.wrappedTopMoviesList.innerHTML = '<div style="color:var(--text-muted);font-size:0.85rem;padding:8px 0;">No movies watched this year.</div>';
       } else {
         el.wrappedTopMoviesList.innerHTML = w.top_movies.map((m, idx) => `
-          <div class="top-show-item">
-            <span style="font-weight:800;color:var(--accent);width:20px;font-size:0.9rem;">#${idx + 1}</span>
-            <div class="top-show-thumb">
-              ${resolveImageUrl(m.thumb_url) ? `<img src="${escapeHtml(resolveImageUrl(m.thumb_url))}" alt="${escapeHtml(m.title)}" onerror="this.outerHTML='🎬'"/>` : '🎬'}
+          <div class="wrapped-top-card">
+            <div class="wrapped-card-poster">
+              <span class="wrapped-card-rank">#${idx + 1}</span>
+              ${resolveImageUrl(m.thumb_url) ? `<img src="${escapeHtml(resolveImageUrl(m.thumb_url))}" alt="${escapeHtml(m.title)}" onerror="this.parentElement.innerHTML='<div class=\\'wrapped-poster-fallback\\'>🎬</div>'"/>` : '<div class="wrapped-poster-fallback">🎬</div>'}
             </div>
-            <div class="top-show-info">
-              <div class="top-show-name">${escapeHtml(m.title)}${m.year ? ` (${m.year})` : ''}</div>
-              <div class="top-show-count">${m.count} ${m.count === 1 ? 'play' : 'plays'}</div>
+            <div class="wrapped-card-info">
+              <div class="wrapped-card-title" title="${escapeHtml(m.title)}">${escapeHtml(m.title)}${m.year ? ` (${m.year})` : ''}</div>
+              <div class="wrapped-card-subtitle">${m.count} ${m.count === 1 ? 'play' : 'plays'}</div>
             </div>
           </div>
         `).join('');

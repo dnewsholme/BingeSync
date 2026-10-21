@@ -34,6 +34,10 @@ pub struct Scrobble {
     pub view_offset_ms: Option<i64>,
     #[serde(default)]
     pub metadata_updated_at: Option<String>,
+    #[sqlx(default)]
+    pub tags: Option<String>,
+    #[sqlx(default)]
+    pub notes: Option<String>,
     pub watched_at: String,
     pub created_at: String,
 }
@@ -61,6 +65,8 @@ pub struct NewScrobbleRequest {
     pub watch_status: Option<String>,
     pub progress_percent: Option<i64>,
     pub view_offset_ms: Option<i64>,
+    pub tags: Option<String>,
+    pub notes: Option<String>,
     pub watched_at: Option<String>,
 }
 

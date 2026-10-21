@@ -6414,5 +6414,155 @@ async fn test_plex_and_jellyfin_non_playback_events_ignored() {
     assert_eq!(count, 1, "Playback media.scrobble must create a scrobble");
 }
 
+#[tokio::test]
+async fn test_scrobble_tags_and_notes_crud_and_filtering() {
+    let (app, pool, config) = setup_test_app().await;
+
+    // Create user A
+    let user_a_id = "user_tags_a";
+    let token_a = create_jwt(user_a_id, "usera@tags.local", &config.jwt_secret).unwrap();
+    sqlx::query("INSERT INTO users (id, email, display_name, webhook_token, role) VALUES (?, ?, ?, ?, 'user')")
+        .bind(user_a_id)
+        .bind("usera@tags.local")
+        .bind("User A Tags")
+        .bind("token_tags_a")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    // Create user B
+    let user_b_id = "user_tags_b";
+    let token_b = create_jwt(user_b_id, "userb@tags.local", &config.jwt_secret).unwrap();
+    sqlx::query("INSERT INTO users (id, email, display_name, webhook_token, role) VALUES (?, ?, ?, ?, 'user')")
+        .bind(user_b_id)
+        .bind("userb@tags.local")
+        .bind("User B Tags")
+        .bind("token_tags_b")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    // 1. User A logs a scrobble with personal tags & review notes
+    let new_scrobble = json!({
+        "title": "Top Gun: Maverick",
+        "media_type": "movie",
+        "year": 2022,
+        "tags": "Plane Movie, Rewatch",
+        "notes": "Spectacular aerial photography in IMAX!"
+    });
+
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/history")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token_a))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(new_scrobble.to_string()))
+        .unwrap();
+
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::CREATED);
+    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let created: Scrobble = serde_json::from_slice(&body_bytes).unwrap();
+    assert_eq!(created.tags.as_deref(), Some("Plane Movie, Rewatch"));
+    assert_eq!(created.notes.as_deref(), Some("Spectacular aerial photography in IMAX!"));
+
+    let scrobble_id = created.id;
+
+    // 2. User B tries to update user A's scrobble tags/notes -> 404 Not Found
+    let update_b = json!({
+        "tags": "Hacked Tag",
+        "notes": "Hacked Notes"
+    });
+    let req = Request::builder()
+        .method("PUT")
+        .uri(format!("/api/v1/history/{}/user-data", scrobble_id))
+        .header(header::AUTHORIZATION, format!("Bearer {}", token_b))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(update_b.to_string()))
+        .unwrap();
+
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
+
+    // 3. User A updates tags & notes (e.g. "Plane Movie, Watched with Daryl")
+    let update_a = json!({
+        "tags": "Plane Movie, Watched with Daryl",
+        "notes": "Enjoyed with Daryl on a long flight."
+    });
+    let req = Request::builder()
+        .method("PUT")
+        .uri(format!("/api/v1/history/{}/user-data", scrobble_id))
+        .header(header::AUTHORIZATION, format!("Bearer {}", token_a))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(update_a.to_string()))
+        .unwrap();
+
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let updated_res: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    assert_eq!(updated_res["tags"], "Plane Movie, Watched with Daryl");
+    assert_eq!(updated_res["notes"], "Enjoyed with Daryl on a long flight.");
+
+    // 4. Query history filtered by tag="Watched with Daryl"
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/history?tag=Watched+with+Daryl")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token_a))
+        .body(Body::empty())
+        .unwrap();
+
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let history_json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    assert_eq!(history_json["total"], 1);
+    assert_eq!(history_json["items"][0]["title"], "Top Gun: Maverick");
+    assert_eq!(history_json["items"][0]["tags"], "Plane Movie, Watched with Daryl");
+
+    // 5. Query history with non-existent tag -> 0 items
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/history?tag=Horror")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token_a))
+        .body(Body::empty())
+        .unwrap();
+
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let history_json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    assert_eq!(history_json["total"], 0);
+
+    // 6. Search history by keyword inside notes ("flight")
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/history?search=flight")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token_a))
+        .body(Body::empty())
+        .unwrap();
+
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let history_json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    assert_eq!(history_json["total"], 1);
+    assert_eq!(history_json["items"][0]["title"], "Top Gun: Maverick");
+
+    // 7. Verify User B sees 0 items (multi-user isolation)
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/history?search=flight")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token_b))
+        .body(Body::empty())
+        .unwrap();
+
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let history_json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    assert_eq!(history_json["total"], 0);
+}
+
 
 

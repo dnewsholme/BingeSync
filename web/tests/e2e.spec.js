@@ -2050,6 +2050,63 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     await page.click('#btn-dismiss-detail-modal');
     await expect(page.locator('#modal-item-detail')).toBeHidden();
   });
+
+  test('custom tagging, personal review notes, and history filtering', async ({ page }) => {
+    await page.goto('/');
+
+    const testEmail = `tags_notes_${Date.now()}@bingesync.local`;
+    await page.fill('#dev-email', testEmail);
+    await page.fill('#dev-name', 'Tag Tester');
+    await page.click('#btn-dev-submit');
+    await expect(page.locator('#user-display-name')).toContainText('Tag Tester');
+
+    // 1. Log a watch
+    await page.click('#btn-open-log-modal');
+    await page.fill('#scrobble-title', 'Inception');
+    await page.fill('#scrobble-year', '2010');
+    await page.click('#btn-submit-scrobble');
+    await expect(page.locator('#modal-log-scrobble')).toBeHidden();
+
+    // 2. Open item detail modal
+    const card = page.locator('.scrobble-card', { hasText: 'Inception' }).first();
+    await expect(card).toBeVisible();
+    await card.click();
+    await expect(page.locator('#modal-item-detail')).toBeVisible();
+
+    // 3. Add custom tags and personal review notes
+    await expect(page.locator('#detail-tags-input')).toBeVisible();
+    await expect(page.locator('#detail-notes-input')).toBeVisible();
+    await page.fill('#detail-tags-input', 'Rewatch, Plane Movie, Watched with Daryl');
+    await page.fill('#detail-notes-input', 'Mind-bending dream heist masterpiece.');
+    await page.click('#btn-save-detail-user-data');
+    await expect(page.locator('#detail-user-data-feedback')).toBeVisible();
+    await expect(page.locator('#detail-user-data-feedback')).toContainText(/saved/i);
+
+    // 4. Close modal and verify tags & notes snippet appear on card
+    await page.click('#btn-dismiss-detail-modal');
+    await expect(page.locator('#modal-item-detail')).toBeHidden();
+
+    await expect(card.locator('.tag-chip-card', { hasText: 'Plane Movie' })).toBeVisible();
+    await expect(card.locator('.scrobble-card-notes')).toContainText('Mind-bending dream heist masterpiece.');
+
+    // 5. Test clicking tag chip filters history
+    await card.locator('.tag-chip-card', { hasText: 'Plane Movie' }).click();
+    await expect(page.locator('#view-history')).toBeVisible();
+    await expect(page.locator('#history-person-badge')).toBeVisible();
+    await expect(page.locator('#history-person-badge')).toContainText('Tag: Plane Movie');
+
+    // 6. Verify Binge Wrapped modal top posters use uniform wrapped-card-poster
+    await page.click('#tab-stats');
+    await expect(page.locator('#view-stats')).toBeVisible();
+    await page.click('#btn-open-wrapped');
+    await expect(page.locator('#modal-wrapped')).toBeVisible();
+    const wrappedCards = page.locator('.wrapped-top-card');
+    await expect(wrappedCards.first()).toBeVisible();
+    await expect(page.locator('.wrapped-card-poster').first()).toBeVisible();
+    await page.click('#btn-close-wrapped-modal');
+    await expect(page.locator('#modal-wrapped')).toBeHidden();
+  });
 });
+
 
 

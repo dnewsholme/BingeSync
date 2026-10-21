@@ -25,7 +25,7 @@ pub mod ssrf;
 pub mod rate_limit;
 
 use axum::{
-    routing::{delete, get, post},
+    routing::{delete, get, post, put},
     Extension, Router,
 };
 use sqlx::SqlitePool;
@@ -234,6 +234,7 @@ pub fn create_api_router(state: AppState) -> Router {
         .route("/api/v1/history/by-date", delete(history::delete_by_date))
         .route("/api/v1/history/{id}/watches", get(history::get_item_watches))
         .route("/api/v1/history/{id}/rate", post(history::rate_scrobble).put(history::rate_scrobble))
+        .route("/api/v1/history/{id}/user-data", put(history::update_scrobble_user_data).patch(history::update_scrobble_user_data))
         .route("/api/v1/history/{id}/refresh-metadata", post(history::refresh_scrobble_metadata))
         .route("/api/v1/history/{id}/fix-match", post(history::fix_match_handler).put(history::fix_match_handler))
         .route("/api/v1/history/{id}/match-search", get(history::search_match_handler))
