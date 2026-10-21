@@ -148,6 +148,29 @@ async fn process_webhook(
         "Received Plex webhook"
     );
 
+    // Ignore non-playback events (such as library.new when new items are added to Plex, library.on.deck, media.rate, etc.)
+    // Only playback-related events should be tracked as scrobbles or active sessions.
+    let is_playback_event = matches!(
+        payload.event.as_str(),
+        "media.play" | "media.pause" | "media.resume" | "media.stop" | "media.scrobble"
+    );
+
+    if !is_playback_event {
+        tracing::info!(
+            user_id = %user.id,
+            event = %payload.event,
+            "Ignored Plex webhook: non-playback event"
+        );
+        return Ok((
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "status": "ignored",
+                "reason": "non_playback_event",
+                "event": payload.event
+            })),
+        ));
+    }
+
     // Filter by Plex account username or ID if present
     let account_title = payload
         .account
@@ -934,6 +957,25 @@ async fn process_jellyfin_or_emby_webhook(
 
     let played_flag = payload.played_to_completion == Some(true) || payload.played == Some(true) || lower_event.contains("scrobble") || lower_event.contains("markplayed");
     let is_completed = played_flag || (is_stop && calculated_pct >= threshold) || (is_saved && played_flag);
+
+    // Ignore non-playback events (such as ItemAdded, LibraryChanged, etc.)
+    let is_playback_event = is_stop || is_start || is_pause || is_progress || (is_saved && played_flag);
+    if !is_playback_event {
+        tracing::info!(
+            user_id = %user.id,
+            source = %source,
+            event = %event_name,
+            "Ignored webhook: non-playback event"
+        );
+        return Ok((
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "status": "ignored",
+                "reason": "non_playback_event",
+                "event": event_name
+            })),
+        ));
+    }
 
     let progress_percent = if is_completed {
         100.max(calculated_pct)

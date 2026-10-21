@@ -6262,5 +6262,157 @@ async fn test_tmdb_fix_match_cinematographer_filtering() {
     assert_eq!(updated.directors.as_deref(), Some("Denis Villeneuve"));
 }
 
+#[tokio::test]
+async fn test_plex_and_jellyfin_non_playback_events_ignored() {
+    let (app, pool, _config) = setup_test_app().await;
+
+    // Create user
+    let user = bingesync::api::auth::get_or_create_user_with_sid(
+        &pool,
+        "bob_library_new@bingesync.local",
+        "Bob",
+        None,
+        None,
+        None,
+        Some("bob_plex"),
+        false,
+    )
+    .await
+    .unwrap();
+
+    // 1. Plex fires "library.new" when a new item is added to the Plex library
+    let new_item_payload = json!({
+        "event": "library.new",
+        "user": true,
+        "owner": true,
+        "Account": { "title": "bob_plex" },
+        "Server": { "title": "Home Server" },
+        "Metadata": {
+            "type": "movie",
+            "title": "Gladiator II",
+            "year": 2024,
+            "duration": 8880000,
+            "summary": "Years after witnessing the death of Maximus, Lucius must enter the Colosseum.",
+            "thumb": "https://example.com/gladiator2.jpg"
+        }
+    });
+
+    let req = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/webhooks/plex/{}", user.webhook_token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(new_item_payload.to_string()))
+        .unwrap();
+
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let resp_json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    assert_eq!(resp_json["status"], "ignored");
+    assert_eq!(resp_json["reason"], "non_playback_event");
+    assert_eq!(resp_json["event"], "library.new");
+
+    // Verify NO scrobble was created in the database
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE user_id = ?")
+        .bind(&user.id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(count, 0, "library.new must not create a scrobble");
+
+    // 2. Plex fires "library.on.deck"
+    let on_deck_payload = json!({
+        "event": "library.on.deck",
+        "user": true,
+        "owner": true,
+        "Account": { "title": "bob_plex" },
+        "Metadata": {
+            "type": "movie",
+            "title": "Gladiator II"
+        }
+    });
+
+    let req = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/webhooks/plex/{}", user.webhook_token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(on_deck_payload.to_string()))
+        .unwrap();
+
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let resp_json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    assert_eq!(resp_json["status"], "ignored");
+    assert_eq!(resp_json["reason"], "non_playback_event");
+
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE user_id = ?")
+        .bind(&user.id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(count, 0, "library.on.deck must not create a scrobble");
+
+    // 3. Jellyfin fires "ItemAdded" when a new item is added to the library
+    let jelly_new_payload = json!({
+        "NotificationType": "ItemAdded",
+        "ItemType": "Movie",
+        "Name": "Gladiator II",
+        "Year": 2024
+    });
+
+    let req = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/webhooks/jellyfin/{}", user.webhook_token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(jelly_new_payload.to_string()))
+        .unwrap();
+
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let resp_json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    assert_eq!(resp_json["status"], "ignored");
+    assert_eq!(resp_json["reason"], "non_playback_event");
+
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE user_id = ?")
+        .bind(&user.id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(count, 0, "Jellyfin ItemAdded must not create a scrobble");
+
+    // 4. When actual playback occurs (e.g. media.scrobble), it IS recorded
+    let playback_payload = json!({
+        "event": "media.scrobble",
+        "user": true,
+        "owner": true,
+        "Account": { "title": "bob_plex" },
+        "Metadata": {
+            "type": "movie",
+            "title": "Gladiator II",
+            "year": 2024,
+            "duration": 8880000
+        }
+    });
+
+    let req = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/webhooks/plex/{}", user.webhook_token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(playback_payload.to_string()))
+        .unwrap();
+
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::CREATED);
+
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE user_id = ?")
+        .bind(&user.id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(count, 1, "Playback media.scrobble must create a scrobble");
+}
+
 
 
