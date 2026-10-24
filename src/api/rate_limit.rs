@@ -93,7 +93,7 @@ pub fn extract_client_ip(headers: &HeaderMap) -> String {
 
 pub async fn auth_rate_limit_middleware(req: Request, next: Next) -> Response {
     static LIMITER: OnceLock<RateLimiter> = OnceLock::new();
-    let limiter = LIMITER.get_or_init(|| RateLimiter::new(120, Duration::from_secs(60)));
+    let limiter = LIMITER.get_or_init(|| RateLimiter::new(240, Duration::from_secs(60)));
     apply_limiter(limiter, req, next).await
 }
 

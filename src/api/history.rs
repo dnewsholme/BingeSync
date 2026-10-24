@@ -11,7 +11,10 @@ use uuid::Uuid;
 use crate::{
     api::AppState,
     auth::AuthUser,
-    models::{HistoryResponse, NewScrobbleRequest, Scrobble},
+    models::{
+        CleanDuplicatesRequest, CleanDuplicatesResponse, DuplicateGroup, DuplicateScanResponse,
+        HistoryResponse, NewScrobbleRequest, Scrobble,
+    },
 };
 
 #[derive(Debug, Deserialize)]
@@ -811,6 +814,271 @@ pub async fn delete_by_date(
         "date": query.date,
         "deleted_count": res.rows_affected()
     })))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DuplicatesQuery {
+    pub window_hours: Option<i64>,
+}
+
+fn parse_timestamp_epoch(raw: &str) -> Option<i64> {
+    let trimmed = raw.trim();
+    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(trimmed) {
+        return Some(dt.timestamp());
+    }
+    if let Ok(naive) = chrono::NaiveDateTime::parse_from_str(trimmed, "%Y-%m-%d %H:%M:%S") {
+        return Some(chrono::DateTime::<Utc>::from_naive_utc_and_offset(naive, Utc).timestamp());
+    }
+    if let Ok(naive) = chrono::NaiveDateTime::parse_from_str(trimmed, "%Y-%m-%dT%H:%M:%S") {
+        return Some(chrono::DateTime::<Utc>::from_naive_utc_and_offset(naive, Utc).timestamp());
+    }
+    if let Ok(date) = chrono::NaiveDate::parse_from_str(trimmed, "%Y-%m-%d") {
+        if let Some(naive) = date.and_hms_opt(12, 0, 0) {
+            return Some(chrono::DateTime::<Utc>::from_naive_utc_and_offset(naive, Utc).timestamp());
+        }
+    }
+    None
+}
+
+fn format_time_difference(seconds: i64) -> String {
+    if seconds < 60 {
+        "Recorded seconds apart".to_string()
+    } else if seconds < 3600 {
+        let m = seconds / 60;
+        format!("Recorded {}m apart", m)
+    } else if seconds < 86400 {
+        let h = seconds / 3600;
+        let m = (seconds % 3600) / 60;
+        if m > 0 {
+            format!("Recorded {}h {}m apart", h, m)
+        } else {
+            format!("Recorded {}h apart", h)
+        }
+    } else {
+        let d = seconds / 86400;
+        let h = (seconds % 86400) / 3600;
+        if h > 0 {
+            format!("Recorded {}d {}h apart", d, h)
+        } else {
+            format!("Recorded {}d apart", d)
+        }
+    }
+}
+
+pub fn find_duplicate_groups(scrobbles: &[Scrobble], window_hours: i64) -> Vec<DuplicateGroup> {
+    use std::collections::BTreeMap;
+
+    let window_hours = window_hours.clamp(1, 720);
+    let window_seconds = window_hours * 3600;
+
+    // Group scrobbles by unique media item key
+    let mut media_buckets: BTreeMap<String, Vec<Scrobble>> = BTreeMap::new();
+    for s in scrobbles {
+        let key = if s.media_type == "episode" {
+            let show = s.grandparent_title.as_deref().unwrap_or(&s.title).trim().to_lowercase();
+            format!("episode:{}:{}:{}", show, s.season_number.unwrap_or(0), s.episode_number.unwrap_or(0))
+        } else {
+            format!("movie:{}:{}", s.title.trim().to_lowercase(), s.year.unwrap_or(0))
+        };
+        media_buckets.entry(key).or_default().push(s.clone());
+    }
+
+    let mut result_groups: Vec<DuplicateGroup> = Vec::new();
+
+    for (group_key, mut items) in media_buckets {
+        // Sort items chronologically by watched_at, with created_at as fallback
+        items.sort_by(|a, b| {
+            let t_a = parse_timestamp_epoch(&a.watched_at).unwrap_or(0);
+            let t_b = parse_timestamp_epoch(&b.watched_at).unwrap_or(0);
+            t_a.cmp(&t_b).then_with(|| a.created_at.cmp(&b.created_at))
+        });
+
+        // Cluster items within window_seconds
+        let mut current_cluster: Vec<Scrobble> = Vec::new();
+
+        for item in items {
+            if let Some(last) = current_cluster.last() {
+                let t_last = parse_timestamp_epoch(&last.watched_at).unwrap_or(0);
+                let t_curr = parse_timestamp_epoch(&item.watched_at).unwrap_or(0);
+                let diff = (t_curr - t_last).abs();
+
+                if diff <= window_seconds {
+                    current_cluster.push(item);
+                } else {
+                    if current_cluster.len() > 1 {
+                        let rep = &current_cluster[0];
+                        let t_first = parse_timestamp_epoch(&current_cluster.first().unwrap().watched_at).unwrap_or(0);
+                        let t_end = parse_timestamp_epoch(&current_cluster.last().unwrap().watched_at).unwrap_or(0);
+                        let total_diff = (t_end - t_first).abs();
+                        let time_diff_disp = format_time_difference(total_diff);
+
+                        result_groups.push(DuplicateGroup {
+                            group_key: group_key.clone(),
+                            media_type: rep.media_type.clone(),
+                            title: rep.title.clone(),
+                            grandparent_title: rep.grandparent_title.clone(),
+                            season_number: rep.season_number,
+                            episode_number: rep.episode_number,
+                            year: rep.year,
+                            thumb_url: rep.thumb_url.clone(),
+                            time_difference_display: time_diff_disp,
+                            scrobbles: current_cluster,
+                        });
+                    }
+                    current_cluster = vec![item];
+                }
+            } else {
+                current_cluster.push(item);
+            }
+        }
+
+        if current_cluster.len() > 1 {
+            let rep = &current_cluster[0];
+            let t_first = parse_timestamp_epoch(&current_cluster.first().unwrap().watched_at).unwrap_or(0);
+            let t_end = parse_timestamp_epoch(&current_cluster.last().unwrap().watched_at).unwrap_or(0);
+            let total_diff = (t_end - t_first).abs();
+            let time_diff_disp = format_time_difference(total_diff);
+
+            result_groups.push(DuplicateGroup {
+                group_key: group_key.clone(),
+                media_type: rep.media_type.clone(),
+                title: rep.title.clone(),
+                grandparent_title: rep.grandparent_title.clone(),
+                season_number: rep.season_number,
+                episode_number: rep.episode_number,
+                year: rep.year,
+                thumb_url: rep.thumb_url.clone(),
+                time_difference_display: time_diff_disp,
+                scrobbles: current_cluster,
+            });
+        }
+    }
+
+    // Sort result groups so most recent duplicate clusters appear first
+    result_groups.sort_by(|a, b| {
+        let t_a = a.scrobbles.last().and_then(|s| parse_timestamp_epoch(&s.watched_at)).unwrap_or(0);
+        let t_b = b.scrobbles.last().and_then(|s| parse_timestamp_epoch(&s.watched_at)).unwrap_or(0);
+        t_b.cmp(&t_a)
+    });
+
+    result_groups
+}
+
+pub async fn get_duplicates_handler(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Query(query): Query<DuplicatesQuery>,
+) -> Result<Json<DuplicateScanResponse>, (StatusCode, Json<serde_json::Value>)> {
+    let window_hours = query.window_hours.unwrap_or(24).clamp(1, 720);
+
+    let all_scrobbles = sqlx::query_as::<_, Scrobble>(
+        "SELECT * FROM scrobbles WHERE user_id = ? ORDER BY watched_at ASC, created_at ASC"
+    )
+    .bind(&auth.user_id)
+    .fetch_all(&state.pool)
+    .await
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": format!("Database error fetching scrobbles: {}", e) })),
+        )
+    })?;
+
+    let groups = find_duplicate_groups(&all_scrobbles, window_hours);
+    let total_redundant: usize = groups.iter().map(|g| g.scrobbles.len().saturating_sub(1)).sum();
+
+    Ok(Json(DuplicateScanResponse {
+        total_duplicate_groups: groups.len(),
+        total_redundant_scrobbles: total_redundant,
+        window_hours,
+        groups,
+    }))
+}
+
+pub async fn clean_duplicates_handler(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Json(payload): Json<CleanDuplicatesRequest>,
+) -> Result<Json<CleanDuplicatesResponse>, (StatusCode, Json<serde_json::Value>)> {
+    let strategy = payload.strategy.as_deref().unwrap_or("keep_oldest");
+    let mut to_delete_ids: Vec<String> = Vec::new();
+
+    if strategy == "custom" || (payload.delete_ids.is_some() && !payload.delete_ids.as_ref().unwrap().is_empty()) {
+        if let Some(ids) = payload.delete_ids {
+            to_delete_ids = ids;
+        }
+    } else {
+        let window_hours = payload.window_hours.unwrap_or(24).clamp(1, 720);
+        let all_scrobbles = sqlx::query_as::<_, Scrobble>(
+            "SELECT * FROM scrobbles WHERE user_id = ? ORDER BY watched_at ASC, created_at ASC"
+        )
+        .bind(&auth.user_id)
+        .fetch_all(&state.pool)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": format!("Database error fetching scrobbles: {}", e) })),
+            )
+        })?;
+
+        let groups = find_duplicate_groups(&all_scrobbles, window_hours);
+
+        for mut group in groups {
+            if group.scrobbles.len() <= 1 {
+                continue;
+            }
+
+            if strategy == "keep_newest" {
+                // Keep the newest one (index 0 when reversed), delete the older duplicates
+                group.scrobbles.sort_by(|a, b| {
+                    let t_a = parse_timestamp_epoch(&a.watched_at).unwrap_or(0);
+                    let t_b = parse_timestamp_epoch(&b.watched_at).unwrap_or(0);
+                    t_b.cmp(&t_a).then_with(|| b.created_at.cmp(&a.created_at))
+                });
+                for s in &group.scrobbles[1..] {
+                    to_delete_ids.push(s.id.clone());
+                }
+            } else {
+                // Default: keep_oldest. Keep index 0, delete the newer duplicates
+                group.scrobbles.sort_by(|a, b| {
+                    let t_a = parse_timestamp_epoch(&a.watched_at).unwrap_or(0);
+                    let t_b = parse_timestamp_epoch(&b.watched_at).unwrap_or(0);
+                    t_a.cmp(&t_b).then_with(|| a.created_at.cmp(&b.created_at))
+                });
+                for s in &group.scrobbles[1..] {
+                    to_delete_ids.push(s.id.clone());
+                }
+            }
+        }
+    }
+
+    if to_delete_ids.is_empty() {
+        return Ok(Json(CleanDuplicatesResponse {
+            success: true,
+            deleted_count: 0,
+            message: "No duplicates found to delete.".to_string(),
+        }));
+    }
+
+    // Execute atomic deletion strictly scoped to auth.user_id
+    let mut deleted_count: usize = 0;
+    for id in &to_delete_ids {
+        if let Ok(res) = sqlx::query("DELETE FROM scrobbles WHERE id = ? AND user_id = ?")
+            .bind(id)
+            .bind(&auth.user_id)
+            .execute(&state.pool)
+            .await
+        {
+            deleted_count += res.rows_affected() as usize;
+        }
+    }
+
+    Ok(Json(CleanDuplicatesResponse {
+        success: true,
+        deleted_count,
+        message: format!("Successfully pruned {} duplicate scrobbles.", deleted_count),
+    }))
 }
 
 /// Refresh metadata and poster artwork for a specific scrobble on user request

@@ -359,6 +359,44 @@ pub const OPENAPI_SPEC_JSON: &str = r###"{
                     }
                 }
             },
+            "/api/v1/history/duplicates": {
+                "get": {
+                    "tags": ["History"],
+                    "summary": "Detect duplicate scrobbles within a time window",
+                    "security": [{ "BearerAuth": [] }],
+                    "parameters": [
+                        { "name": "window_hours", "in": "query", "required": false, "schema": { "type": "integer", "default": 24, "example": 24 } }
+                    ],
+                    "responses": {
+                        "200": { "description": "Duplicate scrobbles grouped by media item and time window" }
+                    }
+                }
+            },
+            "/api/v1/history/duplicates/clean": {
+                "post": {
+                    "tags": ["History"],
+                    "summary": "Clean and prune duplicate scrobbles",
+                    "security": [{ "BearerAuth": [] }],
+                    "requestBody": {
+                        "required": false,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "strategy": { "type": "string", "enum": ["keep_oldest", "keep_newest", "custom"], "default": "keep_oldest" },
+                                        "window_hours": { "type": "integer", "default": 24 },
+                                        "delete_ids": { "type": "array", "items": { "type": "string" } }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "responses": {
+                        "200": { "description": "Pruning results" }
+                    }
+                }
+            },
             "/api/v1/timeline": {
                 "get": {
                     "tags": ["Timeline & Stats"],

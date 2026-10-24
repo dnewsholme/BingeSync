@@ -70,6 +70,12 @@ const state = {
     selectedItem: null,
     isLoading: false,
   },
+  duplicates: {
+    groups: [],
+    selectedDeleteIds: new Set(),
+    windowHours: 24,
+    isLoading: false,
+  },
   selectedItem: null,
   nowPlayingTimer: null,
 };
@@ -453,6 +459,26 @@ const el = {
   cleanupModalOptions: document.getElementById('cleanup-modal-options'),
   cleanupModalStatus: document.getElementById('cleanup-modal-status'),
   cleanupAlsoRemoveHistory: document.getElementById('cleanup-also-remove-history'),
+
+  // Duplicate Watch Detector
+  btnOpenDuplicatesModal: document.getElementById('btn-open-duplicates-modal'),
+  btnCleanupFindDuplicates: document.getElementById('btn-cleanup-find-duplicates'),
+  modalDuplicates: document.getElementById('modal-duplicates'),
+  btnCloseDuplicatesModal: document.getElementById('btn-close-duplicates-modal'),
+  btnCloseDuplicatesModalFooter: document.getElementById('btn-close-duplicates-modal-footer'),
+  dupWindowSelect: document.getElementById('dup-window-select'),
+  btnScanDuplicates: document.getElementById('btn-scan-duplicates'),
+  dupBulkActions: document.getElementById('dup-bulk-actions'),
+  btnCleanKeepOldest: document.getElementById('btn-clean-keep-oldest'),
+  btnCleanKeepNewest: document.getElementById('btn-clean-keep-newest'),
+  dupStatusBanner: document.getElementById('dup-status-banner'),
+  dupResultsContainer: document.getElementById('dup-results-container'),
+  dupLoading: document.getElementById('dup-loading'),
+  dupEmptyState: document.getElementById('dup-empty-state'),
+  dupGroupsList: document.getElementById('dup-groups-list'),
+  dupSelectionSummary: document.getElementById('dup-selection-summary'),
+  btnDeleteSelectedDuplicates: document.getElementById('btn-delete-selected-duplicates'),
+  dupSelectedCount: document.getElementById('dup-selected-count'),
 };
 
 // Initialization
@@ -5493,5 +5519,276 @@ if (el.btnCopyWrappedSummary) {
   });
 }
 
+// ==========================================================================
+// Duplicate Watch Detector & Cleanup Tool
+// ==========================================================================
+
+function openDuplicatesModal() {
+  if (!el.modalDuplicates) return;
+  el.modalDuplicates.style.display = 'flex';
+  scanDuplicates();
+}
+
+function closeDuplicatesModal() {
+  if (el.modalDuplicates) el.modalDuplicates.style.display = 'none';
+  state.duplicates.groups = [];
+  state.duplicates.selectedDeleteIds.clear();
+}
+
+async function scanDuplicates() {
+  if (!el.dupResultsContainer) return;
+  state.duplicates.isLoading = true;
+  state.duplicates.selectedDeleteIds.clear();
+  updateDupSelectionSummary();
+
+  const windowHours = el.dupWindowSelect ? parseInt(el.dupWindowSelect.value, 10) : 24;
+  state.duplicates.windowHours = windowHours;
+
+  if (el.dupLoading) el.dupLoading.style.display = 'block';
+  if (el.dupEmptyState) el.dupEmptyState.style.display = 'none';
+  if (el.dupGroupsList) el.dupGroupsList.innerHTML = '';
+  if (el.dupBulkActions) el.dupBulkActions.style.display = 'none';
+  if (el.dupStatusBanner) el.dupStatusBanner.style.display = 'none';
+
+  try {
+    const res = await api.getDuplicates(windowHours);
+    state.duplicates.groups = res.groups || [];
+
+    if (el.dupLoading) el.dupLoading.style.display = 'none';
+
+    if (state.duplicates.groups.length === 0) {
+      if (el.dupEmptyState) el.dupEmptyState.style.display = 'block';
+      if (el.dupBulkActions) el.dupBulkActions.style.display = 'none';
+      if (el.btnDeleteSelectedDuplicates) el.btnDeleteSelectedDuplicates.style.display = 'none';
+      return;
+    }
+
+    if (el.dupBulkActions) el.dupBulkActions.style.display = 'flex';
+
+    // Default selection: for each group, pre-select the newer duplicates for deletion (keep oldest)
+    for (const group of state.duplicates.groups) {
+      if (group.scrobbles && group.scrobbles.length > 1) {
+        for (let i = 1; i < group.scrobbles.length; i++) {
+          state.duplicates.selectedDeleteIds.add(group.scrobbles[i].id);
+        }
+      }
+    }
+
+    renderDuplicateGroups();
+    updateDupSelectionSummary();
+  } catch (err) {
+    if (el.dupLoading) el.dupLoading.style.display = 'none';
+    if (el.dupStatusBanner) {
+      el.dupStatusBanner.className = 'alert-box alert-error';
+      el.dupStatusBanner.textContent = `Error scanning duplicates: ${err.message}`;
+      el.dupStatusBanner.style.display = 'block';
+    }
+  } finally {
+    state.duplicates.isLoading = false;
+  }
+}
+
+function updateDupSelectionSummary() {
+  const count = state.duplicates.selectedDeleteIds.size;
+  if (el.dupSelectedCount) el.dupSelectedCount.textContent = count;
+  if (el.dupSelectionSummary) {
+    el.dupSelectionSummary.textContent = count > 0 ? `${count} duplicate scrobble(s) selected for deletion` : 'No scrobbles selected';
+  }
+  if (el.btnDeleteSelectedDuplicates) {
+    el.btnDeleteSelectedDuplicates.style.display = count > 0 ? 'inline-flex' : 'none';
+  }
+}
+
+function renderDuplicateGroups() {
+  if (!el.dupGroupsList) return;
+  el.dupGroupsList.innerHTML = '';
+
+  for (const group of state.duplicates.groups) {
+    const card = document.createElement('div');
+    card.className = 'dup-group-card';
+
+    const isEpisode = group.media_type === 'episode';
+    const mainTitle = isEpisode ? (group.grandparent_title || group.title) : group.title;
+    const subTitle = isEpisode
+      ? `S${String(group.season_number ?? 1).padStart(2, '0')}E${String(group.episode_number ?? 1).padStart(2, '0')}: ${group.title}`
+      : (group.year ? `(${group.year})` : '');
+
+    const posterSrc = group.thumb_url || '';
+    const posterHtml = posterSrc
+      ? `<img src="${posterSrc}" class="dup-group-poster" alt="${escapeHtml(mainTitle)}" onerror="this.onerror=null;this.src='/favicon.svg';" />`
+      : `<div class="dup-group-poster" style="display:flex;align-items:center;justify-content:center;color:var(--text-muted);"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="2" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg></div>`;
+
+    let scrobblesHtml = '';
+    group.scrobbles.forEach((s, idx) => {
+      const isSelected = state.duplicates.selectedDeleteIds.has(s.id);
+      const isOldest = idx === 0;
+      const formattedDate = formatFullDateTime(s.watched_at);
+      const statusText = s.watch_status === 'in_progress' ? `${s.progress_percent || 0}% In Progress` : 'Completed';
+      const ratingHtml = s.user_rating ? `<span style="color:#eab308;font-weight:600;">★ ${s.user_rating}</span>` : '';
+
+      scrobblesHtml += `
+        <div class="dup-scrobble-row ${isSelected ? 'selected-for-delete' : ''}" data-id="${s.id}">
+          <div class="dup-scrobble-left">
+            <input type="checkbox" class="dup-checkbox" data-id="${s.id}" ${isSelected ? 'checked' : ''} style="cursor: pointer;" />
+            <div class="dup-scrobble-meta">
+              <span class="dup-scrobble-time">${formattedDate}</span>
+              <span class="badge-pill" style="font-size: 0.72rem; padding: 2px 6px;">${statusText}</span>
+              ${ratingHtml}
+              ${isSelected
+                ? `<span class="dup-scrobble-badge-prune">Will Delete</span>`
+                : `<span class="dup-scrobble-badge-keep">${isOldest ? 'Original (Keep)' : 'Keep'}</span>`}
+            </div>
+          </div>
+          <button type="button" class="btn btn-ghost btn-sm text-danger btn-delete-single-dup" data-id="${s.id}" title="Delete this scrobble">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+            <span>Delete</span>
+          </button>
+        </div>
+      `;
+    });
+
+    card.innerHTML = `
+      <div class="dup-group-header">
+        <div class="dup-group-media">
+          ${posterHtml}
+          <div class="dup-group-info">
+            <h4 class="dup-group-title">
+              <span>${escapeHtml(mainTitle)}</span>
+              <span class="badge-pill" style="font-size:0.7rem;text-transform:uppercase;">${group.media_type}</span>
+            </h4>
+            <div class="dup-group-subtitle">${escapeHtml(subTitle)}</div>
+          </div>
+        </div>
+        <div class="dup-group-badge">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          <span>${escapeHtml(group.time_difference_display)} (${group.scrobbles.length} watches)</span>
+        </div>
+      </div>
+      <div class="dup-scrobbles-table">
+        ${scrobblesHtml}
+      </div>
+    `;
+
+    // Event listener for checkbox
+    card.querySelectorAll('.dup-checkbox').forEach(cb => {
+      cb.addEventListener('change', (e) => {
+        const id = e.target.dataset.id;
+        if (e.target.checked) {
+          state.duplicates.selectedDeleteIds.add(id);
+        } else {
+          state.duplicates.selectedDeleteIds.delete(id);
+        }
+        renderDuplicateGroups();
+        updateDupSelectionSummary();
+      });
+    });
+
+    // Event listener for single delete button
+    card.querySelectorAll('.btn-delete-single-dup').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const id = btn.dataset.id;
+        await executeCleanDuplicates({ strategy: 'custom', delete_ids: [id] });
+      });
+    });
+
+    el.dupGroupsList.appendChild(card);
+  }
+}
+
+async function executeCleanDuplicates(payload) {
+  if (!el.dupStatusBanner) return;
+  el.dupStatusBanner.className = 'alert-box alert-info';
+  el.dupStatusBanner.textContent = 'Pruning duplicate scrobbles...';
+  el.dupStatusBanner.style.display = 'block';
+
+  try {
+    const res = await api.cleanDuplicates(payload);
+    el.dupStatusBanner.className = 'alert-box alert-success';
+    el.dupStatusBanner.textContent = res.message || 'Duplicate scrobbles pruned successfully.';
+    el.dupStatusBanner.style.display = 'block';
+
+    // Refresh history / timeline
+    loadHistory();
+    loadTimeline();
+
+    // Rescan duplicates after short delay
+    setTimeout(() => {
+      scanDuplicates();
+    }, 700);
+  } catch (err) {
+    el.dupStatusBanner.className = 'alert-box alert-error';
+    el.dupStatusBanner.textContent = `Failed to prune duplicates: ${err.message}`;
+    el.dupStatusBanner.style.display = 'block';
+  }
+}
+
+function formatFullDateTime(raw) {
+  if (!raw) return '';
+  try {
+    const d = new Date(raw);
+    if (isNaN(d.getTime())) return raw;
+    return d.toLocaleString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    });
+  } catch (e) {
+    return raw;
+  }
+}
+
+if (el.btnOpenDuplicatesModal) {
+  el.btnOpenDuplicatesModal.addEventListener('click', openDuplicatesModal);
+}
+
+if (el.btnCleanupFindDuplicates) {
+  el.btnCleanupFindDuplicates.addEventListener('click', openDuplicatesModal);
+}
+
+if (el.btnCloseDuplicatesModal) {
+  el.btnCloseDuplicatesModal.addEventListener('click', closeDuplicatesModal);
+}
+
+if (el.btnCloseDuplicatesModalFooter) {
+  el.btnCloseDuplicatesModalFooter.addEventListener('click', closeDuplicatesModal);
+}
+
+if (el.modalDuplicates) {
+  el.modalDuplicates.addEventListener('click', (e) => {
+    if (e.target === el.modalDuplicates) closeDuplicatesModal();
+  });
+}
+
+if (el.btnScanDuplicates) {
+  el.btnScanDuplicates.addEventListener('click', scanDuplicates);
+}
+
+if (el.dupWindowSelect) {
+  el.dupWindowSelect.addEventListener('change', scanDuplicates);
+}
+
+if (el.btnCleanKeepOldest) {
+  el.btnCleanKeepOldest.addEventListener('click', () => {
+    executeCleanDuplicates({ strategy: 'keep_oldest', window_hours: state.duplicates.windowHours });
+  });
+}
+
+if (el.btnCleanKeepNewest) {
+  el.btnCleanKeepNewest.addEventListener('click', () => {
+    executeCleanDuplicates({ strategy: 'keep_newest', window_hours: state.duplicates.windowHours });
+  });
+}
+
+if (el.btnDeleteSelectedDuplicates) {
+  el.btnDeleteSelectedDuplicates.addEventListener('click', () => {
+    executeCleanDuplicates({ strategy: 'custom', delete_ids: Array.from(state.duplicates.selectedDeleteIds) });
+  });
+}
+
 // Kickoff
 init();
+

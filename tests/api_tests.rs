@@ -6564,5 +6564,147 @@ async fn test_scrobble_tags_and_notes_crud_and_filtering() {
     assert_eq!(history_json["total"], 0);
 }
 
+#[tokio::test]
+async fn test_duplicate_watch_detector_and_cleanup() {
+    let (app, pool, config) = setup_test_app().await;
+
+    // Create User A and User B
+    let user_a_id = "user_dup_a";
+    let token_a = create_jwt(user_a_id, "user_dup_a@example.com", &config.jwt_secret).unwrap();
+    sqlx::query("INSERT INTO users (id, email, display_name, webhook_token, role) VALUES (?, ?, ?, ?, 'user')")
+        .bind(user_a_id)
+        .bind("user_dup_a@example.com")
+        .bind("User Dup A")
+        .bind("token_dup_a")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let user_b_id = "user_dup_b";
+    let token_b = create_jwt(user_b_id, "user_dup_b@example.com", &config.jwt_secret).unwrap();
+    sqlx::query("INSERT INTO users (id, email, display_name, webhook_token, role) VALUES (?, ?, ?, ?, 'user')")
+        .bind(user_b_id)
+        .bind("user_dup_b@example.com")
+        .bind("User Dup B")
+        .bind("token_dup_b")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    // 1. Insert scrobbles for User A:
+    // - Inception (Movie) at 14:00 and 14:20 (duplicate!)
+    // - Breaking Bad S01E01 at 16:00 and 16:30 (duplicate!)
+    // - The Dark Knight at 20:00 (single watch, not duplicate)
+    let incep_1 = uuid::Uuid::new_v4().to_string();
+    let incep_2 = uuid::Uuid::new_v4().to_string();
+    let bb_1 = uuid::Uuid::new_v4().to_string();
+    let bb_2 = uuid::Uuid::new_v4().to_string();
+    let dk_1 = uuid::Uuid::new_v4().to_string();
+
+    sqlx::query("INSERT INTO scrobbles (id, user_id, title, media_type, year, watched_at, created_at) VALUES (?, ?, 'Inception', 'movie', 2010, '2024-05-10T14:00:00Z', '2024-05-10T14:00:00Z')")
+        .bind(&incep_1).bind(user_a_id).execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO scrobbles (id, user_id, title, media_type, year, watched_at, created_at) VALUES (?, ?, 'Inception', 'movie', 2010, '2024-05-10T14:20:00Z', '2024-05-10T14:20:00Z')")
+        .bind(&incep_2).bind(user_a_id).execute(&pool).await.unwrap();
+
+    sqlx::query("INSERT INTO scrobbles (id, user_id, title, media_type, grandparent_title, season_number, episode_number, watched_at, created_at) VALUES (?, ?, 'Pilot', 'episode', 'Breaking Bad', 1, 1, '2024-05-10T16:00:00Z', '2024-05-10T16:00:00Z')")
+        .bind(&bb_1).bind(user_a_id).execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO scrobbles (id, user_id, title, media_type, grandparent_title, season_number, episode_number, watched_at, created_at) VALUES (?, ?, 'Pilot', 'episode', 'Breaking Bad', 1, 1, '2024-05-10T16:30:00Z', '2024-05-10T16:30:00Z')")
+        .bind(&bb_2).bind(user_a_id).execute(&pool).await.unwrap();
+
+    sqlx::query("INSERT INTO scrobbles (id, user_id, title, media_type, year, watched_at, created_at) VALUES (?, ?, 'The Dark Knight', 'movie', 2008, '2024-05-10T20:00:00Z', '2024-05-10T20:00:00Z')")
+        .bind(&dk_1).bind(user_a_id).execute(&pool).await.unwrap();
+
+    // 2. Insert scrobble for User B with Inception at 14:00 (should not leak or match)
+    let incep_b = uuid::Uuid::new_v4().to_string();
+    sqlx::query("INSERT INTO scrobbles (id, user_id, title, media_type, year, watched_at, created_at) VALUES (?, ?, 'Inception', 'movie', 2010, '2024-05-10T14:00:00Z', '2024-05-10T14:00:00Z')")
+        .bind(&incep_b).bind(user_b_id).execute(&pool).await.unwrap();
+
+    // 3. Call GET /api/v1/history/duplicates for User A
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/history/duplicates?window_hours=24")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token_a))
+        .body(Body::empty())
+        .unwrap();
+
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let dup_json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+
+    assert_eq!(dup_json["total_duplicate_groups"], 2);
+    assert_eq!(dup_json["total_redundant_scrobbles"], 2);
+    assert_eq!(dup_json["groups"].as_array().unwrap().len(), 2);
+
+    // 4. Call GET /api/v1/history/duplicates for User B -> 0 duplicates
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/history/duplicates?window_hours=24")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token_b))
+        .body(Body::empty())
+        .unwrap();
+
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let dup_json_b: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    assert_eq!(dup_json_b["total_duplicate_groups"], 0);
+
+    // 5. Test clean duplicates with strategy "keep_oldest" for User A
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/history/duplicates/clean")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token_a))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(serde_json::to_string(&serde_json::json!({
+            "strategy": "keep_oldest",
+            "window_hours": 24
+        })).unwrap()))
+        .unwrap();
+
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let clean_json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    assert_eq!(clean_json["success"], true);
+    assert_eq!(clean_json["deleted_count"], 2);
+
+    // 6. Verify User A's database state:
+    // incep_1 (oldest) exists, incep_2 (newer) is deleted
+    // bb_1 (oldest) exists, bb_2 (newer) is deleted
+    // dk_1 exists
+    let incep_1_row = sqlx::query("SELECT id FROM scrobbles WHERE id = ?").bind(&incep_1).fetch_optional(&pool).await.unwrap();
+    assert!(incep_1_row.is_some());
+    let incep_2_row = sqlx::query("SELECT id FROM scrobbles WHERE id = ?").bind(&incep_2).fetch_optional(&pool).await.unwrap();
+    assert!(incep_2_row.is_none());
+
+    let bb_1_row = sqlx::query("SELECT id FROM scrobbles WHERE id = ?").bind(&bb_1).fetch_optional(&pool).await.unwrap();
+    assert!(bb_1_row.is_some());
+    let bb_2_row = sqlx::query("SELECT id FROM scrobbles WHERE id = ?").bind(&bb_2).fetch_optional(&pool).await.unwrap();
+    assert!(bb_2_row.is_none());
+
+    let dk_1_row = sqlx::query("SELECT id FROM scrobbles WHERE id = ?").bind(&dk_1).fetch_optional(&pool).await.unwrap();
+    assert!(dk_1_row.is_some());
+
+    // User B's scrobble is completely untouched
+    let incep_b_row = sqlx::query("SELECT id FROM scrobbles WHERE id = ?").bind(&incep_b).fetch_optional(&pool).await.unwrap();
+    assert!(incep_b_row.is_some());
+
+    // 7. Verify scanning duplicates now returns 0 groups for User A
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/history/duplicates?window_hours=24")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token_a))
+        .body(Body::empty())
+        .unwrap();
+
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let dup_json_after: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    assert_eq!(dup_json_after["total_duplicate_groups"], 0);
+    assert_eq!(dup_json_after["total_redundant_scrobbles"], 0);
+}
+
 
 

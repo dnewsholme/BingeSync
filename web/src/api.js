@@ -92,6 +92,12 @@ export const api = {
     request(`/history/${id}`, {
       method: 'DELETE',
     }),
+  getDuplicates: (windowHours = 24) => request(`/history/duplicates?window_hours=${windowHours}`),
+  cleanDuplicates: (payload = {}) =>
+    request('/history/duplicates/clean', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
   rateScrobble: (id, rating) =>
     request(`/history/${id}/rate`, {
       method: 'POST',

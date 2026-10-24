@@ -283,6 +283,10 @@
               <button class="pill" id="pill-missing-metadata" title="Filter items missing poster, plot overview, or genres">
                 <span>⚠️ Missing Metadata</span>
               </button>
+              <button class="pill pill-action" id="btn-open-duplicates-modal" title="Detect and prune duplicate scrobbles">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                <span>Duplicates</span>
+              </button>
               <button class="pill pill-action" id="btn-toggle-select-mode">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
                 <span data-i18n="history.select">Select</span>
@@ -544,6 +548,10 @@
               <p class="view-subtitle" data-i18n="cleanup.subtitle">Identify watched films and TV series still taking up disk space in Radarr and Sonarr, and clean them up with one click.</p>
             </div>
             <div class="view-actions">
+              <button class="btn btn-outline btn-sm" id="btn-cleanup-find-duplicates" title="Detect and clean duplicate scrobbles">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                <span>Duplicate Watches</span>
+              </button>
               <button class="btn btn-primary btn-sm" id="btn-refresh-cleanup">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
                 <span data-i18n="cleanup.scan_libraries">Scan Libraries</span>
@@ -1676,6 +1684,85 @@
 
         <div class="modal-footer" style="padding: 12px 20px; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end;">
           <button type="button" class="btn btn-outline" id="btn-cancel-cleanup-modal">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal: Duplicate Watch Detector & Cleanup Tool -->
+    <div id="modal-duplicates" class="modal-backdrop" style="display: none;">
+      <div class="modal-dialog modal-dialog-lg" style="max-width: 840px; width: 95%;">
+        <div class="modal-header">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <div class="modal-icon-badge" style="background: rgba(234, 179, 8, 0.15); color: #eab308; width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            </div>
+            <div>
+              <h3 class="modal-title">Duplicate Watch Detector</h3>
+              <p class="modal-subtitle">Identify and prune duplicate scrobbles recorded within a short time window</p>
+            </div>
+          </div>
+          <button type="button" class="modal-close btn-close" id="btn-close-duplicates-modal">&times;</button>
+        </div>
+
+        <div class="modal-body" style="padding: 16px 20px;">
+          <!-- Controls Bar -->
+          <div class="duplicates-toolbar" style="display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; padding: 12px 16px; background: rgba(15, 23, 42, 0.6); border: 1px solid var(--border-subtle); border-radius: var(--radius-md);">
+            <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+              <label for="dup-window-select" style="font-size: 0.85rem; font-weight: 500; color: var(--text-muted);">Time Window:</label>
+              <select id="dup-window-select" class="form-control form-control-sm" style="width: auto;">
+                <option value="2">Within 2 Hours</option>
+                <option value="6">Within 6 Hours</option>
+                <option value="24" selected>Within 24 Hours</option>
+                <option value="48">Within 48 Hours</option>
+                <option value="168">Within 7 Days</option>
+              </select>
+              <button type="button" class="btn btn-outline btn-sm" id="btn-scan-duplicates">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <span>Rescan</span>
+              </button>
+            </div>
+
+            <div id="dup-bulk-actions" style="display: none; align-items: center; gap: 8px;">
+              <button type="button" class="btn btn-primary btn-sm" id="btn-clean-keep-oldest" title="Keep the original scrobble and delete newer duplicate entries">
+                <span>Keep Oldest (Prune Redundant)</span>
+              </button>
+              <button type="button" class="btn btn-outline btn-sm" id="btn-clean-keep-newest" title="Keep the latest scrobble and delete older duplicate entries">
+                <span>Keep Newest</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Status & Summary Banner -->
+          <div id="dup-status-banner" style="margin-bottom: 16px; font-size: 0.85rem; display: none;"></div>
+
+          <!-- Duplicates Content Container -->
+          <div id="dup-results-container" style="max-height: 55vh; overflow-y: auto; padding-right: 4px;">
+            <div id="dup-loading" style="display: none; text-align: center; padding: 40px 20px; color: var(--text-muted);">
+              <div class="spinner" style="margin: 0 auto 12px;"></div>
+              <div>Scanning watch history for duplicates...</div>
+            </div>
+            <div id="dup-empty-state" style="display: none; text-align: center; padding: 40px 20px;">
+              <div style="font-size: 2.2rem; margin-bottom: 10px;">🎉</div>
+              <h4 style="margin: 0 0 6px 0; color: #fff;">No Duplicates Found</h4>
+              <p style="margin: 0; font-size: 0.85rem; color: var(--text-muted);">All your scrobbles look distinct within the selected time window.</p>
+            </div>
+            <div id="dup-groups-list" class="dup-groups-list">
+              <!-- Dynamically populated duplicate groups -->
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer" style="padding: 12px 20px; border-top: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; gap: 10px;">
+          <div id="dup-selection-summary" style="font-size: 0.82rem; color: var(--text-muted);">
+            <!-- Items selected summary -->
+          </div>
+          <div style="display: flex; gap: 10px;">
+            <button type="button" class="btn btn-danger btn-sm" id="btn-delete-selected-duplicates" style="display: none;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+              <span>Delete Selected (<span id="dup-selected-count">0</span>)</span>
+            </button>
+            <button type="button" class="btn btn-outline btn-sm" id="btn-close-duplicates-modal-footer">Close</button>
+          </div>
         </div>
       </div>
     </div>

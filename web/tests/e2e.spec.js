@@ -2105,7 +2105,65 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     await page.click('#btn-close-wrapped-modal');
     await expect(page.locator('#modal-wrapped')).toBeHidden();
   });
+
+  test('duplicate watch detector: scan for duplicate scrobbles and prune redundant watches', async ({ page }) => {
+    const userEmail = `dup_user_${Date.now()}@bingesync.local`;
+    await page.goto('/');
+    await page.fill('#dev-email', userEmail);
+    await page.fill('#dev-name', 'Dup Hunter');
+    await page.click('#btn-dev-submit');
+    await expect(page.locator('#user-display-name')).toContainText('Dup Hunter');
+
+    // 1. Log two watches for the exact same movie to create a duplicate pair
+    await page.click('#btn-open-log-modal');
+    await expect(page.locator('#modal-log-scrobble')).toBeVisible();
+    await page.fill('#scrobble-title', 'Interstellar');
+    await page.fill('#scrobble-year', '2014');
+    await page.click('#btn-submit-scrobble');
+    await expect(page.locator('#modal-log-scrobble')).toBeHidden();
+
+    // Small delay to ensure second watch gets a distinct timestamp
+    await page.waitForTimeout(600);
+
+    await page.click('#btn-open-log-modal');
+    await expect(page.locator('#modal-log-scrobble')).toBeVisible();
+    await page.fill('#scrobble-title', 'Interstellar');
+    await page.fill('#scrobble-year', '2014');
+    await page.click('#btn-submit-scrobble');
+    await expect(page.locator('#modal-log-scrobble')).toBeHidden();
+
+    // 2. Open History tab and verify "Duplicates" button is visible
+    await page.click('#tab-history');
+    await expect(page.locator('#view-history')).toBeVisible();
+    await expect(page.locator('#btn-open-duplicates-modal')).toBeVisible();
+
+    // 3. Click "Duplicates" button to open modal
+    await page.click('#btn-open-duplicates-modal');
+    await expect(page.locator('#modal-duplicates')).toBeVisible();
+
+    // 4. Verify duplicate detector finds Interstellar duplicate group
+    const dupCard = page.locator('#dup-groups-list .dup-group-card', { hasText: 'Interstellar' });
+    await expect(dupCard).toBeVisible({ timeout: 5000 });
+    await expect(dupCard).toContainText('2 watches');
+    await expect(page.locator('#btn-clean-keep-oldest')).toBeVisible();
+
+    // 5. Click "Keep Oldest (Prune Redundant)"
+    await page.click('#btn-clean-keep-oldest');
+    await expect(page.locator('#dup-status-banner')).toBeVisible();
+    await expect(page.locator('#dup-status-banner')).toContainText(/pruned/i);
+
+    // 6. Verify duplicate list clears and shows empty state
+    await expect(page.locator('#dup-empty-state')).toBeVisible({ timeout: 5000 });
+
+    // 7. Close modal and check history only has 1 scrobble remaining
+    await page.click('#btn-close-duplicates-modal');
+    await expect(page.locator('#modal-duplicates')).toBeHidden();
+
+    const interstellarCards = page.locator('#history-list .scrobble-card', { hasText: 'Interstellar' });
+    await expect(interstellarCards).toHaveCount(1);
+  });
 });
+
 
 
 

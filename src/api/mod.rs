@@ -232,6 +232,8 @@ pub fn create_api_router(state: AppState) -> Router {
         .route("/api/v1/history/by-media", delete(history::delete_by_media))
         .route("/api/v1/history/delete-batch", post(history::delete_batch))
         .route("/api/v1/history/by-date", delete(history::delete_by_date))
+        .route("/api/v1/history/duplicates", get(history::get_duplicates_handler))
+        .route("/api/v1/history/duplicates/clean", post(history::clean_duplicates_handler))
         .route("/api/v1/history/{id}/watches", get(history::get_item_watches))
         .route("/api/v1/history/{id}/rate", post(history::rate_scrobble).put(history::rate_scrobble))
         .route("/api/v1/history/{id}/user-data", put(history::update_scrobble_user_data).patch(history::update_scrobble_user_data))

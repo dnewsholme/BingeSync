@@ -130,7 +130,7 @@ Plex webhooks send:
 ```bash
 cargo test
 ```
-Tests in `tests/api_tests.rs` (52 integration tests) cover:
+Tests in `tests/api_tests.rs` (53 integration tests) cover:
 - Dev login and `/api/v1/auth/me`
 - Plex movie and TV episode scrobbling
 - Multi-user isolation (User A cannot see User B's data)
@@ -180,6 +180,7 @@ Tests in `tests/api_tests.rs` (52 integration tests) cover:
 - Title candidate search (`/api/v1/history/{id}/match-search`) returning ranked candidates across active metadata sources
 - Full metadata enrichment resolution using TMDB and TVDB with automatic missing metadata clearing
 - Scrobble custom tags and personal review notes CRUD, history search/filtering, and CSV/JSON export
+- Duplicate watch detector & cleanup tool: detection within configurable time windows, auto-pruning (keep oldest/newest), selective deletion, and multi-user isolation
 
 ### Run Playwright E2E UI Tests
 ```bash
@@ -187,7 +188,7 @@ cd web
 npm install
 npx playwright test
 ```
-Playwright tests in `web/tests/e2e.spec.js` (39 browser E2E tests) cover:
+Playwright tests in `web/tests/e2e.spec.js` (40 browser E2E tests) cover:
 - User sign-in flow, "+ Log Watch" modal, and timeline rendering
 - Multi-user separation in the web UI
 - Trakt history and rating import flow in the web UI (pasted JSON)
@@ -227,6 +228,7 @@ Playwright tests in `web/tests/e2e.spec.js` (39 browser E2E tests) cover:
 - User settings: Emby webhooks setup and guide, outbound webhooks configuration and test ping, Overseerr credentials, and one-click data export ZIP
 - Fix match modal: search matching titles, provider selector (Auto / TMDB / TheTVDB), candidate card selection, and TMDB ID matching
 - Custom tags and review notes on scrobbles with interactive filtering and uniform Binge Wrapped poster cards
+- Duplicate watch detector: scan for duplicate scrobbles and prune redundant watches
 
 
 ### Run the App Locally

@@ -244,3 +244,39 @@ pub struct ActiveSession {
     pub duration_ms: i64,
     pub updated_at: String,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DuplicateGroup {
+    pub group_key: String,
+    pub media_type: String,
+    pub title: String,
+    pub grandparent_title: Option<String>,
+    pub season_number: Option<i32>,
+    pub episode_number: Option<i32>,
+    pub year: Option<i32>,
+    pub thumb_url: Option<String>,
+    pub time_difference_display: String,
+    pub scrobbles: Vec<Scrobble>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DuplicateScanResponse {
+    pub total_duplicate_groups: usize,
+    pub total_redundant_scrobbles: usize,
+    pub window_hours: i64,
+    pub groups: Vec<DuplicateGroup>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CleanDuplicatesRequest {
+    pub strategy: Option<String>,
+    pub delete_ids: Option<Vec<String>>,
+    pub window_hours: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CleanDuplicatesResponse {
+    pub success: bool,
+    pub deleted_count: usize,
+    pub message: String,
+}

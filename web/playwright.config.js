@@ -31,6 +31,7 @@ export default defineConfig({
       DATABASE_URL: 'sqlite://playwright_test.db?mode=rwc',
       DEV_LOGIN_ENABLED: 'true',
       OIDC_ENABLED: 'false',
+      RATE_LIMIT_ENABLED: 'false',
       APP_URL: 'http://127.0.0.1:8080',
     },
   },
