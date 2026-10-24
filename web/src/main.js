@@ -48,6 +48,7 @@ const state = {
     page: 1,
     limit: 12,
     mediaType: 'all',
+    rating: 'all',
     search: '',
     person: '',
     tag: '',
@@ -213,6 +214,7 @@ const el = {
 
   // History View
   historySearch: document.getElementById('history-search'),
+  historyRatingFilter: document.getElementById('history-rating-filter'),
   historyPersonBadge: document.getElementById('history-person-badge'),
   historySearchAllLabel: document.getElementById('history-search-all-label'),
   historySearchAllResults: document.getElementById('history-search-all-results'),
@@ -1708,6 +1710,7 @@ async function loadHistory() {
       page: state.history.page,
       limit: state.history.limit,
       media_type: state.history.mediaType,
+      rating: state.history.rating,
       search: state.history.search,
       person: state.history.person,
       tag: state.history.tag,
@@ -1870,6 +1873,19 @@ el.pills.forEach(pill => {
     loadHistory();
   });
 });
+
+if (el.historyRatingFilter) {
+  el.historyRatingFilter.addEventListener('change', (e) => {
+    state.history.rating = e.target.value;
+    if (e.target.value !== 'all') {
+      el.historyRatingFilter.classList.add('active');
+    } else {
+      el.historyRatingFilter.classList.remove('active');
+    }
+    state.history.page = 1;
+    loadHistory();
+  });
+}
 
 if (el.pillMissingMetadata) {
   el.pillMissingMetadata.addEventListener('click', () => {

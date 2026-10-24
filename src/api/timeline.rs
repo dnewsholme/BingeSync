@@ -101,32 +101,18 @@ pub async fn get_timeline(
         bind_params.push(pattern);
     }
 
-    match rating_filter {
-        "rated" => {
-            sql.push_str(" AND user_rating IS NOT NULL");
+    if rating_filter == "rated" {
+        sql.push_str(" AND user_rating IS NOT NULL");
+    } else if rating_filter == "unrated" {
+        sql.push_str(" AND user_rating IS NULL");
+    } else if let Some(thresh) = rating_filter
+        .strip_suffix('+')
+        .and_then(|s| s.parse::<i32>().ok())
+        .or_else(|| rating_filter.parse::<i32>().ok())
+    {
+        if (1..=10).contains(&thresh) {
+            sql.push_str(&format!(" AND user_rating >= {}", thresh));
         }
-        "unrated" => {
-            sql.push_str(" AND user_rating IS NULL");
-        }
-        "10" => {
-            sql.push_str(" AND user_rating = 10");
-        }
-        "9+" | "9" => {
-            sql.push_str(" AND user_rating >= 9");
-        }
-        "8+" | "8" => {
-            sql.push_str(" AND user_rating >= 8");
-        }
-        "7+" | "7" => {
-            sql.push_str(" AND user_rating >= 7");
-        }
-        "6+" | "6" => {
-            sql.push_str(" AND user_rating >= 6");
-        }
-        "5+" | "5" => {
-            sql.push_str(" AND user_rating >= 5");
-        }
-        _ => {}
     }
 
     if watch_status_filter != "all" && !watch_status_filter.is_empty() {

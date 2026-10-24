@@ -187,7 +187,7 @@ pub const OPENAPI_SPEC_JSON: &str = r###"{
                         { "name": "date", "in": "query", "description": "Filter by exact date YYYY-MM-DD", "schema": { "type": "string" } },
                         { "name": "genre", "in": "query", "schema": { "type": "string" } },
                         { "name": "person", "in": "query", "schema": { "type": "string" } },
-                        { "name": "rating", "in": "query", "schema": { "type": "string" } },
+                        { "name": "rating", "in": "query", "description": "Filter by rating threshold (e.g. 10, 9+, 8+, 7+, 6+, 5+, 4+, 3+, 2+, 1+), rated, or unrated", "schema": { "type": "string" } },
                         { "name": "watch_status", "in": "query", "schema": { "type": "string", "enum": ["all", "completed", "in_progress"] } }
                     ],
                     "responses": {
@@ -409,7 +409,7 @@ pub const OPENAPI_SPEC_JSON: &str = r###"{
                         { "name": "search", "in": "query", "schema": { "type": "string" } },
                         { "name": "genre", "in": "query", "schema": { "type": "string" } },
                         { "name": "person", "in": "query", "schema": { "type": "string" } },
-                        { "name": "rating", "in": "query", "schema": { "type": "string" } },
+                        { "name": "rating", "in": "query", "description": "Filter by rating threshold (e.g. 10, 9+, 8+, 7+, 6+, 5+, 4+, 3+, 2+, 1+), rated, or unrated", "schema": { "type": "string" } },
                         { "name": "watch_status", "in": "query", "schema": { "type": "string" } },
                         { "name": "date", "in": "query", "schema": { "type": "string" } }
                     ],

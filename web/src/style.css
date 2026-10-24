@@ -970,6 +970,37 @@ select.form-control-sm {
   font-weight: 600;
 }
 
+.history-rating-select {
+  height: 36px !important;
+  padding: 0 28px 0 14px !important;
+  font-size: 0.85rem !important;
+  border-radius: var(--radius-full) !important;
+  border: 1px solid var(--border-subtle) !important;
+  background-color: rgba(15, 23, 42, 0.6) !important;
+  color: var(--text-muted) !important;
+  font-family: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+  width: auto;
+  min-width: 125px;
+}
+
+.history-rating-select:hover,
+.history-rating-select:focus {
+  color: #fff !important;
+  border-color: var(--border-color) !important;
+  background-color: rgba(255, 255, 255, 0.05) !important;
+}
+
+.history-rating-select.active {
+  background-color: rgba(244, 63, 94, 0.15) !important;
+  border-color: var(--primary) !important;
+  color: var(--primary) !important;
+  font-weight: 600;
+}
+
 /* Pagination */
 .pagination-bar {
   display: flex;

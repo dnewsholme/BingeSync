@@ -145,40 +145,22 @@ pub async fn list_history(
         bind_params.push(pattern);
     }
 
-    match rating_filter {
-        "rated" => {
-            count_sql.push_str(" AND user_rating IS NOT NULL");
-            data_sql.push_str(" AND user_rating IS NOT NULL");
+    if rating_filter == "rated" {
+        count_sql.push_str(" AND user_rating IS NOT NULL");
+        data_sql.push_str(" AND user_rating IS NOT NULL");
+    } else if rating_filter == "unrated" {
+        count_sql.push_str(" AND user_rating IS NULL");
+        data_sql.push_str(" AND user_rating IS NULL");
+    } else if let Some(thresh) = rating_filter
+        .strip_suffix('+')
+        .and_then(|s| s.parse::<i32>().ok())
+        .or_else(|| rating_filter.parse::<i32>().ok())
+    {
+        if (1..=10).contains(&thresh) {
+            let clause = format!(" AND user_rating >= {}", thresh);
+            count_sql.push_str(&clause);
+            data_sql.push_str(&clause);
         }
-        "unrated" => {
-            count_sql.push_str(" AND user_rating IS NULL");
-            data_sql.push_str(" AND user_rating IS NULL");
-        }
-        "10" => {
-            count_sql.push_str(" AND user_rating = 10");
-            data_sql.push_str(" AND user_rating = 10");
-        }
-        "9+" | "9" => {
-            count_sql.push_str(" AND user_rating >= 9");
-            data_sql.push_str(" AND user_rating >= 9");
-        }
-        "8+" | "8" => {
-            count_sql.push_str(" AND user_rating >= 8");
-            data_sql.push_str(" AND user_rating >= 8");
-        }
-        "7+" | "7" => {
-            count_sql.push_str(" AND user_rating >= 7");
-            data_sql.push_str(" AND user_rating >= 7");
-        }
-        "6+" | "6" => {
-            count_sql.push_str(" AND user_rating >= 6");
-            data_sql.push_str(" AND user_rating >= 6");
-        }
-        "5+" | "5" => {
-            count_sql.push_str(" AND user_rating >= 5");
-            data_sql.push_str(" AND user_rating >= 5");
-        }
-        _ => {}
     }
 
     if watch_status_filter != "all" && !watch_status_filter.is_empty() {

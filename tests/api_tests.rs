@@ -6706,5 +6706,254 @@ async fn test_duplicate_watch_detector_and_cleanup() {
     assert_eq!(dup_json_after["total_redundant_scrobbles"], 0);
 }
 
+#[tokio::test]
+async fn test_history_rating_threshold_filter() {
+    let (app, pool, config) = setup_test_app().await;
+
+    // Create user A and user B
+    let user_a_id = "user_rate_a";
+    let token_a = create_jwt(user_a_id, "rate_user_a@test.com", &config.jwt_secret).unwrap();
+    sqlx::query("INSERT INTO users (id, email, display_name, webhook_token, role) VALUES (?, ?, ?, ?, 'user')")
+        .bind(user_a_id)
+        .bind("rate_user_a@test.com")
+        .bind("Rating User A")
+        .bind("token_rate_a")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let user_b_id = "user_rate_b";
+    let _token_b = create_jwt(user_b_id, "rate_user_b@test.com", &config.jwt_secret).unwrap();
+    sqlx::query("INSERT INTO users (id, email, display_name, webhook_token, role) VALUES (?, ?, ?, ?, 'user')")
+        .bind(user_b_id)
+        .bind("rate_user_b@test.com")
+        .bind("Rating User B")
+        .bind("token_rate_b")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    // Insert scrobbles for user A
+    sqlx::query(
+        "INSERT INTO scrobbles (id, user_id, title, media_type, year, user_rating, watch_status, watched_at, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, 'completed', '2026-03-01T20:00:00Z', '2026-03-01T20:00:00Z')"
+    )
+    .bind(uuid::Uuid::new_v4().to_string())
+    .bind(user_a_id)
+    .bind("The Dark Knight")
+    .bind("movie")
+    .bind(2008)
+    .bind(10)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    sqlx::query(
+        "INSERT INTO scrobbles (id, user_id, title, media_type, year, user_rating, watch_status, watched_at, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, 'completed', '2026-03-02T20:00:00Z', '2026-03-02T20:00:00Z')"
+    )
+    .bind(uuid::Uuid::new_v4().to_string())
+    .bind(user_a_id)
+    .bind("Inception")
+    .bind("movie")
+    .bind(2010)
+    .bind(8)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    sqlx::query(
+        "INSERT INTO scrobbles (id, user_id, title, media_type, year, user_rating, watch_status, watched_at, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, 'completed', '2026-03-03T20:00:00Z', '2026-03-03T20:00:00Z')"
+    )
+    .bind(uuid::Uuid::new_v4().to_string())
+    .bind(user_a_id)
+    .bind("The Matrix")
+    .bind("movie")
+    .bind(1999)
+    .bind(6)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    sqlx::query(
+        "INSERT INTO scrobbles (id, user_id, title, media_type, grandparent_title, season_number, episode_number, user_rating, watch_status, watched_at, created_at)
+         VALUES (?, ?, ?, ?, ?, 5, 14, ?, 'completed', '2026-03-04T20:00:00Z', '2026-03-04T20:00:00Z')"
+    )
+    .bind(uuid::Uuid::new_v4().to_string())
+    .bind(user_a_id)
+    .bind("Ozymandias")
+    .bind("episode")
+    .bind("Breaking Bad")
+    .bind(9)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    sqlx::query(
+        "INSERT INTO scrobbles (id, user_id, title, media_type, grandparent_title, season_number, episode_number, user_rating, watch_status, watched_at, created_at)
+         VALUES (?, ?, ?, ?, ?, 4, 3, ?, 'completed', '2026-03-05T20:00:00Z', '2026-03-05T20:00:00Z')"
+    )
+    .bind(uuid::Uuid::new_v4().to_string())
+    .bind(user_a_id)
+    .bind("Connor's Wedding")
+    .bind("episode")
+    .bind("Succession")
+    .bind(7)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    sqlx::query(
+        "INSERT INTO scrobbles (id, user_id, title, media_type, grandparent_title, season_number, episode_number, user_rating, watch_status, watched_at, created_at)
+         VALUES (?, ?, ?, ?, ?, 1, 1, ?, 'completed', '2026-03-06T20:00:00Z', '2026-03-06T20:00:00Z')"
+    )
+    .bind(uuid::Uuid::new_v4().to_string())
+    .bind(user_a_id)
+    .bind("Pilot")
+    .bind("episode")
+    .bind("Random Show")
+    .bind(4)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    sqlx::query(
+        "INSERT INTO scrobbles (id, user_id, title, media_type, year, user_rating, watch_status, watched_at, created_at)
+         VALUES (?, ?, ?, ?, ?, NULL, 'completed', '2026-03-07T20:00:00Z', '2026-03-07T20:00:00Z')"
+    )
+    .bind(uuid::Uuid::new_v4().to_string())
+    .bind(user_a_id)
+    .bind("Unrated Movie")
+    .bind("movie")
+    .bind(2021)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    // User B scrobble (must be isolated)
+    sqlx::query(
+        "INSERT INTO scrobbles (id, user_id, title, media_type, year, user_rating, watch_status, watched_at, created_at)
+         VALUES (?, ?, ?, ?, ?, 10, 'completed', '2026-03-08T20:00:00Z', '2026-03-08T20:00:00Z')"
+    )
+    .bind(uuid::Uuid::new_v4().to_string())
+    .bind(user_b_id)
+    .bind("The Godfather")
+    .bind("movie")
+    .bind(1972)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    // 1. Filter all media above 8+ stars
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/history?rating=8+")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token_a))
+        .body(Body::empty())
+        .unwrap();
+
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let hist: HistoryResponse = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(hist.total, 3);
+    let titles: Vec<&str> = hist.items.iter().map(|s| s.title.as_str()).collect();
+    assert!(titles.contains(&"The Dark Knight"));
+    assert!(titles.contains(&"Ozymandias"));
+    assert!(titles.contains(&"Inception"));
+    assert!(!titles.contains(&"The Godfather")); // User B isolated
+
+    // 2. Filter movies only above 8+ stars
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/history?media_type=movie&rating=8+")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token_a))
+        .body(Body::empty())
+        .unwrap();
+
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let hist: HistoryResponse = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(hist.total, 2);
+    let movie_titles: Vec<&str> = hist.items.iter().map(|s| s.title.as_str()).collect();
+    assert_eq!(movie_titles, vec!["Inception", "The Dark Knight"]);
+
+    // 3. Filter TV episodes only above 8+ stars
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/history?media_type=episode&rating=8+")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token_a))
+        .body(Body::empty())
+        .unwrap();
+
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let hist: HistoryResponse = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(hist.total, 1);
+    assert_eq!(hist.items[0].title, "Ozymandias");
+
+    // 4. Filter threshold 4+ stars
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/history?rating=4+")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token_a))
+        .body(Body::empty())
+        .unwrap();
+
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let hist: HistoryResponse = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(hist.total, 6);
+
+    // 5. Filter exact 10
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/history?rating=10")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token_a))
+        .body(Body::empty())
+        .unwrap();
+
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let hist: HistoryResponse = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(hist.total, 1);
+    assert_eq!(hist.items[0].title, "The Dark Knight");
+
+    // 6. Filter unrated
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/history?rating=unrated")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token_a))
+        .body(Body::empty())
+        .unwrap();
+
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let hist: HistoryResponse = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(hist.total, 1);
+    assert_eq!(hist.items[0].title, "Unrated Movie");
+
+    // 7. Filter rated only
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/history?rating=rated")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token_a))
+        .body(Body::empty())
+        .unwrap();
+
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let hist: HistoryResponse = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(hist.total, 6);
+}
+
+
 
 

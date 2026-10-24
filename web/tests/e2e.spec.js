@@ -2162,6 +2162,88 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     const interstellarCards = page.locator('#history-list .scrobble-card', { hasText: 'Interstellar' });
     await expect(interstellarCards).toHaveCount(1);
   });
+
+  test('history view: filter movies and TV shows above a certain rating threshold', async ({ page }) => {
+    const userEmail = `rater_filter_${Date.now()}@bingesync.local`;
+    await page.goto('/');
+    await page.fill('#dev-email', userEmail);
+    await page.fill('#dev-name', 'Rating Filter Tester');
+    await page.click('#btn-dev-submit');
+
+    // 1. Log movie: Inception (rated 8)
+    await page.click('#btn-open-log-modal');
+    await page.selectOption('#scrobble-media-type', 'movie');
+    await page.fill('#scrobble-title', 'Inception');
+    await page.fill('#scrobble-year', '2010');
+    await page.selectOption('#scrobble-rating', '8');
+    await page.click('#btn-submit-scrobble');
+    await expect(page.locator('#modal-log-scrobble')).toBeHidden();
+
+    // 2. Log movie: The Dark Knight (rated 10)
+    await page.click('#btn-open-log-modal');
+    await page.selectOption('#scrobble-media-type', 'movie');
+    await page.fill('#scrobble-title', 'The Dark Knight');
+    await page.fill('#scrobble-year', '2008');
+    await page.selectOption('#scrobble-rating', '10');
+    await page.click('#btn-submit-scrobble');
+    await expect(page.locator('#modal-log-scrobble')).toBeHidden();
+
+    // 3. Log episode: Ozymandias (rated 9)
+    await page.click('#btn-open-log-modal');
+    await page.selectOption('#scrobble-media-type', 'episode');
+    await page.fill('#scrobble-show', 'Breaking Bad');
+    await page.fill('#scrobble-season', '5');
+    await page.fill('#scrobble-episode', '14');
+    await page.fill('#scrobble-title', 'Ozymandias');
+    await page.selectOption('#scrobble-rating', '9');
+    await page.click('#btn-submit-scrobble');
+    await expect(page.locator('#modal-log-scrobble')).toBeHidden();
+
+    // 4. Switch to History tab
+    await page.click('#tab-history');
+    await expect(page.locator('#view-history')).toBeVisible();
+    await expect(page.locator('#history-rating-filter')).toBeVisible();
+
+    // With All Ratings, all 3 items appear
+    await expect(page.locator('#history-list .scrobble-card')).toHaveCount(3);
+
+    // 5. Filter by 8+ Stars threshold -> all 3 appear (ratings: 10, 9, 8)
+    await page.selectOption('#history-rating-filter', '8+');
+    await expect(page.locator('#history-list .scrobble-card')).toHaveCount(3);
+
+    // 6. Filter by 9+ Stars threshold -> only 2 appear (The Dark Knight: 10, Ozymandias: 9)
+    await page.selectOption('#history-rating-filter', '9+');
+    await expect(page.locator('#history-list .scrobble-card')).toHaveCount(2);
+    await expect(page.locator('#history-list')).toContainText('The Dark Knight');
+    await expect(page.locator('#history-list')).toContainText('Ozymandias');
+    await expect(page.locator('#history-list')).not.toContainText('Inception');
+
+    // 7. Filter by 10/10 Stars threshold -> only The Dark Knight appears
+    await page.selectOption('#history-rating-filter', '10');
+    await expect(page.locator('#history-list .scrobble-card')).toHaveCount(1);
+    await expect(page.locator('#history-list')).toContainText('The Dark Knight');
+
+    // 8. Combine rating threshold with media type filters:
+    // Select 8+ stars threshold and switch to "Movies" pill -> only Inception & The Dark Knight
+    await page.selectOption('#history-rating-filter', '8+');
+    await page.click('#pill-movies');
+    await expect(page.locator('#history-list .scrobble-card')).toHaveCount(2);
+    await expect(page.locator('#history-list')).toContainText('The Dark Knight');
+    await expect(page.locator('#history-list')).toContainText('Inception');
+    await expect(page.locator('#history-list')).not.toContainText('Ozymandias');
+
+    // Switch to "Episodes" pill with 8+ stars -> only Ozymandias
+    await page.click('#pill-episodes');
+    await expect(page.locator('#history-list .scrobble-card')).toHaveCount(1);
+    await expect(page.locator('#history-list')).toContainText('Ozymandias');
+    await expect(page.locator('#history-list')).not.toContainText('Inception');
+    await expect(page.locator('#history-list')).not.toContainText('The Dark Knight');
+
+    // 9. Reset rating filter to "all" and media type to "all"
+    await page.selectOption('#history-rating-filter', 'all');
+    await page.click('#pill-all');
+    await expect(page.locator('#history-list .scrobble-card')).toHaveCount(3);
+  });
 });
 
 
