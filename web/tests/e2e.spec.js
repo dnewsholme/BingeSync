@@ -1862,29 +1862,28 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     await expect(page.locator('#nav-theme-wrap')).toHaveCount(0);
     await expect(page.locator('#nav-theme-select')).toHaveCount(0);
 
-    // Go to Settings view and test swatch clicks
+    // Go to Settings view and test theme selection
     await page.click('#tab-settings');
     await expect(page.locator('#view-settings')).toBeVisible();
 
-    // Verify theme swatches have pure colour names
-    await expect(page.locator('.theme-swatch[data-theme="red"] .swatch-name')).toHaveText('Red');
-    await expect(page.locator('.theme-swatch[data-theme="amber"] .swatch-name')).toHaveText('Amber');
-    await expect(page.locator('.theme-swatch[data-theme="purple"] .swatch-name')).toHaveText('Purple');
-    await expect(page.locator('.theme-swatch[data-theme="cyan"] .swatch-name')).toHaveText('Cyan');
-    await expect(page.locator('.theme-swatch[data-theme="emerald"] .swatch-name')).toHaveText('Emerald');
-    await expect(page.locator('.theme-swatch[data-theme="rose"] .swatch-name')).toHaveText('Rose');
-    await expect(page.locator('.theme-swatch[data-theme="oled"] .swatch-name')).toHaveText('Black');
+    // Verify theme dropdown exists and has pure colour options
+    const themeSelect = page.locator('#user-setting-theme');
+    await expect(themeSelect).toBeVisible();
+    await expect(themeSelect.locator('option[value="red"]')).toHaveText('Red');
+    await expect(themeSelect.locator('option[value="amber"]')).toHaveText('Amber');
+    await expect(themeSelect.locator('option[value="purple"]')).toHaveText('Purple');
+    await expect(themeSelect.locator('option[value="cyan"]')).toHaveText('Cyan');
+    await expect(themeSelect.locator('option[value="emerald"]')).toHaveText('Emerald');
+    await expect(themeSelect.locator('option[value="rose"]')).toHaveText('Rose');
+    await expect(themeSelect.locator('option[value="oled"]')).toHaveText('Black');
 
-    const amberSwatch = page.locator('.theme-swatch[data-theme="amber"]');
-    await amberSwatch.click();
+    await themeSelect.selectOption('amber');
     await expect(page.locator('body')).toHaveAttribute('data-theme', 'amber');
 
-    const purpleSwatch = page.locator('.theme-swatch[data-theme="purple"]');
-    await purpleSwatch.click();
+    await themeSelect.selectOption('purple');
     await expect(page.locator('body')).toHaveAttribute('data-theme', 'purple');
 
-    const cyanSwatch = page.locator('.theme-swatch[data-theme="cyan"]');
-    await cyanSwatch.click();
+    await themeSelect.selectOption('cyan');
     await expect(page.locator('body')).toHaveAttribute('data-theme', 'cyan');
 
     // Reload page to verify persistence

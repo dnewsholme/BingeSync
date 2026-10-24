@@ -1095,25 +1095,89 @@ h1, h2, h3, h4 {
   backdrop-filter: blur(16px);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
-  padding: 28px;
-  margin-bottom: 28px;
+  padding: 26px;
+  margin-bottom: 24px;
 }
 
-@media (min-width: 1100px) {
-  #view-settings[style*="display: block"] {
-    display: grid !important;
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+.settings-grid-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+@media (min-width: 1024px) {
+  .settings-grid-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
     gap: 24px;
     align-items: start;
   }
-  #view-settings .view-header,
-  #view-settings #card-user-services {
+  .settings-grid-full {
     grid-column: 1 / -1;
   }
-  #view-settings .settings-card {
-    margin-bottom: 0;
-    margin-top: 0 !important;
+  .settings-column-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
   }
+}
+
+.settings-grid-layout .settings-card {
+  margin-bottom: 0;
+}
+
+.theme-preview-dot {
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: var(--primary);
+  display: inline-block;
+  box-shadow: 0 0 10px var(--primary-glow);
+  transition: all 0.25s ease;
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  flex-shrink: 0;
+}
+
+.theme-select-wrap {
+  position: relative;
+  width: 100%;
+}
+
+.setup-guide-accordion {
+  margin-top: 14px;
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  transition: all 0.2s ease;
+}
+
+.setup-guide-accordion summary {
+  padding: 10px 14px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  user-select: none;
+  color: var(--text-main);
+  background: rgba(30, 41, 59, 0.35);
+  transition: background 0.2s ease;
+}
+
+.setup-guide-accordion summary:hover {
+  background: rgba(30, 41, 59, 0.7);
+  color: #fff;
+}
+
+.setup-guide-accordion[open] summary {
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.setup-guide-accordion .steps-list {
+  padding: 14px;
+  margin-top: 0;
 }
 
 .card-title {

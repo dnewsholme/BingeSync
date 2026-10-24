@@ -22,8 +22,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="BingeSync" />
-  <script type="module" crossorigin src="./assets/index-LyJzuG2m.js"></script>
-  <link rel="stylesheet" crossorigin href="./assets/index-Cd8Jhk-8.css">
+  <script type="module" crossorigin src="./assets/index-JaPkVwMU.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-Dxy9hT60.css">
 </head>
 <body>
   <div id="app">
@@ -626,29 +626,23 @@
           <div class="view-header">
             <div>
               <h1 class="view-title" data-i18n="settings.title">Settings & Integrations</h1>
-              <p class="view-subtitle" data-i18n="settings.subtitle">Configure your personal Plex webhook, Radarr, Sonarr, and Tautulli integrations</p>
+              <p class="view-subtitle" data-i18n="settings.subtitle">Configure your personal preferences, webhooks, and connected media services</p>
             </div>
           </div>
 
-          <!-- Connected Services (Per-User Settings) -->
-          <div class="card settings-card" id="card-user-services">
-            <h2 class="card-title">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
-              <span data-i18n="settings.connected_services">Connected Services</span>
-            </h2>
-            <p class="card-desc" data-i18n="settings.connected_services_desc">
-              Configure your personal Plex username filter, Radarr, Sonarr, and Tautulli credentials. These settings are specific to your user account.
-            </p>
-
-            <form id="form-user-settings" style="margin-top: 18px;">
-              <!-- Display Language Preference -->
-              <div class="settings-group-header">
-                <span class="badge-pill" style="background: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3);">i18n</span>
-                <strong data-i18n="settings.language_title">Display Language</strong>
-              </div>
+          <div class="settings-grid-layout">
+            <!-- Appearance & Preferences (Language & Theme Accent) -->
+            <div class="card settings-card settings-grid-full" id="card-user-preferences">
+              <h2 class="card-title">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m4.93 4.93 4.24 4.24"/><path d="m14.83 9.17 4.24-4.24"/><path d="m14.83 14.83 4.24 4.24"/><path d="m9.17 14.83-4.24 4.24"/></svg>
+                <span>Appearance & Preferences</span>
+              </h2>
+              <p class="card-desc">
+                Personalize your display language and accent theme across BingeSync.
+              </p>
               <div class="form-row">
                 <div class="form-group col-half">
-                  <label for="user-setting-language" data-i18n="settings.language_title">Language / Idioma / Sprache / Langue</label>
+                  <label for="user-setting-language" data-i18n="settings.language_title">Display Language</label>
                   <select id="user-setting-language" class="form-control language-select">
                     <option value="en">🇬🇧 English</option>
                     <option value="es">🇪🇸 Español</option>
@@ -656,450 +650,443 @@
                     <option value="fr">🇫🇷 Français</option>
                   </select>
                   <small style="color: var(--text-muted); font-size: 0.8rem; margin-top: 4px; display: block;" data-i18n="settings.language_desc">
-                    Choose your preferred language for the BingeSync interface.
+                    Choose your preferred language for the interface.
                   </small>
                 </div>
-              </div>
-
-              <!-- Plex Username Filter -->
-              <div class="settings-group-header" style="margin-top: 16px;">
-                <span class="badge-pill" style="background: rgba(234, 179, 8, 0.15); color: #eab308; border: 1px solid rgba(234, 179, 8, 0.3);">Plex</span>
-                <strong data-i18n="settings.plex_filter">Plex Account Filtering</strong>
-              </div>
-              <div class="form-row">
-                <div class="form-group col-full">
-                  <label for="user-setting-plex-username" data-i18n="settings.plex_filter">Plex Username(s) or User ID(s)</label>
-                  <input type="text" id="user-setting-plex-username" class="form-control" placeholder="e.g. your_plex_username, 3078822f-..., 1 (comma-separated)" spellcheck="false" />
-                  <small style="color: var(--text-muted); font-size: 0.8rem; margin-top: 4px; display: block;" data-i18n="settings.plex_hint">
-                    Only record scrobbles matching these Plex username(s) or user ID(s). Incoming user IDs are automatically resolved and cached via your Tautulli integration.
-                  </small>
-                </div>
-              </div>
-
-              <!-- Jellyfin Username Filter -->
-              <div class="settings-group-header" style="margin-top: 16px;">
-                <span class="badge-pill" style="background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.3);">Jellyfin</span>
-                <strong data-i18n="settings.jellyfin_filter">Jellyfin Account Filtering</strong>
-              </div>
-              <div class="form-row">
-                <div class="form-group col-full">
-                  <label for="user-setting-jellyfin-username" data-i18n="settings.jellyfin_filter">Jellyfin Username(s) or User ID(s)</label>
-                  <input type="text" id="user-setting-jellyfin-username" class="form-control" placeholder="e.g. your_jellyfin_username, a1b2c3d4... (comma-separated)" spellcheck="false" />
-                  <small style="color: var(--text-muted); font-size: 0.8rem; margin-top: 4px; display: block;" data-i18n="settings.jellyfin_hint">
-                    Only record scrobbles matching these Jellyfin username(s) or user ID(s) (comma-separated).
-                  </small>
-                </div>
-              </div>
-
-              <!-- Emby Username Filter -->
-              <div class="settings-group-header" style="margin-top: 16px;">
-                <span class="badge-pill" style="background: rgba(6, 182, 212, 0.15); color: #06b6d4; border: 1px solid rgba(6, 182, 212, 0.3);">Emby</span>
-                <strong>Emby Account Filtering</strong>
-              </div>
-              <div class="form-row">
-                <div class="form-group col-full">
-                  <label for="user-setting-emby-username">Emby Username(s) or User ID(s)</label>
-                  <input type="text" id="user-setting-emby-username" class="form-control" placeholder="e.g. your_emby_username, a1b2c3d4... (comma-separated)" spellcheck="false" />
+                <div class="form-group col-half">
+                  <label for="user-setting-theme" style="display: flex; align-items: center; justify-content: space-between;">
+                    <span>Theme Accent</span>
+                    <span id="theme-preview-dot" class="theme-preview-dot" title="Active Theme Accent"></span>
+                  </label>
+                  <div class="theme-select-wrap">
+                    <select id="user-setting-theme" class="form-control theme-select" aria-label="Theme Accent">
+                      <option value="red">Red</option>
+                      <option value="amber">Amber</option>
+                      <option value="purple">Purple</option>
+                      <option value="cyan">Cyan</option>
+                      <option value="emerald">Emerald</option>
+                      <option value="rose">Rose</option>
+                      <option value="oled">Black</option>
+                    </select>
+                  </div>
                   <small style="color: var(--text-muted); font-size: 0.8rem; margin-top: 4px; display: block;">
-                    Only record scrobbles matching these Emby username(s) or user ID(s) (comma-separated).
+                    Curated color palette inspired by popular media hubs and OLED aesthetics.
                   </small>
                 </div>
               </div>
-              <div class="form-row">
-                <div class="form-group col-half">
-                  <label for="user-setting-jellyfin-url">Jellyfin Server URL (Optional for User Sync)</label>
-                  <input type="url" id="user-setting-jellyfin-url" class="form-control" placeholder="http://192.168.1.100:8096" />
+            </div>
+
+            <!-- Left Column: Connected Services Form -->
+            <div class="card settings-card" id="card-user-services">
+              <h2 class="card-title">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
+                <span data-i18n="settings.connected_services">Connected Services</span>
+              </h2>
+              <p class="card-desc" data-i18n="settings.connected_services_desc">
+                Configure your personal Plex username filter, Radarr, Sonarr, and Tautulli credentials. These settings are specific to your user account.
+              </p>
+
+              <form id="form-user-settings" style="margin-top: 18px;">
+                <!-- Plex Username Filter -->
+                <div class="settings-group-header">
+                  <span class="badge-pill" style="background: rgba(234, 179, 8, 0.15); color: #eab308; border: 1px solid rgba(234, 179, 8, 0.3);">Plex</span>
+                  <strong data-i18n="settings.plex_filter">Plex Account Filtering</strong>
                 </div>
-                <div class="form-group col-half">
-                  <label for="user-setting-jellyfin-api-key">Jellyfin API Key</label>
-                  <div class="input-secret-wrapper">
-                    <input type="text" id="user-setting-jellyfin-api-key" class="form-control font-mono" placeholder="Jellyfin API Key" autocomplete="off" spellcheck="false" />
-                    <button type="button" class="btn-toggle-secret" data-target="user-setting-jellyfin-api-key" title="Unhide / Show full key">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="7" r="3"/></svg>
+                <div class="form-row">
+                  <div class="form-group col-full">
+                    <label for="user-setting-plex-username" data-i18n="settings.plex_filter">Plex Username(s) or User ID(s)</label>
+                    <input type="text" id="user-setting-plex-username" class="form-control" placeholder="e.g. your_plex_username, 3078822f-..., 1 (comma-separated)" spellcheck="false" />
+                    <small style="color: var(--text-muted); font-size: 0.8rem; margin-top: 4px; display: block;" data-i18n="settings.plex_hint">
+                      Only record scrobbles matching these Plex username(s) or user ID(s). Incoming user IDs are automatically resolved and cached via your Tautulli integration.
+                    </small>
+                  </div>
+                </div>
+
+                <!-- Jellyfin Username Filter -->
+                <div class="settings-group-header" style="margin-top: 16px;">
+                  <span class="badge-pill" style="background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.3);">Jellyfin</span>
+                  <strong data-i18n="settings.jellyfin_filter">Jellyfin Account Filtering</strong>
+                </div>
+                <div class="form-row">
+                  <div class="form-group col-full">
+                    <label for="user-setting-jellyfin-username" data-i18n="settings.jellyfin_filter">Jellyfin Username(s) or User ID(s)</label>
+                    <input type="text" id="user-setting-jellyfin-username" class="form-control" placeholder="e.g. your_jellyfin_username, a1b2c3d4... (comma-separated)" spellcheck="false" />
+                    <small style="color: var(--text-muted); font-size: 0.8rem; margin-top: 4px; display: block;" data-i18n="settings.jellyfin_hint">
+                      Only record scrobbles matching these Jellyfin username(s) or user ID(s) (comma-separated).
+                    </small>
+                  </div>
+                </div>
+
+                <!-- Emby Username Filter -->
+                <div class="settings-group-header" style="margin-top: 16px;">
+                  <span class="badge-pill" style="background: rgba(6, 182, 212, 0.15); color: #06b6d4; border: 1px solid rgba(6, 182, 212, 0.3);">Emby</span>
+                  <strong>Emby Account Filtering</strong>
+                </div>
+                <div class="form-row">
+                  <div class="form-group col-full">
+                    <label for="user-setting-emby-username">Emby Username(s) or User ID(s)</label>
+                    <input type="text" id="user-setting-emby-username" class="form-control" placeholder="e.g. your_emby_username, a1b2c3d4... (comma-separated)" spellcheck="false" />
+                    <small style="color: var(--text-muted); font-size: 0.8rem; margin-top: 4px; display: block;">
+                      Only record scrobbles matching these Emby username(s) or user ID(s) (comma-separated).
+                    </small>
+                  </div>
+                </div>
+                <div class="form-row">
+                  <div class="form-group col-half">
+                    <label for="user-setting-jellyfin-url">Jellyfin Server URL (Optional for User Sync)</label>
+                    <input type="url" id="user-setting-jellyfin-url" class="form-control" placeholder="http://192.168.1.100:8096" />
+                  </div>
+                  <div class="form-group col-half">
+                    <label for="user-setting-jellyfin-api-key">Jellyfin API Key</label>
+                    <div class="input-secret-wrapper">
+                      <input type="text" id="user-setting-jellyfin-api-key" class="form-control font-mono" placeholder="Jellyfin API Key" autocomplete="off" spellcheck="false" />
+                      <button type="button" class="btn-toggle-secret" data-target="user-setting-jellyfin-api-key" title="Unhide / Show full key">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="7" r="3"/></svg>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Radarr -->
+                <div class="settings-group-header" style="margin-top: 16px;">
+                  <span class="arr-badge arr-badge-radarr">Radarr</span>
+                  <strong data-i18n="settings.radarr_title">Movie Library & Cleanup</strong>
+                </div>
+                <div class="form-row">
+                  <div class="form-group col-half">
+                    <label for="user-setting-radarr-url" data-i18n="settings.radarr_url">Radarr Base URL</label>
+                    <input type="url" id="user-setting-radarr-url" class="form-control" placeholder="http://192.168.1.100:7878" />
+                  </div>
+                  <div class="form-group col-half">
+                    <label for="user-setting-radarr-api-key" data-i18n="settings.radarr_key">Radarr API Key</label>
+                    <div class="input-secret-wrapper">
+                      <input type="text" id="user-setting-radarr-api-key" class="form-control font-mono" placeholder="API Key" autocomplete="off" spellcheck="false" />
+                      <button type="button" class="btn-toggle-secret" data-target="user-setting-radarr-api-key" title="Unhide / Show full key">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Sonarr -->
+                <div class="settings-group-header" style="margin-top: 16px;">
+                  <span class="arr-badge arr-badge-sonarr">Sonarr</span>
+                  <strong data-i18n="settings.sonarr_title">TV Series Library & Cleanup</strong>
+                </div>
+                <div class="form-row">
+                  <div class="form-group col-half">
+                    <label for="user-setting-sonarr-url" data-i18n="settings.sonarr_url">Sonarr Base URL</label>
+                    <input type="url" id="user-setting-sonarr-url" class="form-control" placeholder="http://192.168.1.100:8989" />
+                  </div>
+                  <div class="form-group col-half">
+                    <label for="user-setting-sonarr-api-key" data-i18n="settings.sonarr_key">Sonarr API Key</label>
+                    <div class="input-secret-wrapper">
+                      <input type="text" id="user-setting-sonarr-api-key" class="form-control font-mono" placeholder="API Key" autocomplete="off" spellcheck="false" />
+                      <button type="button" class="btn-toggle-secret" data-target="user-setting-sonarr-api-key" title="Unhide / Show full key">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Tautulli -->
+                <div class="settings-group-header" style="margin-top: 16px;">
+                  <span class="badge-pill" style="background: rgba(234, 88, 12, 0.15); color: #fb923c; border: 1px solid rgba(234, 88, 12, 0.3);">Tautulli</span>
+                  <strong data-i18n="settings.tautulli_title">Plex Watch History & Statistics</strong>
+                </div>
+                <div class="form-row">
+                  <div class="form-group col-half">
+                    <label for="user-setting-tautulli-url" data-i18n="settings.tautulli_url">Tautulli Base URL</label>
+                    <input type="url" id="user-setting-tautulli-url" class="form-control" placeholder="http://192.168.1.100:8181" />
+                  </div>
+                  <div class="form-group col-half">
+                    <label for="user-setting-tautulli-api-key" data-i18n="settings.tautulli_key">Tautulli API Key</label>
+                    <div class="input-secret-wrapper">
+                      <input type="text" id="user-setting-tautulli-api-key" class="form-control font-mono" placeholder="API Key" autocomplete="off" spellcheck="false" />
+                      <button type="button" class="btn-toggle-secret" data-target="user-setting-tautulli-api-key" title="Unhide / Show full key">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Overseerr / Jellyseerr -->
+                <div class="settings-group-header" style="margin-top: 16px;">
+                  <span class="arr-badge" style="background: rgba(236, 72, 153, 0.15); color: #f472b6; border: 1px solid rgba(236, 72, 153, 0.3);">Overseerr</span>
+                  <strong>Overseerr / Jellyseerr Media Requests</strong>
+                </div>
+                <div class="form-row">
+                  <div class="form-group col-half">
+                    <label for="user-setting-overseerr-url">Overseerr / Jellyseerr Base URL</label>
+                    <input type="url" id="user-setting-overseerr-url" class="form-control" placeholder="http://192.168.1.100:5055" />
+                  </div>
+                  <div class="form-group col-half">
+                    <label for="user-setting-overseerr-api-key">Overseerr API Key</label>
+                    <div class="input-secret-wrapper">
+                      <input type="text" id="user-setting-overseerr-api-key" class="form-control font-mono" placeholder="API Key" autocomplete="off" spellcheck="false" />
+                      <button type="button" class="btn-toggle-secret" data-target="user-setting-overseerr-api-key" title="Unhide / Show full key">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Outbound Webhooks -->
+                <div class="settings-group-header" style="margin-top: 16px;">
+                  <span class="badge-pill" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3);">Notifications</span>
+                  <strong>Outbound Webhooks (Discord, Telegram, ntfy, Gotify)</strong>
+                </div>
+                <div class="form-row">
+                  <div class="form-group col-half">
+                    <label for="user-setting-outbound-type">Webhook Provider</label>
+                    <select id="user-setting-outbound-type" class="form-control">
+                      <option value="">Disabled</option>
+                      <option value="discord">Discord (Rich Embed)</option>
+                      <option value="telegram">Telegram Bot</option>
+                      <option value="ntfy">ntfy.sh</option>
+                      <option value="gotify">Gotify</option>
+                      <option value="generic">Generic JSON Webhook</option>
+                    </select>
+                  </div>
+                  <div class="form-group col-half">
+                    <label for="user-setting-outbound-url">Webhook URL or Target</label>
+                    <input type="text" id="user-setting-outbound-url" class="form-control font-mono" placeholder="https://discord.com/api/webhooks/... or https://ntfy.sh/topic" spellcheck="false" />
+                  </div>
+                </div>
+                <div class="form-row">
+                  <div class="form-group col-full" style="display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;">
+                    <small style="color: var(--text-muted); font-size: 0.8rem;">
+                      For Telegram, format as: <code>https://api.telegram.org/bot&lt;token&gt;/sendMessage?chat_id=&lt;chat_id&gt;</code>.
+                    </small>
+                    <button type="button" class="btn btn-outline btn-sm" id="btn-test-outbound-webhook">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                      <span>Send Test Notification</span>
                     </button>
                   </div>
                 </div>
-              </div>
+                <div id="outbound-webhook-test-status" style="margin-top: 6px; font-size: 0.85rem; display: none;"></div>
 
-              <!-- Radarr -->
-              <div class="settings-group-header" style="margin-top: 16px;">
-                <span class="arr-badge arr-badge-radarr">Radarr</span>
-                <strong data-i18n="settings.radarr_title">Movie Library & Cleanup</strong>
-              </div>
-              <div class="form-row">
-                <div class="form-group col-half">
-                  <label for="user-setting-radarr-url" data-i18n="settings.radarr_url">Radarr Base URL</label>
-                  <input type="url" id="user-setting-radarr-url" class="form-control" placeholder="http://192.168.1.100:7878" />
+                <div style="display:flex;align-items:center;gap:12px;margin-top:20px;">
+                  <button type="submit" class="btn btn-primary" id="btn-save-user-settings" data-i18n="settings.save">Save Settings</button>
+                  <span id="user-settings-status" style="font-size:0.85rem;"></span>
                 </div>
-                <div class="form-group col-half">
-                  <label for="user-setting-radarr-api-key" data-i18n="settings.radarr_key">Radarr API Key</label>
-                  <div class="input-secret-wrapper">
-                    <input type="text" id="user-setting-radarr-api-key" class="form-control font-mono" placeholder="API Key" autocomplete="off" spellcheck="false" />
-                    <button type="button" class="btn-toggle-secret" data-target="user-setting-radarr-api-key" title="Unhide / Show full key">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              </form>
+            </div>
+
+            <!-- Right Column: Webhooks, Export & Attribution Stack -->
+            <div class="settings-column-stack">
+              <!-- Personal Webhook Endpoints (Plex, Jellyfin, Emby) with Expandable Guides -->
+              <div class="card settings-card" id="card-webhook-setup">
+                <div class="card-title">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+                  <span data-i18n="settings.webhooks_title">Personal Webhook Endpoints</span>
+                </div>
+                
+                <!-- Plex Webhook -->
+                <div style="margin-top: 14px;">
+                  <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+                    <span class="badge-pill" style="background: rgba(234, 179, 8, 0.15); color: #eab308; border: 1px solid rgba(234, 179, 8, 0.3);">Plex</span>
+                    <strong style="font-size: 0.95rem;" data-i18n="settings.plex_webhook_title">Plex Webhook URL</strong>
+                  </div>
+                  <p class="card-desc" style="margin-bottom: 8px;" data-i18n="settings.plex_webhook_desc">
+                    Plex sends scrobble events exclusively for your user account to this secure URL:
+                  </p>
+                  <div class="webhook-input-group">
+                    <input type="text" id="webhook-url-input" class="form-control font-mono" readonly value="" />
+                    <button class="btn btn-primary" id="btn-copy-webhook">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                      <span data-i18n="settings.copy_url">Copy URL</span>
                     </button>
                   </div>
-                </div>
-              </div>
+                  <div id="copy-status" class="copy-status" style="display: none;" data-i18n="settings.copied">Copied to clipboard!</div>
 
-              <!-- Sonarr -->
-              <div class="settings-group-header" style="margin-top: 16px;">
-                <span class="arr-badge arr-badge-sonarr">Sonarr</span>
-                <strong data-i18n="settings.sonarr_title">TV Series Library & Cleanup</strong>
-              </div>
-              <div class="form-row">
-                <div class="form-group col-half">
-                  <label for="user-setting-sonarr-url" data-i18n="settings.sonarr_url">Sonarr Base URL</label>
-                  <input type="url" id="user-setting-sonarr-url" class="form-control" placeholder="http://192.168.1.100:8989" />
+                  <!-- Plex Collapsible Setup Guide -->
+                  <details class="setup-guide-accordion">
+                    <summary data-i18n="settings.plex_guide_title">How to connect Plex to BingeSync</summary>
+                    <div class="steps-list">
+                      <div class="step-item">
+                        <div class="step-number">1</div>
+                        <div class="step-content">
+                          <h4>Open Plex Web Settings</h4>
+                          <p>Log in to Plex Media Server web client as administrator or Plex Pass user, click the <strong>Wrench icon</strong> (Settings) in the top right.</p>
+                        </div>
+                      </div>
+                      <div class="step-item">
+                        <div class="step-number">2</div>
+                        <div class="step-content">
+                          <h4>Navigate to Webhooks</h4>
+                          <p>In the left sidebar under <strong>Manage</strong>, select <strong>Webhooks</strong>.</p>
+                        </div>
+                      </div>
+                      <div class="step-item">
+                        <div class="step-number">3</div>
+                        <div class="step-content">
+                          <h4>Add Webhook</h4>
+                          <p>Click <strong>Add Webhook</strong>, paste your personal Plex Webhook URL above, and click <strong>Save Changes</strong>.</p>
+                        </div>
+                      </div>
+                      <div class="step-item">
+                        <div class="step-number">4</div>
+                        <div class="step-content">
+                          <h4>Start Binging!</h4>
+                          <p>Whenever you play or finish watching movies and series, Plex automatically sends scrobbles to BingeSync in real-time.</p>
+                        </div>
+                      </div>
+                    </div>
+                  </details>
                 </div>
-                <div class="form-group col-half">
-                  <label for="user-setting-sonarr-api-key" data-i18n="settings.sonarr_key">Sonarr API Key</label>
-                  <div class="input-secret-wrapper">
-                    <input type="text" id="user-setting-sonarr-api-key" class="form-control font-mono" placeholder="API Key" autocomplete="off" spellcheck="false" />
-                    <button type="button" class="btn-toggle-secret" data-target="user-setting-sonarr-api-key" title="Unhide / Show full key">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+
+                <!-- Jellyfin Webhook -->
+                <div style="margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--border-color);">
+                  <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+                    <span class="badge-pill" style="background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.3);">Jellyfin</span>
+                    <strong style="font-size: 0.95rem;" data-i18n="settings.jellyfin_webhook_title">Jellyfin Webhook URL</strong>
+                  </div>
+                  <p class="card-desc" style="margin-bottom: 8px;" data-i18n="settings.jellyfin_webhook_desc">
+                    Configure in Jellyfin Dashboard > Plugins > Webhook > Generic Destination:
+                  </p>
+                  <div class="webhook-input-group">
+                    <input type="text" id="jellyfin-webhook-url-input" class="form-control font-mono" readonly value="" />
+                    <button class="btn btn-primary" id="btn-copy-jellyfin-webhook">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                      <span data-i18n="settings.copy_url">Copy URL</span>
                     </button>
                   </div>
-                </div>
-              </div>
+                  <div id="jellyfin-copy-status" class="copy-status" style="display: none;" data-i18n="settings.copied">Copied to clipboard!</div>
 
-              <!-- Tautulli -->
-              <div class="settings-group-header" style="margin-top: 16px;">
-                <span class="badge-pill" style="background: rgba(234, 88, 12, 0.15); color: #fb923c; border: 1px solid rgba(234, 88, 12, 0.3);">Tautulli</span>
-                <strong data-i18n="settings.tautulli_title">Plex Watch History & Statistics</strong>
-              </div>
-              <div class="form-row">
-                <div class="form-group col-half">
-                  <label for="user-setting-tautulli-url" data-i18n="settings.tautulli_url">Tautulli Base URL</label>
-                  <input type="url" id="user-setting-tautulli-url" class="form-control" placeholder="http://192.168.1.100:8181" />
+                  <!-- Jellyfin Collapsible Setup Guide -->
+                  <details class="setup-guide-accordion">
+                    <summary data-i18n="settings.jellyfin_guide_title">How to connect Jellyfin to BingeSync</summary>
+                    <div class="steps-list">
+                      <div class="step-item">
+                        <div class="step-number">1</div>
+                        <div class="step-content">
+                          <h4>Install Jellyfin Webhook Plugin</h4>
+                          <p>In the Jellyfin Dashboard, go to <strong>Plugins</strong> &gt; <strong>Catalog</strong>, install the official <strong>Webhook</strong> plugin, and restart your server if prompted.</p>
+                        </div>
+                      </div>
+                      <div class="step-item">
+                        <div class="step-number">2</div>
+                        <div class="step-content">
+                          <h4>Add Generic Destination</h4>
+                          <p>Open <strong>Plugins</strong> &gt; <strong>Webhook</strong> settings, click <strong>Add Generic Destination</strong>, and name it <strong>BingeSync</strong>.</p>
+                        </div>
+                      </div>
+                      <div class="step-item">
+                        <div class="step-number">3</div>
+                        <div class="step-content">
+                          <h4>Paste Webhook URL & Select Events</h4>
+                          <p>Paste your personal Jellyfin Webhook URL above. Under <strong>Notification Type</strong>, check <strong>PlaybackStart</strong>, <strong>PlaybackProgress</strong>, <strong>PlaybackStop</strong>, and <strong>UserDataSaved</strong>.</p>
+                        </div>
+                      </div>
+                      <div class="step-item">
+                        <div class="step-number">4</div>
+                        <div class="step-content">
+                          <h4>Save & Enjoy!</h4>
+                          <p>Click <strong>Save</strong>. Playback and completed watches from Jellyfin will now automatically scrobble to BingeSync!</p>
+                        </div>
+                      </div>
+                    </div>
+                  </details>
                 </div>
-                <div class="form-group col-half">
-                  <label for="user-setting-tautulli-api-key" data-i18n="settings.tautulli_key">Tautulli API Key</label>
-                  <div class="input-secret-wrapper">
-                    <input type="text" id="user-setting-tautulli-api-key" class="form-control font-mono" placeholder="API Key" autocomplete="off" spellcheck="false" />
-                    <button type="button" class="btn-toggle-secret" data-target="user-setting-tautulli-api-key" title="Unhide / Show full key">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+
+                <!-- Emby Webhook -->
+                <div style="margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--border-color);">
+                  <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+                    <span class="badge-pill" style="background: rgba(6, 182, 212, 0.15); color: #06b6d4; border: 1px solid rgba(6, 182, 212, 0.3);">Emby</span>
+                    <strong style="font-size: 0.95rem;">Emby Webhook URL</strong>
+                  </div>
+                  <p class="card-desc" style="margin-bottom: 8px;">
+                    Configure in Emby Server > Manage Server > Webhooks:
+                  </p>
+                  <div class="webhook-input-group">
+                    <input type="text" id="emby-webhook-url-input" class="form-control font-mono" readonly value="" />
+                    <button class="btn btn-primary" id="btn-copy-emby-webhook">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                      <span>Copy URL</span>
                     </button>
                   </div>
+                  <div id="emby-copy-status" class="copy-status" style="display: none;">Copied to clipboard!</div>
+
+                  <!-- Emby Collapsible Setup Guide -->
+                  <details class="setup-guide-accordion">
+                    <summary>How to connect Emby to BingeSync</summary>
+                    <div class="steps-list">
+                      <div class="step-item">
+                        <div class="step-number">1</div>
+                        <div class="step-content">
+                          <h4>Open Emby Server Settings</h4>
+                          <p>In Emby Web, click the <strong>Gear icon</strong> (Settings) > <strong>Server</strong> > <strong>Webhooks</strong>.</p>
+                        </div>
+                      </div>
+                      <div class="step-item">
+                        <div class="step-number">2</div>
+                        <div class="step-content">
+                          <h4>Add Webhook</h4>
+                          <p>Click <strong>Add Webhook</strong>, paste your personal Emby Webhook URL above.</p>
+                        </div>
+                      </div>
+                      <div class="step-item">
+                        <div class="step-number">3</div>
+                        <div class="step-content">
+                          <h4>Select Playback & User Events</h4>
+                          <p>Enable <strong>Playback</strong> events (Playback Start, Pause, Unpause, Stopped) and <strong>Scrobble / Watched</strong> events.</p>
+                        </div>
+                      </div>
+                      <div class="step-item">
+                        <div class="step-number">4</div>
+                        <div class="step-content">
+                          <h4>Save & Enjoy!</h4>
+                          <p>Click <strong>Save</strong>. Media watched on your Emby server will now scrobble in real-time!</p>
+                        </div>
+                      </div>
+                    </div>
+                  </details>
+                </div>
+
+                <div class="token-regen-wrap" style="margin-top: 20px;">
+                  <span class="token-hint" data-i18n="settings.regen_confirm">Tokens compromised or need a reset?</span>
+                  <button class="btn btn-outline btn-sm text-danger" id="btn-regen-token" data-i18n="settings.regen_token">Regenerate Webhook URLs</button>
                 </div>
               </div>
 
-              <!-- Overseerr / Jellyseerr -->
-              <div class="settings-group-header" style="margin-top: 16px;">
-                <span class="arr-badge" style="background: rgba(236, 72, 153, 0.15); color: #f472b6; border: 1px solid rgba(236, 72, 153, 0.3);">Overseerr</span>
-                <strong>Overseerr / Jellyseerr Media Requests</strong>
-              </div>
-              <div class="form-row">
-                <div class="form-group col-half">
-                  <label for="user-setting-overseerr-url">Overseerr / Jellyseerr Base URL</label>
-                  <input type="url" id="user-setting-overseerr-url" class="form-control" placeholder="http://192.168.1.100:5055" />
-                </div>
-                <div class="form-group col-half">
-                  <label for="user-setting-overseerr-api-key">Overseerr API Key</label>
-                  <div class="input-secret-wrapper">
-                    <input type="text" id="user-setting-overseerr-api-key" class="form-control font-mono" placeholder="API Key" autocomplete="off" spellcheck="false" />
-                    <button type="button" class="btn-toggle-secret" data-target="user-setting-overseerr-api-key" title="Unhide / Show full key">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <!-- Outbound Webhooks -->
-              <div class="settings-group-header" style="margin-top: 16px;">
-                <span class="badge-pill" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3);">Notifications</span>
-                <strong>Outbound Webhooks (Discord, Telegram, ntfy, Gotify)</strong>
-              </div>
-              <div class="form-row">
-                <div class="form-group col-half">
-                  <label for="user-setting-outbound-type">Webhook Provider</label>
-                  <select id="user-setting-outbound-type" class="form-control">
-                    <option value="">Disabled</option>
-                    <option value="discord">Discord (Rich Embed)</option>
-                    <option value="telegram">Telegram Bot</option>
-                    <option value="ntfy">ntfy.sh</option>
-                    <option value="gotify">Gotify</option>
-                    <option value="generic">Generic JSON Webhook</option>
-                  </select>
-                </div>
-                <div class="form-group col-half">
-                  <label for="user-setting-outbound-url">Webhook URL or Target</label>
-                  <input type="text" id="user-setting-outbound-url" class="form-control font-mono" placeholder="https://discord.com/api/webhooks/... or https://ntfy.sh/topic" spellcheck="false" />
-                </div>
-              </div>
-              <div class="form-row">
-                <div class="form-group col-full" style="display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;">
-                  <small style="color: var(--text-muted); font-size: 0.8rem;">
-                    For Telegram, format as: <code>https://api.telegram.org/bot&lt;token&gt;/sendMessage?chat_id=&lt;chat_id&gt;</code>.
-                  </small>
-                  <button type="button" class="btn btn-outline btn-sm" id="btn-test-outbound-webhook">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-                    <span>Send Test Notification</span>
+              <!-- Data Portability / One-Click Export Card -->
+              <div class="card settings-card" id="card-user-export">
+                <h2 class="card-title">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                  <span>Data Portability & Full Export</span>
+                </h2>
+                <p class="card-desc">
+                  Download your complete personal watch history, movie ratings, and metadata as a standard ZIP archive containing both structured JSON and spreadsheet-compatible CSV files.
+                </p>
+                <div style="margin-top: 14px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap;">
+                  <button type="button" class="btn btn-outline" id="btn-export-user-data">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    <span>Download My Data (ZIP)</span>
                   </button>
+                  <span id="export-user-data-status" style="font-size: 0.85rem; color: var(--text-muted);"></span>
                 </div>
               </div>
-              <div id="outbound-webhook-test-status" style="margin-top: 6px; font-size: 0.85rem; display: none;"></div>
 
-              <div style="display:flex;align-items:center;gap:12px;margin-top:20px;">
-                <button type="submit" class="btn btn-primary" id="btn-save-user-settings" data-i18n="settings.save">Save Settings</button>
-                <span id="user-settings-status" style="font-size:0.85rem;"></span>
-              </div>
-            </form>
-          </div>
-
-          <!-- Personal Webhook Endpoints (Plex & Jellyfin) -->
-          <div class="card settings-card">
-            <div class="card-title">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
-              <span data-i18n="settings.webhooks_title">Personal Webhook Endpoints</span>
-            </div>
-            
-            <!-- Plex Webhook -->
-            <div style="margin-top: 14px;">
-              <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
-                <span class="badge-pill" style="background: rgba(234, 179, 8, 0.15); color: #eab308; border: 1px solid rgba(234, 179, 8, 0.3);">Plex</span>
-                <strong style="font-size: 0.95rem;" data-i18n="settings.plex_webhook_title">Plex Webhook URL</strong>
-              </div>
-              <p class="card-desc" style="margin-bottom: 8px;" data-i18n="settings.plex_webhook_desc">
-                Plex will send scrobble events exclusively for your user account to this secure URL:
-              </p>
-              <div class="webhook-input-group">
-                <input type="text" id="webhook-url-input" class="form-control font-mono" readonly value="" />
-                <button class="btn btn-primary" id="btn-copy-webhook">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
-                  <span data-i18n="settings.copy_url">Copy URL</span>
-                </button>
-              </div>
-              <div id="copy-status" class="copy-status" style="display: none;" data-i18n="settings.copied">Copied to clipboard!</div>
-            </div>
-
-            <!-- Jellyfin Webhook -->
-            <div style="margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--border-color);">
-              <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
-                <span class="badge-pill" style="background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.3);">Jellyfin</span>
-                <strong style="font-size: 0.95rem;" data-i18n="settings.jellyfin_webhook_title">Jellyfin Webhook URL</strong>
-              </div>
-              <p class="card-desc" style="margin-bottom: 8px;" data-i18n="settings.jellyfin_webhook_desc">
-                Configure in Jellyfin Dashboard > Plugins > Webhook > Generic Destination:
-              </p>
-              <div class="webhook-input-group">
-                <input type="text" id="jellyfin-webhook-url-input" class="form-control font-mono" readonly value="" />
-                <button class="btn btn-primary" id="btn-copy-jellyfin-webhook">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
-                  <span data-i18n="settings.copy_url">Copy URL</span>
-                </button>
-              </div>
-              <div id="jellyfin-copy-status" class="copy-status" style="display: none;" data-i18n="settings.copied">Copied to clipboard!</div>
-            </div>
-
-            <!-- Emby Webhook -->
-            <div style="margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--border-color);">
-              <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
-                <span class="badge-pill" style="background: rgba(6, 182, 212, 0.15); color: #06b6d4; border: 1px solid rgba(6, 182, 212, 0.3);">Emby</span>
-                <strong style="font-size: 0.95rem;">Emby Webhook URL</strong>
-              </div>
-              <p class="card-desc" style="margin-bottom: 8px;">
-                Configure in Emby Server > Manage Server > Webhooks:
-              </p>
-              <div class="webhook-input-group">
-                <input type="text" id="emby-webhook-url-input" class="form-control font-mono" readonly value="" />
-                <button class="btn btn-primary" id="btn-copy-emby-webhook">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
-                  <span>Copy URL</span>
-                </button>
-              </div>
-              <div id="emby-copy-status" class="copy-status" style="display: none;">Copied to clipboard!</div>
-            </div>
-
-            <div class="token-regen-wrap" style="margin-top: 20px;">
-              <span class="token-hint" data-i18n="settings.regen_confirm">Tokens compromised or need a reset?</span>
-              <button class="btn btn-outline btn-sm text-danger" id="btn-regen-token" data-i18n="settings.regen_token">Regenerate Webhook URLs</button>
-            </div>
-          </div>
-
-          <!-- Setup Guides (Plex & Jellyfin) -->
-          <div class="setup-steps-card">
-            <h2 class="card-title" data-i18n="settings.plex_guide_title">How to connect Plex to BingeSync</h2>
-            <div class="steps-list">
-              <div class="step-item">
-                <div class="step-number">1</div>
-                <div class="step-content">
-                  <h4>Open Plex Web Settings</h4>
-                  <p>Log in to Plex Media Server web client as administrator or Plex Pass user, click the <strong>Wrench icon</strong> (Settings) in the top right.</p>
+              <!-- Metadata Integration & Attribution Card -->
+              <div class="card settings-card" id="settings-tvdb-card">
+                <h2 class="card-title">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 11a9 9 0 0 1 9 9"/><path d="M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1"/></svg>
+                  <span id="settings-metadata-card-title">TheTVDB Metadata Integration</span>
+                </h2>
+                <p class="card-desc" id="settings-metadata-card-desc">
+                  BingeSync automatically enriches your scrobble timeline in the background with genres, cast/actor details, director credits, and plot summaries retrieved from <a href="https://thetvdb.com/" target="_blank" rel="noopener noreferrer" class="tvdb-inline-link">TheTVDB</a>.
+                </p>
+                <div class="tvdb-status-wrap">
+                  <div class="tvdb-status-badge" id="tvdb-status-badge">
+                    <span class="pulse-dot-sm" id="tvdb-pulse-dot"></span>
+                    <span id="tvdb-status-text">Checking status...</span>
+                  </div>
+                  <p class="tvdb-attribution-note" id="settings-metadata-attribution-note">
+                    Media metadata, plot outlines, genres, and cast details are provided by <a href="https://thetvdb.com/" target="_blank" rel="noopener noreferrer" class="tvdb-inline-link"><strong>TheTVDB</strong></a>. This product uses TheTVDB API but is not certified or endorsed by TheTVDB.
+                  </p>
                 </div>
               </div>
-              <div class="step-item">
-                <div class="step-number">2</div>
-                <div class="step-content">
-                  <h4>Navigate to Webhooks</h4>
-                  <p>In the left sidebar under <strong>Manage</strong>, select <strong>Webhooks</strong>.</p>
-                </div>
-              </div>
-              <div class="step-item">
-                <div class="step-number">3</div>
-                <div class="step-content">
-                  <h4>Add Webhook</h4>
-                  <p>Click <strong>Add Webhook</strong>, paste your personal Plex Webhook URL above, and click <strong>Save Changes</strong>.</p>
-                </div>
-              </div>
-              <div class="step-item">
-                <div class="step-number">4</div>
-                <div class="step-content">
-                  <h4>Start Binging!</h4>
-                  <p>Whenever you play or finish watching movies and series, Plex automatically sends scrobbles to BingeSync in real-time.</p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Jellyfin Setup Guide -->
-          <div class="setup-steps-card" style="margin-top: 20px;">
-            <h2 class="card-title" data-i18n="settings.jellyfin_guide_title">How to connect Jellyfin to BingeSync</h2>
-            <div class="steps-list">
-              <div class="step-item">
-                <div class="step-number">1</div>
-                <div class="step-content">
-                  <h4>Install Jellyfin Webhook Plugin</h4>
-                  <p>In the Jellyfin Dashboard, go to <strong>Plugins</strong> &gt; <strong>Catalog</strong>, install the official <strong>Webhook</strong> plugin, and restart your server if prompted.</p>
-                </div>
-              </div>
-              <div class="step-item">
-                <div class="step-number">2</div>
-                <div class="step-content">
-                  <h4>Add Generic Destination</h4>
-                  <p>Open <strong>Plugins</strong> &gt; <strong>Webhook</strong> settings, click <strong>Add Generic Destination</strong>, and name it <strong>BingeSync</strong>.</p>
-                </div>
-              </div>
-              <div class="step-item">
-                <div class="step-number">3</div>
-                <div class="step-content">
-                  <h4>Paste Webhook URL & Select Events</h4>
-                  <p>Paste your personal Jellyfin Webhook URL above. Under <strong>Notification Type</strong>, check <strong>PlaybackStart</strong>, <strong>PlaybackProgress</strong>, <strong>PlaybackStop</strong>, and <strong>UserDataSaved</strong>.</p>
-                </div>
-              </div>
-              <div class="step-item">
-                <div class="step-number">4</div>
-                <div class="step-content">
-                  <h4>Save & Enjoy!</h4>
-                  <p>Click <strong>Save</strong>. Playback and completed watches from Jellyfin will now automatically scrobble to BingeSync!</p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Emby Setup Guide -->
-          <div class="setup-steps-card" style="margin-top: 20px;">
-            <h2 class="card-title">How to connect Emby to BingeSync</h2>
-            <div class="steps-list">
-              <div class="step-item">
-                <div class="step-number">1</div>
-                <div class="step-content">
-                  <h4>Open Emby Server Settings</h4>
-                  <p>In Emby Web, click the <strong>Gear icon</strong> (Settings) > <strong>Server</strong> > <strong>Webhooks</strong>.</p>
-                </div>
-              </div>
-              <div class="step-item">
-                <div class="step-number">2</div>
-                <div class="step-content">
-                  <h4>Add Webhook</h4>
-                  <p>Click <strong>Add Webhook</strong>, paste your personal Emby Webhook URL above.</p>
-                </div>
-              </div>
-              <div class="step-item">
-                <div class="step-number">3</div>
-                <div class="step-content">
-                  <h4>Select Playback & User Events</h4>
-                  <p>Enable <strong>Playback</strong> events (Playback Start, Pause, Unpause, Stopped) and <strong>Scrobble / Watched</strong> events.</p>
-                </div>
-              </div>
-              <div class="step-item">
-                <div class="step-number">4</div>
-                <div class="step-content">
-                  <h4>Save & Enjoy!</h4>
-                  <p>Click <strong>Save</strong>. Media watched on your Emby server will now scrobble in real-time!</p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Theme Accent Customization Card -->
-          <div class="card settings-card" style="margin-top: 20px;">
-            <h2 class="card-title">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m4.93 4.93 4.24 4.24"/><path d="m14.83 9.17 4.24-4.24"/><path d="m14.83 14.83 4.24 4.24"/><path d="m9.17 14.83-4.24 4.24"/></svg>
-              <span>Appearance & Theme Accent</span>
-            </h2>
-            <p class="card-desc">
-              Personalize your BingeSync experience with curated color themes inspired by popular media hubs and OLED aesthetics.
-            </p>
-            <div class="theme-accent-picker" style="margin-top: 14px;">
-              <div class="theme-swatches-grid">
-                <button type="button" class="theme-swatch" data-theme="red" title="Red">
-                  <span class="swatch-color" style="background: #e50914;"></span>
-                  <span class="swatch-name">Red</span>
-                </button>
-                <button type="button" class="theme-swatch" data-theme="amber" title="Amber">
-                  <span class="swatch-color" style="background: #e5a00d;"></span>
-                  <span class="swatch-name">Amber</span>
-                </button>
-                <button type="button" class="theme-swatch" data-theme="purple" title="Purple">
-                  <span class="swatch-color" style="background: #a855f7;"></span>
-                  <span class="swatch-name">Purple</span>
-                </button>
-                <button type="button" class="theme-swatch" data-theme="cyan" title="Cyan">
-                  <span class="swatch-color" style="background: #06b6d4;"></span>
-                  <span class="swatch-name">Cyan</span>
-                </button>
-                <button type="button" class="theme-swatch" data-theme="emerald" title="Emerald">
-                  <span class="swatch-color" style="background: #10b981;"></span>
-                  <span class="swatch-name">Emerald</span>
-                </button>
-                <button type="button" class="theme-swatch" data-theme="rose" title="Rose">
-                  <span class="swatch-color" style="background: #f43f5e;"></span>
-                  <span class="swatch-name">Rose</span>
-                </button>
-                <button type="button" class="theme-swatch" data-theme="oled" title="Black">
-                  <span class="swatch-color" style="background: #000000; border: 1px solid #333;"></span>
-                  <span class="swatch-name">Black</span>
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <!-- Data Portability / One-Click Export Card -->
-          <div class="card settings-card" style="margin-top: 20px;">
-            <h2 class="card-title">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-              <span>Data Portability & Full Export</span>
-            </h2>
-            <p class="card-desc">
-              Download your complete personal watch history, movie ratings, and metadata as a standard ZIP archive containing both structured JSON and spreadsheet-compatible CSV files.
-            </p>
-            <div style="margin-top: 14px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap;">
-              <button type="button" class="btn btn-outline" id="btn-export-user-data">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                <span>Download My Data (ZIP)</span>
-              </button>
-              <span id="export-user-data-status" style="font-size: 0.85rem; color: var(--text-muted);"></span>
-            </div>
-          </div>
-
-          <!-- Metadata Integration & Attribution Card -->
-          <div class="settings-card" id="settings-tvdb-card">
-            <h2 class="card-title">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 11a9 9 0 0 1 9 9"/><path d="M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1"/></svg>
-              <span id="settings-metadata-card-title">TheTVDB Metadata Integration</span>
-            </h2>
-            <p class="card-desc" id="settings-metadata-card-desc">
-              BingeSync automatically enriches your scrobble timeline in the background with genres, cast/actor details, director credits, and plot summaries retrieved from <a href="https://thetvdb.com/" target="_blank" rel="noopener noreferrer" class="tvdb-inline-link">TheTVDB</a>.
-            </p>
-            <div class="tvdb-status-wrap">
-              <div class="tvdb-status-badge" id="tvdb-status-badge">
-                <span class="pulse-dot-sm" id="tvdb-pulse-dot"></span>
-                <span id="tvdb-status-text">Checking status...</span>
-              </div>
-              <p class="tvdb-attribution-note" id="settings-metadata-attribution-note">
-                Media metadata, plot outlines, genres, and cast details are provided by <a href="https://thetvdb.com/" target="_blank" rel="noopener noreferrer" class="tvdb-inline-link"><strong>TheTVDB</strong></a>. This product uses TheTVDB API but is not certified or endorsed by TheTVDB.
-              </p>
             </div>
           </div>
         </section>

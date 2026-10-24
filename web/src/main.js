@@ -315,6 +315,7 @@ const el = {
   btnSaveUserSettings: document.getElementById('btn-save-user-settings'),
   userSettingsStatus: document.getElementById('user-settings-status'),
   userSettingLanguage: document.getElementById('user-setting-language'),
+  userSettingTheme: document.getElementById('user-setting-theme'),
   navLanguageSelect: document.getElementById('nav-language-select'),
   userSettingPlexUsername: document.getElementById('user-setting-plex-username'),
   userSettingJellyfinUsername: document.getElementById('user-setting-jellyfin-username'),
@@ -5215,6 +5216,16 @@ if (el.cleanupSortSelect) {
 // ==========================================================================
 // Theme Accent System (Trakt Red, Plex Amber, Jellyfin Purple, Emby Cyan, Emerald, Rose, OLED)
 // ==========================================================================
+const themeColors = {
+  red: '#e50914',
+  amber: '#e5a00d',
+  purple: '#a855f7',
+  cyan: '#06b6d4',
+  emerald: '#10b981',
+  rose: '#f43f5e',
+  oled: '#000000',
+};
+
 function applyTheme(theme) {
   const validThemes = ['red', 'amber', 'purple', 'cyan', 'emerald', 'rose', 'oled'];
   const activeTheme = validThemes.includes(theme) ? theme : 'red';
@@ -5223,6 +5234,18 @@ function applyTheme(theme) {
   try {
     localStorage.setItem('bingesync_theme', activeTheme);
   } catch (e) {}
+
+  document.querySelectorAll('.theme-select').forEach(sel => {
+    if (sel.value !== activeTheme) {
+      sel.value = activeTheme;
+    }
+  });
+
+  const previewDot = document.getElementById('theme-preview-dot');
+  if (previewDot) {
+    previewDot.style.backgroundColor = themeColors[activeTheme] || themeColors.red;
+    previewDot.style.boxShadow = activeTheme === 'oled' ? '0 0 4px #555' : `0 0 10px ${themeColors[activeTheme]}66`;
+  }
 
   document.querySelectorAll('.theme-swatch').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.theme === activeTheme);
@@ -5235,6 +5258,12 @@ function initTheme() {
     savedTheme = localStorage.getItem('bingesync_theme') || 'red';
   } catch (e) {}
   applyTheme(savedTheme);
+
+  document.querySelectorAll('.theme-select').forEach(sel => {
+    sel.addEventListener('change', (e) => {
+      applyTheme(e.target.value);
+    });
+  });
 
   document.querySelectorAll('.theme-swatch').forEach(btn => {
     btn.addEventListener('click', () => {
