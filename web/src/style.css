@@ -489,27 +489,39 @@ h1, h2, h3, h4 {
 /* Forms */
 .form-group {
   margin-bottom: 18px;
+  display: flex;
+  flex-direction: column;
 }
 
 .form-group label {
-  display: block;
+  display: flex;
+  align-items: center;
+  min-height: 22px;
   font-size: 0.85rem;
   font-weight: 500;
   color: var(--text-muted);
-  margin-bottom: 6px;
+  margin-bottom: 8px;
+  gap: 8px;
+}
+
+.form-group label.label-with-addon {
+  justify-content: space-between;
 }
 
 .form-control {
   width: 100%;
+  height: 42px;
   background: var(--bg-input);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   color: #fff;
   font-family: inherit;
-  font-size: 0.95rem;
-  padding: 10px 14px;
+  font-size: 0.92rem;
+  padding: 0 14px;
   outline: none;
   transition: all 0.2s ease;
+  box-sizing: border-box;
+  display: block;
 }
 
 .form-control:focus {
@@ -517,19 +529,72 @@ h1, h2, h3, h4 {
   box-shadow: 0 0 0 3px var(--primary-glow);
 }
 
+select.form-control {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  padding-right: 36px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  background-size: 14px;
+  cursor: pointer;
+  background-color: var(--bg-input);
+}
+
+select.form-control:hover {
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+textarea.form-control {
+  height: auto;
+  min-height: 80px;
+  padding: 10px 14px;
+  line-height: 1.5;
+}
+
 .form-control.font-mono {
   font-family: 'JetBrains Mono', monospace;
   font-size: 0.85rem;
 }
 
+.form-control-sm {
+  height: 34px !important;
+  padding: 0 10px !important;
+  font-size: 0.82rem !important;
+  box-sizing: border-box !important;
+}
+
+select.form-control-sm {
+  padding-right: 28px !important;
+  background-position: right 8px center !important;
+  background-size: 12px !important;
+}
+
+.form-hint {
+  display: block;
+  margin-top: 6px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
 .form-row {
   display: flex;
-  gap: 14px;
+  gap: 16px;
+  align-items: flex-start;
 }
 
 .col-half {
-  flex: 1;
+  flex: 1 1 0;
+  min-width: 0;
 }
+
+.col-full {
+  flex: 1 1 100%;
+  width: 100%;
+}
+
 
 /* Now Playing Banner */
 .now-playing-banner {
@@ -1446,9 +1511,18 @@ h1, h2, h3, h4 {
 }
 
 .filter-ctrl {
-  padding: 6px 10px !important;
+  height: 36px !important;
+  padding: 0 10px !important;
   font-size: 0.85rem !important;
-  height: 36px;
+  box-sizing: border-box !important;
+}
+
+select.filter-ctrl {
+  padding-right: 28px !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E") !important;
+  background-repeat: no-repeat !important;
+  background-position: right 8px center !important;
+  background-size: 12px !important;
 }
 
 /* History Bulk Selection Bar */
@@ -3238,7 +3312,7 @@ h1, h2, h3, h4 {
   align-items: center;
 }
 
-.language-select {
+.language-select:not(.form-control) {
   background-color: #131d33;
   border: 1px solid rgba(255, 255, 255, 0.15);
   color: #f8fafc;
@@ -3252,8 +3326,8 @@ h1, h2, h3, h4 {
   color-scheme: dark;
 }
 
-.language-select:hover,
-.language-select:focus {
+.language-select:not(.form-control):hover,
+.language-select:not(.form-control):focus {
   background-color: #1e293b;
   border-color: rgba(255, 255, 255, 0.3);
   color: #fff;

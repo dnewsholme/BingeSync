@@ -601,9 +601,9 @@
               </button>
             </div>
 
-            <div style="display: flex; gap: 8px; flex: 1; max-width: 450px; justify-content: flex-end;">
-              <input type="text" id="cleanup-search-input" class="form-control" placeholder="Search watched media in library..." style="padding: 6px 12px; font-size: 0.85rem;" />
-              <select id="cleanup-sort-select" class="form-control" style="width: auto; padding: 6px 10px; font-size: 0.85rem;">
+            <div style="display: flex; gap: 8px; flex: 1; max-width: 450px; justify-content: flex-end; align-items: center;">
+              <input type="text" id="cleanup-search-input" class="form-control form-control-sm" placeholder="Search watched media in library..." />
+              <select id="cleanup-sort-select" class="form-control form-control-sm" style="width: auto;">
                 <option value="recent">Recently Watched</option>
                 <option value="size">Largest Size</option>
                 <option value="title">Title (A-Z)</option>
@@ -648,12 +648,12 @@
                     <option value="de">🇩🇪 Deutsch</option>
                     <option value="fr">🇫🇷 Français</option>
                   </select>
-                  <small style="color: var(--text-muted); font-size: 0.8rem; margin-top: 4px; display: block;" data-i18n="settings.language_desc">
+                  <small class="form-hint" data-i18n="settings.language_desc">
                     Choose your preferred language for the interface.
                   </small>
                 </div>
                 <div class="form-group col-half">
-                  <label for="user-setting-theme" style="display: flex; align-items: center; justify-content: space-between;">
+                  <label for="user-setting-theme" class="label-with-addon">
                     <span>Theme Accent</span>
                     <span id="theme-preview-dot" class="theme-preview-dot" title="Active Theme Accent"></span>
                   </label>
@@ -668,7 +668,7 @@
                       <option value="oled">Black</option>
                     </select>
                   </div>
-                  <small style="color: var(--text-muted); font-size: 0.8rem; margin-top: 4px; display: block;">
+                  <small class="form-hint">
                     Curated color palette inspired by popular media hubs and OLED aesthetics.
                   </small>
                 </div>
@@ -854,7 +854,7 @@
                 </div>
                 <div class="form-row">
                   <div class="form-group col-full" style="display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;">
-                    <small style="color: var(--text-muted); font-size: 0.8rem;">
+                    <small class="form-hint" style="margin-top: 0;">
                       For Telegram, format as: <code>https://api.telegram.org/bot&lt;token&gt;/sendMessage?chat_id=&lt;chat_id&gt;</code>.
                     </small>
                     <button type="button" class="btn btn-outline btn-sm" id="btn-test-outbound-webhook">
@@ -1730,7 +1730,7 @@
             </div>
             <div style="display: flex; align-items: center; gap: 8px;">
               <label for="wrapped-year-select" style="font-size: 0.85rem; color: var(--text-muted);">Year:</label>
-              <select id="wrapped-year-select" class="form-control" style="width: auto; padding: 4px 10px; font-weight: 600;">
+              <select id="wrapped-year-select" class="form-control form-control-sm" style="width: auto; font-weight: 600;">
                 <!-- Available years -->
               </select>
             </div>
