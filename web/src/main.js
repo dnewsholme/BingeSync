@@ -170,7 +170,38 @@ const el = {
   // States
   stateLoading: document.getElementById('state-loading'),
   stateAuth: document.getElementById('state-auth'),
+  stateSetup: document.getElementById('state-setup'),
   stateApp: document.getElementById('state-app'),
+
+  // Setup Wizard
+  bannerNeedsSetup: document.getElementById('banner-needs-setup'),
+  btnGotoSetup: document.getElementById('btn-goto-setup'),
+  stepNav1: document.getElementById('step-nav-1'),
+  stepNav2: document.getElementById('step-nav-2'),
+  stepNav3: document.getElementById('step-nav-3'),
+  setupStep1: document.getElementById('setup-step-1'),
+  setupStep2: document.getElementById('setup-step-2'),
+  setupStep3: document.getElementById('setup-step-3'),
+  setupIssuerUrl: document.getElementById('setup-issuer-url'),
+  btnSetupTestOidc: document.getElementById('btn-setup-test-oidc'),
+  setupTestFeedback: document.getElementById('setup-test-feedback'),
+  btnSetupStep1Next: document.getElementById('btn-setup-step1-next'),
+  setupClientId: document.getElementById('setup-client-id'),
+  setupClientSecret: document.getElementById('setup-client-secret'),
+  setupRedirectUri: document.getElementById('setup-redirect-uri'),
+  setupLogoutUri: document.getElementById('setup-logout-uri'),
+  btnSetupStep2Back: document.getElementById('btn-setup-step2-back'),
+  btnSetupStep2Next: document.getElementById('btn-setup-step2-next'),
+  setupAdminGroup: document.getElementById('setup-admin-group'),
+  reviewIssuer: document.getElementById('review-issuer'),
+  reviewClientId: document.getElementById('review-client-id'),
+  reviewRedirectUri: document.getElementById('review-redirect-uri'),
+  reviewAdminGroup: document.getElementById('review-admin-group'),
+  setupSaveError: document.getElementById('setup-save-error'),
+  btnSetupStep3Back: document.getElementById('btn-setup-step3-back'),
+  btnSetupSave: document.getElementById('btn-setup-save'),
+  setupDevLinkContainer: document.getElementById('setup-dev-link-container'),
+  btnSkipSetupToDev: document.getElementById('btn-skip-setup-to-dev'),
 
   // Auth Card
   btnOidcLogin: document.getElementById('btn-oidc-login'),
@@ -554,7 +585,11 @@ async function init() {
       // Unauthenticated
     }
 
-    showAuthState();
+    if (state.authStatus && state.authStatus.needs_setup) {
+      showSetupState();
+    } else {
+      showAuthState();
+    }
   } catch (err) {
     console.error('Initialization error:', err);
     showAuthState();
@@ -564,15 +599,108 @@ async function init() {
 function showAuthState() {
   el.stateLoading.style.display = 'none';
   el.stateApp.style.display = 'none';
+  if (el.stateSetup) el.stateSetup.style.display = 'none';
   el.stateAuth.style.display = 'flex';
   el.navLinks.style.display = 'none';
   el.navActions.style.display = 'none';
+
+  if (state.authStatus && state.authStatus.needs_setup && el.bannerNeedsSetup) {
+    el.bannerNeedsSetup.style.display = 'flex';
+  } else if (el.bannerNeedsSetup) {
+    el.bannerNeedsSetup.style.display = 'none';
+  }
+}
+
+function showSetupState() {
+  el.stateLoading.style.display = 'none';
+  el.stateApp.style.display = 'none';
+  el.stateAuth.style.display = 'none';
+  if (el.stateSetup) el.stateSetup.style.display = 'flex';
+  el.navLinks.style.display = 'none';
+  el.navActions.style.display = 'none';
+
+  loadSetupWizardData();
+}
+window.showSetupState = showSetupState;
+
+let currentSetupStep = 1;
+
+async function loadSetupWizardData() {
+  currentSetupStep = 1;
+  switchSetupStep(1);
+
+  if (el.setupTestFeedback) {
+    el.setupTestFeedback.style.display = 'none';
+    el.setupTestFeedback.innerHTML = '';
+  }
+  if (el.setupSaveError) {
+    el.setupSaveError.style.display = 'none';
+    el.setupSaveError.textContent = '';
+  }
+
+  try {
+    const status = await api.getSetupStatus();
+    if (status.app_url && el.setupRedirectUri) {
+      el.setupRedirectUri.value = status.redirect_url || `${status.app_url.replace(/\/+$/, '')}/api/v1/auth/callback`;
+    }
+    if (status.backchannel_logout_url && el.setupLogoutUri) {
+      el.setupLogoutUri.value = status.backchannel_logout_url;
+    }
+    if (status.oidc_issuer_url && el.setupIssuerUrl && !el.setupIssuerUrl.value) {
+      el.setupIssuerUrl.value = status.oidc_issuer_url;
+    }
+    if (status.oidc_client_id && el.setupClientId && !el.setupClientId.value) {
+      el.setupClientId.value = status.oidc_client_id;
+    }
+    if (status.oidc_admin_group && el.setupAdminGroup && !el.setupAdminGroup.value) {
+      el.setupAdminGroup.value = status.oidc_admin_group;
+    }
+    if (status.dev_login_enabled && el.setupDevLinkContainer) {
+      el.setupDevLinkContainer.style.display = 'block';
+    }
+  } catch (e) {
+    console.warn('Failed to load setup status:', e);
+  }
+}
+
+function switchSetupStep(step) {
+  currentSetupStep = step;
+
+  [el.stepNav1, el.stepNav2, el.stepNav3].forEach((nav, idx) => {
+    if (!nav) return;
+    const stepNum = idx + 1;
+    nav.classList.remove('active', 'completed');
+    if (stepNum === step) {
+      nav.classList.add('active');
+    } else if (stepNum < step) {
+      nav.classList.add('completed');
+    }
+  });
+
+  if (el.setupStep1) el.setupStep1.style.display = step === 1 ? 'block' : 'none';
+  if (el.setupStep2) el.setupStep2.style.display = step === 2 ? 'block' : 'none';
+  if (el.setupStep3) el.setupStep3.style.display = step === 3 ? 'block' : 'none';
+
+  if (step === 3) {
+    updateSetupReview();
+  }
+}
+
+function updateSetupReview() {
+  if (el.reviewIssuer) el.reviewIssuer.textContent = el.setupIssuerUrl?.value.trim() || '-';
+  if (el.reviewClientId) el.reviewClientId.textContent = el.setupClientId?.value.trim() || '-';
+  if (el.reviewRedirectUri) el.reviewRedirectUri.textContent = el.setupRedirectUri?.value.trim() || '-';
+  if (el.reviewAdminGroup) {
+    const val = el.setupAdminGroup?.value.trim();
+    el.reviewAdminGroup.textContent = val ? val : 'admins, administrator (default)';
+  }
 }
 
 function onUserAuthenticated(user) {
   state.user = user;
   el.stateLoading.style.display = 'none';
   el.stateAuth.style.display = 'none';
+  if (el.stateSetup) el.stateSetup.style.display = 'none';
   el.stateApp.style.display = 'block';
 
   el.navLinks.style.display = 'flex';
@@ -5805,6 +5933,188 @@ if (el.btnCleanKeepNewest) {
 if (el.btnDeleteSelectedDuplicates) {
   el.btnDeleteSelectedDuplicates.addEventListener('click', () => {
     executeCleanDuplicates({ strategy: 'custom', delete_ids: Array.from(state.duplicates.selectedDeleteIds) });
+  });
+}
+
+// ==========================================================================
+// Setup Wizard Event Handlers
+// ==========================================================================
+if (el.btnGotoSetup) {
+  el.btnGotoSetup.addEventListener('click', () => {
+    showSetupState();
+  });
+}
+
+if (el.btnSkipSetupToDev) {
+  el.btnSkipSetupToDev.addEventListener('click', () => {
+    showAuthState();
+  });
+}
+
+// Copy buttons
+document.querySelectorAll('.btn-copy').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    const targetId = btn.dataset.target;
+    const targetInput = document.getElementById(targetId);
+    if (!targetInput || !targetInput.value) return;
+
+    try {
+      await navigator.clipboard.writeText(targetInput.value);
+      const originalText = btn.innerHTML;
+      btn.innerHTML = `
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+        <span style="color:#10b981;">Copied!</span>
+      `;
+      setTimeout(() => {
+        btn.innerHTML = originalText;
+      }, 2000);
+    } catch (e) {
+      targetInput.select();
+      document.execCommand('copy');
+    }
+  });
+});
+
+// Test OIDC Discovery
+if (el.btnSetupTestOidc) {
+  el.btnSetupTestOidc.addEventListener('click', async () => {
+    const issuer = el.setupIssuerUrl ? el.setupIssuerUrl.value.trim() : '';
+    if (!issuer) {
+      if (el.setupTestFeedback) {
+        el.setupTestFeedback.className = 'alert-box alert-warning';
+        el.setupTestFeedback.textContent = 'Please enter an OIDC Issuer URL first.';
+        el.setupTestFeedback.style.display = 'block';
+      }
+      return;
+    }
+
+    if (el.setupTestFeedback) {
+      el.setupTestFeedback.className = 'alert-box alert-info';
+      el.setupTestFeedback.innerHTML = '<span class="spinner" style="width:14px;height:14px;display:inline-block;margin-right:8px;vertical-align:middle;"></span> Discovering endpoints from /.well-known/openid-configuration...';
+      el.setupTestFeedback.style.display = 'block';
+    }
+
+    try {
+      const res = await api.testOidcDiscovery(issuer);
+      if (res && res.success) {
+        const backchannelBadge = res.backchannel_logout_supported
+          ? '<span style="color:#10b981;font-weight:600;">Supported</span>'
+          : '<span style="color:var(--text-muted);">Not advertised</span>';
+
+        el.setupTestFeedback.className = 'setup-discovery-card';
+        el.setupTestFeedback.innerHTML = `
+          <div style="font-weight:600;color:#10b981;display:flex;align-items:center;gap:6px;margin-bottom:8px;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+            <span>OIDC Provider Discovered Successfully!</span>
+          </div>
+          <div class="setup-discovery-item"><span>Issuer:</span> <code>${escapeHtml(res.issuer || issuer)}</code></div>
+          <div class="setup-discovery-item"><span>Auth:</span> <code>${escapeHtml(res.authorization_endpoint || '-')}</code></div>
+          <div class="setup-discovery-item"><span>Token:</span> <code>${escapeHtml(res.token_endpoint || '-')}</code></div>
+          <div class="setup-discovery-item"><span>Back-Channel Logout:</span> ${backchannelBadge}</div>
+        `;
+        el.setupTestFeedback.style.display = 'block';
+      } else {
+        el.setupTestFeedback.className = 'alert-box alert-error';
+        el.setupTestFeedback.textContent = res.error || 'Failed to connect to OIDC discovery endpoint.';
+        el.setupTestFeedback.style.display = 'block';
+      }
+    } catch (err) {
+      if (el.setupTestFeedback) {
+        el.setupTestFeedback.className = 'alert-box alert-error';
+        el.setupTestFeedback.textContent = `Discovery error: ${err.message}`;
+        el.setupTestFeedback.style.display = 'block';
+      }
+    }
+  });
+}
+
+// Step 1 -> Step 2
+if (el.btnSetupStep1Next) {
+  el.btnSetupStep1Next.addEventListener('click', () => {
+    const issuer = el.setupIssuerUrl ? el.setupIssuerUrl.value.trim() : '';
+    if (!issuer) {
+      if (el.setupTestFeedback) {
+        el.setupTestFeedback.className = 'alert-box alert-error';
+        el.setupTestFeedback.textContent = 'Please enter an OIDC Issuer URL before continuing.';
+        el.setupTestFeedback.style.display = 'block';
+      }
+      el.setupIssuerUrl?.focus();
+      return;
+    }
+    switchSetupStep(2);
+  });
+}
+
+// Step 2 Back & Next
+if (el.btnSetupStep2Back) {
+  el.btnSetupStep2Back.addEventListener('click', () => {
+    switchSetupStep(1);
+  });
+}
+
+if (el.btnSetupStep2Next) {
+  el.btnSetupStep2Next.addEventListener('click', () => {
+    const clientId = el.setupClientId ? el.setupClientId.value.trim() : '';
+    if (!clientId) {
+      alert('Please enter your OIDC Client ID.');
+      el.setupClientId?.focus();
+      return;
+    }
+    switchSetupStep(3);
+  });
+}
+
+// Step 3 Back & Save
+if (el.btnSetupStep3Back) {
+  el.btnSetupStep3Back.addEventListener('click', () => {
+    switchSetupStep(2);
+  });
+}
+
+if (el.btnSetupSave) {
+  el.btnSetupSave.addEventListener('click', async () => {
+    const issuer = el.setupIssuerUrl ? el.setupIssuerUrl.value.trim() : '';
+    const clientId = el.setupClientId ? el.setupClientId.value.trim() : '';
+    const clientSecret = el.setupClientSecret ? el.setupClientSecret.value.trim() : '';
+    const redirectUrl = el.setupRedirectUri ? el.setupRedirectUri.value.trim() : '';
+    const adminGroup = el.setupAdminGroup ? el.setupAdminGroup.value.trim() : '';
+
+    if (!issuer || !clientId) {
+      if (el.setupSaveError) {
+        el.setupSaveError.textContent = 'Issuer URL and Client ID are required.';
+        el.setupSaveError.style.display = 'block';
+      }
+      return;
+    }
+
+    if (el.setupSaveError) {
+      el.setupSaveError.style.display = 'none';
+      el.setupSaveError.textContent = '';
+    }
+
+    el.btnSetupSave.disabled = true;
+    const originalBtnHtml = el.btnSetupSave.innerHTML;
+    el.btnSetupSave.innerHTML = '<span class="spinner" style="width:14px;height:14px;display:inline-block;margin-right:8px;vertical-align:middle;"></span> Saving Configuration...';
+
+    try {
+      await api.saveSetup({
+        oidc_issuer_url: issuer,
+        oidc_client_id: clientId,
+        oidc_client_secret: clientSecret || undefined,
+        oidc_redirect_url: redirectUrl || undefined,
+        oidc_admin_group: adminGroup || undefined,
+      });
+
+      state.authStatus = await api.getAuthStatus();
+      window.location.href = `${API_BASE}/auth/login`;
+    } catch (err) {
+      el.btnSetupSave.disabled = false;
+      el.btnSetupSave.innerHTML = originalBtnHtml;
+      if (el.setupSaveError) {
+        el.setupSaveError.textContent = `Setup failed: ${err.message}`;
+        el.setupSaveError.style.display = 'block';
+      }
+    }
   });
 }
 

@@ -7049,6 +7049,130 @@ async fn test_oidc_admin_group_configuration_and_evaluation() {
     assert!(!user_f.is_admin(None));
 }
 
+#[tokio::test]
+async fn test_first_run_setup_flow_and_initial_admin_promotion() {
+    let (app, pool, _config) = setup_test_app().await;
+
+    // 1. Check initial setup status on a fresh database with 0 users
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/setup/status")
+        .body(Body::empty())
+        .unwrap();
+
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let status: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(status["needs_setup"], true);
+    assert_eq!(status["completed"], false);
+    assert_eq!(status["user_count"], 0);
+    assert_eq!(status["redirect_url"], "http://localhost:8080/api/v1/auth/callback");
+    assert_eq!(status["backchannel_logout_url"], "http://localhost:8080/api/v1/auth/backchannel-logout");
+
+    // 2. Validate save requires issuer_url and client_id
+    let req_invalid = Request::builder()
+        .method("POST")
+        .uri("/api/v1/setup/save")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(json!({
+            "oidc_issuer_url": "",
+            "oidc_client_id": ""
+        }).to_string()))
+        .unwrap();
+
+    let resp = app.clone().oneshot(req_invalid).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+    // 3. Save setup configuration
+    let req_save = Request::builder()
+        .method("POST")
+        .uri("/api/v1/setup/save")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(json!({
+            "oidc_issuer_url": "https://auth.example.com",
+            "oidc_client_id": "bingesync-client",
+            "oidc_client_secret": "super-secret-key-xyz",
+            "oidc_admin_group": "my-idp-admins"
+        }).to_string()))
+        .unwrap();
+
+    let resp = app.clone().oneshot(req_save).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // Verify settings stored in DB
+    let oidc_enabled = bingesync::api::settings::get_db_setting(&pool, "oidc_enabled").await;
+    assert_eq!(oidc_enabled.as_deref(), Some("true"));
+    let issuer = bingesync::api::settings::get_db_setting(&pool, "oidc_issuer_url").await;
+    assert_eq!(issuer.as_deref(), Some("https://auth.example.com"));
+    let client_id = bingesync::api::settings::get_db_setting(&pool, "oidc_client_id").await;
+    assert_eq!(client_id.as_deref(), Some("bingesync-client"));
+    let admin_group = bingesync::api::settings::get_db_setting(&pool, "oidc_admin_group").await;
+    assert_eq!(admin_group.as_deref(), Some("my-idp-admins"));
+    let setup_completed = bingesync::api::settings::get_db_setting(&pool, "setup_completed").await;
+    assert_eq!(setup_completed.as_deref(), Some("true"));
+
+    // 4. Verify initial user promotion to admin
+    // When the first user logs in via get_or_create_user_with_sid (even with is_admin=false),
+    // they must be automatically assigned the admin role.
+    let user1 = bingesync::api::auth::get_or_create_user_with_sid(
+        &pool,
+        "first_user@example.com",
+        "First User",
+        Some("sub-001"),
+        None,
+        None,
+        Some("firstuser"),
+        false, // not specified as admin
+    ).await.unwrap();
+
+    assert_eq!(user1.role, "admin");
+
+    // A second user with is_admin=false should receive the normal "user" role
+    let user2 = bingesync::api::auth::get_or_create_user_with_sid(
+        &pool,
+        "second_user@example.com",
+        "Second User",
+        Some("sub-002"),
+        None,
+        None,
+        Some("seconduser"),
+        false,
+    ).await.unwrap();
+
+    assert_eq!(user2.role, "user");
+
+    // 5. Verify setup/status now returns needs_setup: false and completed: true
+    let req_status2 = Request::builder()
+        .method("GET")
+        .uri("/api/v1/setup/status")
+        .body(Body::empty())
+        .unwrap();
+
+    let resp = app.clone().oneshot(req_status2).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let status2: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(status2["needs_setup"], false);
+    assert_eq!(status2["completed"], true);
+    assert_eq!(status2["user_count"], 2);
+
+    // 6. Verify subsequent attempts to call /api/v1/setup/save are rejected with 403 Forbidden
+    let req_save_forbidden = Request::builder()
+        .method("POST")
+        .uri("/api/v1/setup/save")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(json!({
+            "oidc_issuer_url": "https://attacker.example.com",
+            "oidc_client_id": "malicious"
+        }).to_string()))
+        .unwrap();
+
+    let resp = app.clone().oneshot(req_save_forbidden).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+}
+
+
 
 
 

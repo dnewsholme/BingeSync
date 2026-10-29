@@ -2244,6 +2244,67 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     await page.click('#pill-all');
     await expect(page.locator('#history-list .scrobble-card')).toHaveCount(3);
   });
+
+  test('first-run setup wizard: step navigation, copyable redirect URIs, test connection, and review summary', async ({ page }) => {
+    // 1. Visit app
+    await page.goto('/');
+
+    // 2. Open setup wizard
+    await page.evaluate(() => {
+      if (window.showSetupState) {
+        window.showSetupState();
+      }
+    });
+
+    await expect(page.locator('#state-setup')).toBeVisible();
+    await expect(page.locator('.setup-header h2')).toContainText('Configure OpenID Connect');
+    await expect(page.locator('#setup-step-1')).toBeVisible();
+
+    // 3. Step 1: Check inputs and test connection feedback on empty URL
+    await page.fill('#setup-issuer-url', '');
+    await page.click('#btn-setup-test-oidc');
+    await expect(page.locator('#setup-test-feedback')).toContainText('Please enter an OIDC Issuer URL first');
+
+    // Fill valid issuer URL and advance to Step 2
+    await page.fill('#setup-issuer-url', 'https://auth.example.com/application/o/bingesync/');
+    await page.click('#btn-setup-step1-next');
+
+    // 4. Step 2: Credentials and Copyable URIs
+    await expect(page.locator('#setup-step-2')).toBeVisible();
+    await expect(page.locator('#step-nav-2')).toHaveClass(/active/);
+    await expect(page.locator('#step-nav-1')).toHaveClass(/completed/);
+
+    // Verify copyable redirect URIs are populated
+    const redirectVal = await page.inputValue('#setup-redirect-uri');
+    expect(redirectVal).toContain('/api/v1/auth/callback');
+    const logoutVal = await page.inputValue('#setup-logout-uri');
+    expect(logoutVal).toContain('/api/v1/auth/backchannel-logout');
+
+    // Advance to Step 3 with Client ID
+    await page.fill('#setup-client-id', 'bingesync-client');
+    await page.fill('#setup-client-secret', 'test-secret-123');
+    await page.click('#btn-setup-step2-next');
+
+    // 5. Step 3: Admin Group & Review Summary
+    await expect(page.locator('#setup-step-3')).toBeVisible();
+    await expect(page.locator('#step-nav-3')).toHaveClass(/active/);
+    await page.fill('#setup-admin-group', 'bingesync-admins');
+
+    await expect(page.locator('#review-issuer')).toContainText('auth.example.com');
+    await expect(page.locator('#review-client-id')).toContainText('bingesync-client');
+    await expect(page.locator('#review-redirect-uri')).toContainText('/api/v1/auth/callback');
+
+    // Verify Step Navigation backwards works
+    await page.click('#btn-setup-step3-back');
+    await expect(page.locator('#setup-step-2')).toBeVisible();
+    await page.click('#btn-setup-step2-back');
+    await expect(page.locator('#setup-step-1')).toBeVisible();
+
+    // Verify skip to dev login
+    await page.click('#btn-skip-setup-to-dev');
+    await expect(page.locator('#state-setup')).toBeHidden();
+    await expect(page.locator('#state-auth')).toBeVisible();
+  });
 });
 
 

@@ -34,26 +34,39 @@ pub struct DevLoginRequest {
 pub async fn get_auth_status(State(state): State<AppState>) -> impl IntoResponse {
     let base_app = state.config.app_url.trim_end_matches('/');
     let backchannel_logout_url = format!("{}/api/v1/auth/backchannel-logout", base_app);
+    let oidc_enabled = state.is_oidc_enabled().await;
+
+    let user_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users")
+        .fetch_one(&state.pool)
+        .await
+        .unwrap_or(0);
+
+    let setup_completed = get_db_setting(&state.pool, "setup_completed")
+        .await
+        .map(|v| v == "true" || v == "1")
+        .unwrap_or(false);
+
+    let oidc_client = state.get_effective_oidc_client().await;
+    let oidc_configured = oidc_client.is_some();
+
+    let needs_setup = user_count == 0 && (!setup_completed || !oidc_configured);
+
     Json(serde_json::json!({
-        "oidc_enabled": state.config.oidc_enabled,
+        "oidc_enabled": oidc_enabled,
+        "oidc_configured": oidc_configured,
         "dev_login_enabled": state.config.dev_login_enabled,
         "app_url": state.config.app_url,
         "backchannel_logout_url": backchannel_logout_url,
+        "needs_setup": needs_setup,
+        "user_count": user_count,
     }))
 }
 
 pub async fn login_handler(State(state): State<AppState>) -> Result<Redirect, (StatusCode, Json<serde_json::Value>)> {
-    if !state.config.oidc_enabled {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({ "error": "OIDC is not enabled on this instance. Use dev-login or configure OIDC environment variables." })),
-        ));
-    }
-
-    let oidc = state.oidc_client.as_ref().ok_or_else(|| {
+    let oidc = state.get_effective_oidc_client().await.ok_or_else(|| {
         (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({ "error": "OIDC client is not initialized" })),
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": "OpenID Connect is not enabled or configured on this instance. Please complete the setup flow." })),
         )
     })?;
 
@@ -97,10 +110,10 @@ pub async fn callback_handler(
         )
     })?;
 
-    let oidc = state.oidc_client.as_ref().ok_or_else(|| {
+    let oidc = state.get_effective_oidc_client().await.ok_or_else(|| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({ "error": "OIDC client is not initialized" })),
+            Json(serde_json::json!({ "error": "OIDC client is not initialized or configured" })),
         )
     })?;
 
@@ -119,10 +132,7 @@ pub async fn callback_handler(
         .clone()
         .unwrap_or_else(|| format!("{}@oidc.local", user_info.sub));
 
-    let custom_admin_group = match get_db_setting(&state.pool, "oidc_admin_group").await {
-        Some(v) if !v.trim().is_empty() => Some(v),
-        _ => state.config.oidc_admin_group.clone(),
-    };
+    let custom_admin_group = state.get_effective_oidc_admin_group().await;
     let is_admin = user_info.is_admin(custom_admin_group.as_deref());
 
     let display_name = user_info
@@ -301,6 +311,12 @@ pub async fn get_or_create_user_with_sid(
     preferred_username: Option<&str>,
     is_admin: bool,
 ) -> Result<User, sqlx::Error> {
+    let existing_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users")
+        .fetch_one(pool)
+        .await
+        .unwrap_or(0);
+
+    let is_admin = is_admin || existing_count == 0;
     let desired_role = if is_admin { "admin" } else { "user" };
 
     // 1. Try finding by oidc_sub if provided
@@ -395,26 +411,15 @@ pub async fn backchannel_logout_handler(
         (header::PRAGMA, "no-cache"),
     ];
 
-    if !state.config.oidc_enabled {
-        return (
-            StatusCode::BAD_REQUEST,
-            response_headers,
-            Json(serde_json::json!({
-                "error": "invalid_request",
-                "error_description": "OIDC is disabled on this instance"
-            })),
-        );
-    }
-
-    let oidc = match state.oidc_client.as_ref() {
+    let oidc = match state.get_effective_oidc_client().await {
         Some(client) => client,
         None => {
             return (
-                StatusCode::INTERNAL_SERVER_ERROR,
+                StatusCode::BAD_REQUEST,
                 response_headers,
                 Json(serde_json::json!({
-                    "error": "server_error",
-                    "error_description": "OIDC client is not initialized"
+                    "error": "invalid_request",
+                    "error_description": "OIDC is disabled or not configured on this instance"
                 })),
             );
         }

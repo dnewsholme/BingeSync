@@ -29,6 +29,72 @@ pub const OPENAPI_SPEC_JSON: &str = r###"{
             { "name": "Admin", "description": "User administration, system settings, live logs, and background tasks" }
         ],
         "paths": {
+            "/api/v1/setup/status": {
+                "get": {
+                    "tags": ["Setup"],
+                    "summary": "Check first-run setup status",
+                    "description": "Returns whether the instance requires initial OIDC configuration wizard setup.",
+                    "responses": {
+                        "200": { "description": "Instance setup status and connection URLs" }
+                    }
+                }
+            },
+            "/api/v1/setup/test-oidc": {
+                "post": {
+                    "tags": ["Setup"],
+                    "summary": "Test OIDC discovery URL",
+                    "description": "Tests connectivity and validates the .well-known/openid-configuration endpoint of an OIDC issuer.",
+                    "requestBody": {
+                        "required": true,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": ["issuer_url"],
+                                    "properties": {
+                                        "issuer_url": { "type": "string" }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "responses": {
+                        "200": { "description": "OIDC discovery succeeded with discovered endpoints" },
+                        "400": { "description": "Invalid issuer URL" },
+                        "502": { "description": "Failed to connect to issuer discovery endpoint" }
+                    }
+                }
+            },
+            "/api/v1/setup/save": {
+                "post": {
+                    "tags": ["Setup"],
+                    "summary": "Complete initial OIDC setup",
+                    "description": "Saves OIDC credentials and marks setup complete when no users exist.",
+                    "requestBody": {
+                        "required": true,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": ["oidc_issuer_url", "oidc_client_id"],
+                                    "properties": {
+                                        "oidc_issuer_url": { "type": "string" },
+                                        "oidc_client_id": { "type": "string" },
+                                        "oidc_client_secret": { "type": "string" },
+                                        "oidc_redirect_url": { "type": "string" },
+                                        "oidc_admin_group": { "type": "string" }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "responses": {
+                        "200": { "description": "Setup saved successfully" },
+                        "400": { "description": "Missing required fields or invalid URL" },
+                        "403": { "description": "Setup already completed on this instance" }
+                    }
+                }
+            },
             "/api/v1/auth/status": {
                 "get": {
                     "tags": ["Auth"],

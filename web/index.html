@@ -105,9 +105,164 @@
         <p data-i18n="auth.connecting">Connecting to BingeSync...</p>
       </div>
 
+      <!-- Setup State (First-Run OIDC Configuration Wizard) -->
+      <div id="state-setup" class="state-container" style="display: none;">
+        <div class="setup-card">
+          <div class="setup-header">
+            <div class="auth-logo setup-logo">
+              <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                <path d="m9 12 2 2 4-4"/>
+              </svg>
+            </div>
+            <div class="setup-badge">FIRST-RUN SETUP</div>
+            <h2>Configure OpenID Connect</h2>
+            <p>Welcome to BingeSync! Guide your new instance through OIDC authentication setup for secure Single Sign-On.</p>
+          </div>
+
+          <!-- Wizard Step Indicator -->
+          <div class="wizard-steps">
+            <div class="wizard-step active" id="step-nav-1">
+              <span class="step-num">1</span>
+              <span class="step-label">Provider</span>
+            </div>
+            <div class="wizard-step-line"></div>
+            <div class="wizard-step" id="step-nav-2">
+              <span class="step-num">2</span>
+              <span class="step-label">Credentials</span>
+            </div>
+            <div class="wizard-step-line"></div>
+            <div class="wizard-step" id="step-nav-3">
+              <span class="step-num">3</span>
+              <span class="step-label">Review & Finish</span>
+            </div>
+          </div>
+
+          <form id="form-setup-wizard" onsubmit="return false;">
+            <!-- Step 1: Identity Provider Discovery -->
+            <div id="setup-step-1" class="setup-step-pane active">
+              <div class="form-group">
+                <label for="setup-issuer-url">OpenID Connect Issuer URL <span class="text-danger">*</span></label>
+                <div class="input-with-action">
+                  <input type="url" id="setup-issuer-url" class="form-control" placeholder="https://auth.example.com/application/o/bingesync/" required />
+                  <button type="button" id="btn-setup-test-oidc" class="btn btn-secondary">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                    <span>Test Connection</span>
+                  </button>
+                </div>
+                <small class="form-help">The base URL of your identity provider (Authentik, Keycloak, Authelia, Okta, Google). Must support <code>/.well-known/openid-configuration</code>.</small>
+              </div>
+
+              <!-- Test feedback container -->
+              <div id="setup-test-feedback" style="display: none; margin-top: 14px;"></div>
+
+              <div class="setup-actions" style="margin-top: 24px; display: flex; justify-content: flex-end;">
+                <button type="button" id="btn-setup-step1-next" class="btn btn-primary">
+                  <span>Next: Credentials</span>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+                </button>
+              </div>
+            </div>
+
+            <!-- Step 2: Client Credentials & Callback URIs -->
+            <div id="setup-step-2" class="setup-step-pane" style="display: none;">
+              <div class="form-group">
+                <label for="setup-client-id">Client ID <span class="text-danger">*</span></label>
+                <input type="text" id="setup-client-id" class="form-control" placeholder="bingesync" required />
+                <small class="form-help">Client ID registered in your OIDC provider.</small>
+              </div>
+
+              <div class="form-group">
+                <label for="setup-client-secret">Client Secret</label>
+                <input type="password" id="setup-client-secret" class="form-control" placeholder="••••••••••••••••" />
+                <small class="form-help">Client Secret issued by your OIDC provider (required for confidential clients).</small>
+              </div>
+
+              <div class="form-group">
+                <label>Redirect URI (Callback URL)</label>
+                <div class="input-with-copy">
+                  <input type="text" id="setup-redirect-uri" class="form-control" readonly />
+                  <button type="button" class="btn btn-ghost btn-copy" data-target="setup-redirect-uri" title="Copy to clipboard">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                    <span>Copy</span>
+                  </button>
+                </div>
+                <small class="form-help">Add this exact URL to your identity provider's allowed <strong>Redirect URIs</strong> / Callbacks list.</small>
+              </div>
+
+              <div class="form-group">
+                <label>Back-Channel Logout URL (Optional)</label>
+                <div class="input-with-copy">
+                  <input type="text" id="setup-logout-uri" class="form-control" readonly />
+                  <button type="button" class="btn btn-ghost btn-copy" data-target="setup-logout-uri" title="Copy to clipboard">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                    <span>Copy</span>
+                  </button>
+                </div>
+                <small class="form-help">For OIDC Back-Channel Logout 1.0. Configure this in Authentik or Keycloak for instant session termination.</small>
+              </div>
+
+              <div class="setup-actions" style="margin-top: 24px; display: flex; justify-content: space-between;">
+                <button type="button" id="btn-setup-step2-back" class="btn btn-secondary">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+                  <span>Back</span>
+                </button>
+                <button type="button" id="btn-setup-step2-next" class="btn btn-primary">
+                  <span>Next: Review</span>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+                </button>
+              </div>
+            </div>
+
+            <!-- Step 3: Admin Group & Review -->
+            <div id="setup-step-3" class="setup-step-pane" style="display: none;">
+              <div class="form-group">
+                <label for="setup-admin-group">Admin Group(s) (Optional)</label>
+                <input type="text" id="setup-admin-group" class="form-control" placeholder="admins, administrator" />
+                <small class="form-help">Comma-separated OIDC groups or roles whose members receive the <strong>admin</strong> role in BingeSync. Note: The very first user to sign in is automatically granted the <strong>admin</strong> role regardless of group membership.</small>
+              </div>
+
+              <div class="setup-review-box">
+                <h4 style="margin: 0 0 10px 0; font-size: 0.95rem; color: var(--text-heading);">Configuration Summary</h4>
+                <div class="review-item"><span class="review-label">Issuer:</span> <span id="review-issuer" class="review-val">-</span></div>
+                <div class="review-item"><span class="review-label">Client ID:</span> <span id="review-client-id" class="review-val">-</span></div>
+                <div class="review-item"><span class="review-label">Redirect URI:</span> <span id="review-redirect-uri" class="review-val">-</span></div>
+                <div class="review-item"><span class="review-label">Admin Group:</span> <span id="review-admin-group" class="review-val">admins, administrator (default)</span></div>
+              </div>
+
+              <div id="setup-save-error" class="alert-box alert-error" style="display: none; margin-top: 14px;"></div>
+
+              <div class="setup-actions" style="margin-top: 24px; display: flex; justify-content: space-between;">
+                <button type="button" id="btn-setup-step3-back" class="btn btn-secondary">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+                  <span>Back</span>
+                </button>
+                <button type="button" id="btn-setup-save" class="btn btn-primary">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>
+                  <span>Complete Setup & Sign In</span>
+                </button>
+              </div>
+            </div>
+          </form>
+
+          <!-- Fallback link to dev login if enabled -->
+          <div id="setup-dev-link-container" style="text-align: center; margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--border-subtle); display: none;">
+            <button type="button" id="btn-skip-setup-to-dev" class="btn btn-ghost btn-sm" style="color: var(--text-muted); font-size: 0.85rem;">
+              Skip to local / dev login &rarr;
+            </button>
+          </div>
+        </div>
+      </div>
+
       <!-- Auth State (Sign In) -->
       <div id="state-auth" class="state-container" style="display: none;">
         <div class="auth-card">
+          <!-- Pending Setup Notification Banner -->
+          <div id="banner-needs-setup" class="alert-box alert-warning" style="display: none; margin-bottom: 20px; align-items: center; justify-content: space-between;">
+            <span>First-run setup pending.</span>
+            <button type="button" id="btn-goto-setup" class="btn btn-xs btn-primary">Setup Wizard</button>
+          </div>
+
           <div class="auth-header">
             <div class="auth-logo">
               <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">

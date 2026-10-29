@@ -18,6 +18,7 @@ pub mod user;
 pub mod user_settings;
 pub mod user_sync;
 pub mod backup;
+pub mod setup;
 pub mod webhooks;
 pub mod outbound_webhooks;
 pub mod overseerr;
@@ -48,6 +49,71 @@ pub struct AppState {
 }
 
 impl AppState {
+    pub async fn is_oidc_enabled(&self) -> bool {
+        if let Some(val) = settings::get_db_setting(&self.pool, "oidc_enabled").await {
+            return val == "true" || val == "1";
+        }
+        self.config.oidc_enabled
+    }
+
+    pub async fn get_effective_oidc_admin_group(&self) -> Option<String> {
+        if let Some(val) = settings::get_db_setting(&self.pool, "oidc_admin_group").await {
+            if !val.trim().is_empty() {
+                return Some(val);
+            }
+        }
+        self.config.oidc_admin_group.clone()
+    }
+
+    pub async fn get_effective_oidc_client(&self) -> Option<Arc<OidcClient>> {
+        let is_enabled = self.is_oidc_enabled().await;
+        if !is_enabled {
+            return None;
+        }
+
+        let issuer = match settings::get_db_setting(&self.pool, "oidc_issuer_url").await {
+            Some(v) if !v.trim().is_empty() => Some(v),
+            _ => self.config.oidc_issuer_url.clone(),
+        };
+
+        let client_id = match settings::get_db_setting(&self.pool, "oidc_client_id").await {
+            Some(v) if !v.trim().is_empty() => Some(v),
+            _ => self.config.oidc_client_id.clone(),
+        };
+
+        let client_secret = match settings::get_db_setting(&self.pool, "oidc_client_secret").await {
+            Some(v) if !v.trim().is_empty() => Some(v),
+            _ => self.config.oidc_client_secret.clone(),
+        };
+
+        let redirect_uri = match settings::get_db_setting(&self.pool, "oidc_redirect_url").await {
+            Some(v) if !v.trim().is_empty() => v,
+            _ => self.config.oidc_redirect_url.clone().unwrap_or_else(|| {
+                format!("{}/api/v1/auth/callback", self.config.app_url.trim_end_matches('/'))
+            }),
+        };
+
+        if let (Some(issuer), Some(client_id)) = (issuer, client_id) {
+            if let Some(existing) = &self.oidc_client {
+                if existing.issuer_url == issuer
+                    && existing.client_id == client_id
+                    && existing.client_secret == client_secret
+                    && existing.redirect_uri == redirect_uri
+                {
+                    return Some(existing.clone());
+                }
+            }
+            Some(Arc::new(OidcClient::new(
+                issuer,
+                client_id,
+                client_secret,
+                redirect_uri,
+            )))
+        } else {
+            None
+        }
+    }
+
     pub async fn get_effective_metadata_source(&self) -> String {
         if let Some(src) = settings::get_db_setting(&self.pool, "metadata_source").await {
             let s = src.trim().to_lowercase();
@@ -220,6 +286,10 @@ pub fn create_api_router(state: AppState) -> Router {
         .layer(axum::middleware::from_fn(rate_limit::import_rate_limit_middleware));
 
     Router::new()
+        // Initial First-Run Setup Flow
+        .route("/api/v1/setup/status", get(setup::get_setup_status_handler))
+        .route("/api/v1/setup/test-oidc", post(setup::test_oidc_discovery_handler))
+        .route("/api/v1/setup/save", post(setup::save_setup_handler))
         // Auth with rate limiting
         .nest("/api/v1/auth", auth_routes)
         // Webhooks with rate limiting

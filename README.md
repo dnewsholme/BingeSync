@@ -176,8 +176,15 @@ Per-user integrations for Radarr, Sonarr, Tautulli, Overseerr, and outbound webh
 
 ## Authentication and Administration
 
+### First-Run Setup Wizard
+For fresh instances where OIDC is not yet configured or no users exist, BingeSync automatically launches an interactive **First-Run Setup Flow**:
+- **Step 1: Provider Discovery**: Enter your OIDC Issuer URL and test connectivity to `/.well-known/openid-configuration` with one click. Discovered authorization, token, and userinfo endpoints are validated in real-time.
+- **Step 2: Client Credentials & URIs**: Enter your Client ID and Client Secret, and copy the pre-computed Redirect URI (`/api/v1/auth/callback`) and Back-Channel Logout URL (`/api/v1/auth/backchannel-logout`) to configure in your IdP.
+- **Step 3: Review & Admin Promotion**: Configure optional admin group names, review the settings summary, and complete setup. The configuration takes effect immediately without restarting the service.
+- **Initial Admin Promotion**: The very first user to log into the system is automatically granted the `admin` role, ensuring instances are never orphaned without an administrator. Once setup is completed, setup endpoints are locked (`403 Forbidden`).
+
 ### OpenID Connect (SSO)
-- Set `OIDC_ENABLED=true` and configure your provider's issuer URL, client ID, and secret.
+- Configure your provider via the First-Run Setup Flow, Admin Settings, or environment variables (`OIDC_ENABLED=true`, `OIDC_ISSUER_URL`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`).
 - Set the callback URL in your provider to `${APP_URL}/api/v1/auth/callback`.
 - Users belonging to `admin`, `admins`, `administrator`, `administrators`, or any group configured in `OIDC_ADMIN_GROUP` (or Admin Settings) are automatically granted admin permissions.
 - Back-Channel Logout is supported at `/api/v1/auth/backchannel-logout` to terminate sessions immediately upon IdP revocation.

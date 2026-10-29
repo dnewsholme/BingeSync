@@ -183,6 +183,7 @@ Tests in `tests/api_tests.rs` (55 integration tests) cover:
 - Duplicate watch detector & cleanup tool: detection within configurable time windows, auto-pruning (keep oldest/newest), selective deletion, and multi-user isolation
 - History and timeline rating threshold filters: arbitrary minimum rating thresholds (1+..10), rated, and unrated, combined with media type filters
 - OpenID Connect custom admin group configuration via `OIDC_ADMIN_GROUP` and Admin Settings with case-insensitive evaluation
+- First-run setup flow: guided 3-step OIDC setup wizard, live discovery test endpoint, immediate runtime activation, initial user automatic admin promotion, and 403 lockout when users exist
 
 ### Run Playwright E2E UI Tests
 ```bash
@@ -190,7 +191,7 @@ cd web
 npm install
 npx playwright test
 ```
-Playwright tests in `web/tests/e2e.spec.js` (41 browser E2E tests) cover:
+Playwright tests in `web/tests/e2e.spec.js` (42 browser E2E tests) cover:
 - User sign-in flow, "+ Log Watch" modal, and timeline rendering
 - Multi-user separation in the web UI
 - Trakt history and rating import flow in the web UI (pasted JSON)
@@ -232,6 +233,7 @@ Playwright tests in `web/tests/e2e.spec.js` (41 browser E2E tests) cover:
 - Custom tags and review notes on scrobbles with interactive filtering and uniform Binge Wrapped poster cards
 - Duplicate watch detector: scan for duplicate scrobbles and prune redundant watches
 - History view rating threshold filter: dropdown for minimum rating (10, 9+, 8+..1+) combined with media type pills (All, Movies, Episodes)
+- First-run setup wizard: 3-step navigation, copyable redirect URIs, test connection feedback, review summary, and skip to dev login toggle
 
 
 ### Run the App Locally

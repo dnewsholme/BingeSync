@@ -42,6 +42,17 @@ async function request(endpoint, options = {}) {
 
 export const api = {
   getAuthStatus: () => request('/auth/status'),
+  getSetupStatus: () => request('/setup/status'),
+  testOidcDiscovery: (issuer_url) =>
+    request('/setup/test-oidc', {
+      method: 'POST',
+      body: JSON.stringify({ issuer_url }),
+    }),
+  saveSetup: (data) =>
+    request('/setup/save', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
   devLogin: (email, displayName) =>
     request('/auth/dev-login', {
       method: 'POST',
