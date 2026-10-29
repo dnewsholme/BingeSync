@@ -12,7 +12,7 @@ BingeSync is a lightweight, self-hosted web service that replicates **Trakt.tv**
 - **Multi-User Isolation**: Every user account has a distinct `user_id` and unique `webhook_token`. Scrobbles, history, timeline, stats, and active sessions are strictly scoped per-user.
 - **Single-Binary Delivery**: The web frontend (`web/dist`) is embedded into the Rust binary at compile time via `rust-embed`. The Docker container runs a single minimal Debian slim image with no external runtime dependencies.
 - **Dual Authentication & Role Control**:
-  - **OpenID Connect (OIDC)** with PKCE (RFC 7636) for SSO (Authentik, Keycloak, Authelia, Google, Okta) with automatic `groups` scope evaluation. Users in `admin`/`admins`/`administrator`/`administrators` groups are assigned the `admin` role; others receive `user`.
+  - **OpenID Connect (OIDC)** with PKCE (RFC 7636) for SSO (Authentik, Keycloak, Authelia, Google, Okta) with automatic `groups` scope evaluation. Users in `admin`/`admins`/`administrator`/`administrators` groups or any custom group configured via `OIDC_ADMIN_GROUP` (or Admin Settings) are assigned the `admin` role; others receive `user`.
   - **OIDC Back-Channel Logout 1.0**: Receives `logout_token` at `/api/v1/auth/backchannel-logout` when user access is revoked, terminated, or group membership removed in IdP, invalidating active sessions and existing JWTs immediately.
   - **Dev / Local Login**: Headless or local login for testing and standalone deployments without an external IdP.
   - Signed JWT tokens passed via `Authorization: Bearer <token>` or HTTP-only `bingesync_token` cookie.
@@ -130,7 +130,7 @@ Plex webhooks send:
 ```bash
 cargo test
 ```
-Tests in `tests/api_tests.rs` (54 integration tests) cover:
+Tests in `tests/api_tests.rs` (55 integration tests) cover:
 - Dev login and `/api/v1/auth/me`
 - Plex movie and TV episode scrobbling
 - Multi-user isolation (User A cannot see User B's data)
@@ -182,6 +182,7 @@ Tests in `tests/api_tests.rs` (54 integration tests) cover:
 - Scrobble custom tags and personal review notes CRUD, history search/filtering, and CSV/JSON export
 - Duplicate watch detector & cleanup tool: detection within configurable time windows, auto-pruning (keep oldest/newest), selective deletion, and multi-user isolation
 - History and timeline rating threshold filters: arbitrary minimum rating thresholds (1+..10), rated, and unrated, combined with media type filters
+- OpenID Connect custom admin group configuration via `OIDC_ADMIN_GROUP` and Admin Settings with case-insensitive evaluation
 
 ### Run Playwright E2E UI Tests
 ```bash
@@ -267,6 +268,7 @@ docker run -p 8080:8080 -v bingesync_data:/data -v bingesync_backups:/backup bin
 | `OIDC_CLIENT_ID` | *(none)* | OIDC client ID |
 | `OIDC_CLIENT_SECRET` | *(none)* | OIDC client secret |
 | `OIDC_REDIRECT_URL` | `${APP_URL}/api/v1/auth/callback` | Callback URL |
+| `OIDC_ADMIN_GROUP` | *(none)* | Custom group name(s) (comma-separated) granting the admin role |
 | `DEV_LOGIN_ENABLED` | `true` | Allows local email/username login |
 | `METADATA_SOURCE` | `tvdb` | Active metadata enrichment provider (`tvdb` or `tmdb`) |
 | `TVDB_API_KEY` | *(none)* | TheTVDB v4 API key for background metadata enrichment |

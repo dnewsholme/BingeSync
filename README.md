@@ -158,6 +158,7 @@ If metadata credentials are not set, BingeSync scrobbles with basic title inform
 | `OIDC_CLIENT_ID` | *(none)* | OIDC client identifier |
 | `OIDC_CLIENT_SECRET` | *(none)* | OIDC client secret |
 | `OIDC_REDIRECT_URL` | `${APP_URL}/api/v1/auth/callback` | OAuth redirect URL |
+| `OIDC_ADMIN_GROUP` | *(none)* | Custom group name(s) (comma-separated) granting the admin role |
 | `METADATA_SOURCE` | `tvdb` | Active metadata enrichment provider (`tvdb` or `tmdb`) |
 | `TVDB_API_KEY` | *(none)* | TheTVDB v4 API key |
 | `TVDB_PIN` | *(none)* | TheTVDB v4 subscriber PIN (optional) |
@@ -178,7 +179,7 @@ Per-user integrations for Radarr, Sonarr, Tautulli, Overseerr, and outbound webh
 ### OpenID Connect (SSO)
 - Set `OIDC_ENABLED=true` and configure your provider's issuer URL, client ID, and secret.
 - Set the callback URL in your provider to `${APP_URL}/api/v1/auth/callback`.
-- Users belonging to `admin`, `admins`, `administrator`, or `administrators` groups in your IdP are automatically granted admin permissions.
+- Users belonging to `admin`, `admins`, `administrator`, `administrators`, or any group configured in `OIDC_ADMIN_GROUP` (or Admin Settings) are automatically granted admin permissions.
 - Back-Channel Logout is supported at `/api/v1/auth/backchannel-logout` to terminate sessions immediately upon IdP revocation.
 
 ### Admin Controls
@@ -232,7 +233,7 @@ cargo run
 ### Running Tests
 
 ```bash
-# Backend integration tests (54 tests)
+# Backend integration tests (55 tests)
 cargo test
 
 # Frontend browser E2E tests (41 tests)

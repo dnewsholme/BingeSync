@@ -6954,6 +6954,101 @@ async fn test_history_rating_threshold_filter() {
     assert_eq!(hist.total, 6);
 }
 
+#[tokio::test]
+async fn test_oidc_admin_group_configuration_and_evaluation() {
+    let (app, pool, config) = setup_test_app().await;
+
+    // 1. Create an admin user to test admin settings endpoints
+    let admin_id = "test_admin_oidc";
+    let admin_jwt = create_jwt(admin_id, "admin_oidc@test.com", &config.jwt_secret).unwrap();
+    sqlx::query("INSERT INTO users (id, email, display_name, webhook_token, role) VALUES (?, ?, ?, ?, 'admin')")
+        .bind(admin_id)
+        .bind("admin_oidc@test.com")
+        .bind("OIDC Admin Settings Tester")
+        .bind("token_oidc_admin")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    // 2. Test updating oidc_admin_group via admin settings endpoint
+    let update_body = json!({
+        "oidc_admin_group": "pocketid-admins, bingesync-moderators"
+    });
+
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/admin/settings")
+        .header(header::AUTHORIZATION, format!("Bearer {}", admin_jwt))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(update_body.to_string()))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // 3. Verify oidc_admin_group is returned in GET /api/v1/admin/settings
+    let req = Request::builder()
+        .uri("/api/v1/admin/settings")
+        .header(header::AUTHORIZATION, format!("Bearer {}", admin_jwt))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let settings: bingesync::api::settings::SystemSettingsView = serde_json::from_slice(&body).unwrap();
+    assert_eq!(settings.oidc_admin_group.as_deref(), Some("pocketid-admins, bingesync-moderators"));
+
+    // 4. Test OidcUserInfo.is_admin with various group claim formats and custom_admin_group
+    let custom_group_setting = Some("pocketid-admins, bingesync-moderators");
+
+    // Case A: User in custom group "pocketid-admins" -> should be admin
+    let user_a: bingesync::auth::OidcUserInfo = serde_json::from_value(json!({
+        "sub": "sub-123",
+        "email": "user_a@example.com",
+        "groups": ["pocketid-admins", "regular-users"]
+    })).unwrap();
+    assert!(user_a.is_admin(custom_group_setting));
+
+    // Case B: Case insensitivity and leading slash "/PocketId-Admins" -> should be admin
+    let user_b: bingesync::auth::OidcUserInfo = serde_json::from_value(json!({
+        "sub": "sub-456",
+        "email": "user_b@example.com",
+        "groups": ["/PocketID-Admins"]
+    })).unwrap();
+    assert!(user_b.is_admin(custom_group_setting));
+
+    // Case C: Standard default group "administrator" still recognized -> should be admin
+    let user_c: bingesync::auth::OidcUserInfo = serde_json::from_value(json!({
+        "sub": "sub-789",
+        "email": "user_c@example.com",
+        "groups": ["administrator"]
+    })).unwrap();
+    assert!(user_c.is_admin(custom_group_setting));
+
+    // Case D: User in object-based group list [{"name": "bingesync-moderators"}] -> should be admin
+    let user_d: bingesync::auth::OidcUserInfo = serde_json::from_value(json!({
+        "sub": "sub-101",
+        "email": "user_d@example.com",
+        "groups": [{"slug": "bingesync-moderators"}]
+    })).unwrap();
+    assert!(user_d.is_admin(custom_group_setting));
+
+    // Case E: User with memberOf claim alias -> should be admin
+    let user_e: bingesync::auth::OidcUserInfo = serde_json::from_value(json!({
+        "sub": "sub-102",
+        "email": "user_e@example.com",
+        "memberOf": ["bingesync-moderators"]
+    })).unwrap();
+    assert!(user_e.is_admin(custom_group_setting));
+
+    // Case F: Regular user in "viewers" only -> should NOT be admin
+    let user_f: bingesync::auth::OidcUserInfo = serde_json::from_value(json!({
+        "sub": "sub-103",
+        "email": "user_f@example.com",
+        "groups": ["viewers", "family"]
+    })).unwrap();
+    assert!(!user_f.is_admin(custom_group_setting));
+    assert!(!user_f.is_admin(None));
+}
+
 
 
 

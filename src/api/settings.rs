@@ -30,6 +30,7 @@ pub struct SystemSettingsView {
     pub oidc_client_secret_masked: Option<String>,
     pub oidc_client_secret: Option<String>,
     pub oidc_redirect_url: Option<String>,
+    pub oidc_admin_group: Option<String>,
     pub scrobble_threshold_percent: i64,
     pub task_image_interval_hours: u64,
     pub task_tvdb_interval_hours: u64,
@@ -50,6 +51,7 @@ pub struct UpdateSettingsRequest {
     pub oidc_client_id: Option<String>,
     pub oidc_client_secret: Option<String>,
     pub oidc_redirect_url: Option<String>,
+    pub oidc_admin_group: Option<String>,
     pub scrobble_threshold_percent: Option<i64>,
     pub task_image_interval_hours: Option<u64>,
     pub task_tvdb_interval_hours: Option<u64>,
@@ -149,6 +151,10 @@ pub async fn get_admin_settings_handler(
         Some(v) if !v.trim().is_empty() => Some(v),
         _ => state.config.oidc_redirect_url.clone(),
     };
+    let oidc_admin_group = match get_db_setting(&state.pool, "oidc_admin_group").await {
+        Some(v) if !v.trim().is_empty() => Some(v),
+        _ => state.config.oidc_admin_group.clone(),
+    };
 
     let view = SystemSettingsView {
         metadata_source,
@@ -170,6 +176,7 @@ pub async fn get_admin_settings_handler(
         oidc_client_secret_masked: oidc_client_secret.as_deref().map(mask_api_key),
         oidc_client_secret: None,
         oidc_redirect_url,
+        oidc_admin_group,
         scrobble_threshold_percent: state.get_effective_scrobble_threshold().await,
         task_image_interval_hours: state.get_task_interval_hours("image_cache").await,
         task_tvdb_interval_hours: state.get_task_interval_hours("tvdb_metadata").await,
@@ -245,6 +252,9 @@ pub async fn update_admin_settings_handler(
     }
     if let Some(ref val) = payload.oidc_redirect_url {
         let _ = set_db_setting(&state.pool, "oidc_redirect_url", val.trim()).await;
+    }
+    if let Some(ref val) = payload.oidc_admin_group {
+        let _ = set_db_setting(&state.pool, "oidc_admin_group", val.trim()).await;
     }
 
     if let Some(pct) = payload.scrobble_threshold_percent {

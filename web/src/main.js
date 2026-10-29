@@ -402,6 +402,7 @@ const el = {
   settingOidcClientId: document.getElementById('setting-oidc-client-id'),
   settingOidcClientSecret: document.getElementById('setting-oidc-client-secret'),
   settingOidcRedirectUrl: document.getElementById('setting-oidc-redirect-url'),
+  settingOidcAdminGroup: document.getElementById('setting-oidc-admin-group'),
   settingScrobbleThreshold: document.getElementById('setting-scrobble-threshold'),
 
   // Admin Background Tasks
@@ -4189,6 +4190,7 @@ async function loadAdminSettings() {
     if (el.settingOidcClientId) el.settingOidcClientId.value = s.oidc_client_id || '';
     applySecretField(el.settingOidcClientSecret, s.oidc_client_secret, s.oidc_client_secret_masked);
     if (el.settingOidcRedirectUrl) el.settingOidcRedirectUrl.value = s.oidc_redirect_url || '';
+    if (el.settingOidcAdminGroup) el.settingOidcAdminGroup.value = s.oidc_admin_group || '';
     if (el.settingScrobbleThreshold) el.settingScrobbleThreshold.value = s.scrobble_threshold_percent != null ? s.scrobble_threshold_percent : 80;
   } catch (err) {
     console.error('Failed to load admin settings:', err);
@@ -4221,6 +4223,7 @@ if (el.formAdminSettings) {
         oidc_client_id: el.settingOidcClientId ? el.settingOidcClientId.value.trim() : null,
         oidc_client_secret: getSecretValue(el.settingOidcClientSecret),
         oidc_redirect_url: el.settingOidcRedirectUrl ? el.settingOidcRedirectUrl.value.trim() : null,
+        oidc_admin_group: el.settingOidcAdminGroup ? el.settingOidcAdminGroup.value.trim() : null,
         scrobble_threshold_percent: el.settingScrobbleThreshold && el.settingScrobbleThreshold.value ? parseInt(el.settingScrobbleThreshold.value, 10) : null,
       };
 

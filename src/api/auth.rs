@@ -11,7 +11,7 @@ use url::form_urlencoded;
 use uuid::Uuid;
 
 use crate::{
-    api::AppState,
+    api::{settings::get_db_setting, AppState},
     auth::{create_jwt, AuthUser},
     models::User,
 };
@@ -119,7 +119,11 @@ pub async fn callback_handler(
         .clone()
         .unwrap_or_else(|| format!("{}@oidc.local", user_info.sub));
 
-    let is_admin = user_info.is_admin();
+    let custom_admin_group = match get_db_setting(&state.pool, "oidc_admin_group").await {
+        Some(v) if !v.trim().is_empty() => Some(v),
+        _ => state.config.oidc_admin_group.clone(),
+    };
+    let is_admin = user_info.is_admin(custom_admin_group.as_deref());
 
     let display_name = user_info
         .name

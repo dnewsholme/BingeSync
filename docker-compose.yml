@@ -23,6 +23,7 @@ services:
       - OIDC_CLIENT_ID=bingesync-client-id
       - OIDC_CLIENT_SECRET=bingesync-client-secret
       - OIDC_REDIRECT_URL=http://localhost:8080/api/v1/auth/callback
+      # - OIDC_ADMIN_GROUP=bingesync-admins
 
       # Set to false once OIDC is configured to disable local test login
       - DEV_LOGIN_ENABLED=true

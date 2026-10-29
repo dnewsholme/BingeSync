@@ -37,14 +37,14 @@ pub struct OidcUserInfo {
     pub picture: Option<String>,
     #[serde(default)]
     pub sid: Option<String>,
-    #[serde(default)]
+    #[serde(default, alias = "memberOf", alias = "member_of", alias = "group")]
     pub groups: serde_json::Value,
     #[serde(default)]
     pub roles: serde_json::Value,
 }
 
 impl OidcUserInfo {
-    pub fn is_admin(&self) -> bool {
+    pub fn is_admin(&self, custom_admin_group: Option<&str>) -> bool {
         let mut extracted: Vec<String> = Vec::new();
 
         let mut extract = |val: &serde_json::Value| {
@@ -65,7 +65,7 @@ impl OidcUserInfo {
                     }
                 }
                 serde_json::Value::String(s) => {
-                    for part in s.split([',', ' ', ';']) {
+                    for part in s.split([',', ';']) {
                         let trimmed = part.trim();
                         if !trimmed.is_empty() {
                             extracted.push(trimmed.to_string());
@@ -79,12 +79,33 @@ impl OidcUserInfo {
         extract(&self.groups);
         extract(&self.roles);
 
-        let check = |s: &str| {
-            let l = s.trim().to_lowercase();
-            l == "admin" || l == "admins" || l == "administrator" || l == "administrators"
+        let mut admin_targets: Vec<String> = vec![
+            "admin".to_string(),
+            "admins".to_string(),
+            "administrator".to_string(),
+            "administrators".to_string(),
+        ];
+
+        if let Some(custom) = custom_admin_group {
+            for part in custom.split([',', ';']) {
+                let trimmed = part.trim();
+                if !trimmed.is_empty() {
+                    admin_targets.push(trimmed.to_string());
+                }
+            }
+        }
+
+        let normalize = |s: &str| -> String {
+            s.trim().trim_start_matches('/').to_lowercase()
         };
 
-        extracted.iter().any(|g| check(g))
+        extracted.iter().any(|g| {
+            let norm_g = normalize(g);
+            admin_targets.iter().any(|target| {
+                let norm_t = normalize(target);
+                norm_g == norm_t
+            })
+        })
     }
 }
 

@@ -649,6 +649,7 @@ pub const OPENAPI_SPEC_JSON: &str = r###"{
                                             "oidc_client_secret_configured": { "type": "boolean" },
                                             "oidc_client_secret_masked": { "type": "string" },
                                             "oidc_redirect_url": { "type": "string" },
+                                            "oidc_admin_group": { "type": "string", "description": "Custom OIDC group name(s) granting admin privileges" },
                                             "scrobble_threshold_percent": { "type": "integer" },
                                             "task_image_interval_hours": { "type": "integer" },
                                             "task_tvdb_interval_hours": { "type": "integer" }
@@ -683,6 +684,7 @@ pub const OPENAPI_SPEC_JSON: &str = r###"{
                                         "oidc_client_id": { "type": "string" },
                                         "oidc_client_secret": { "type": "string" },
                                         "oidc_redirect_url": { "type": "string" },
+                                        "oidc_admin_group": { "type": "string" },
                                         "scrobble_threshold_percent": { "type": "integer" }
                                     }
                                 }
@@ -717,6 +719,7 @@ pub const OPENAPI_SPEC_JSON: &str = r###"{
                                         "oidc_client_id": { "type": "string" },
                                         "oidc_client_secret": { "type": "string" },
                                         "oidc_redirect_url": { "type": "string" },
+                                        "oidc_admin_group": { "type": "string" },
                                         "scrobble_threshold_percent": { "type": "integer" }
                                     }
                                 }
