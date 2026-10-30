@@ -1,4 +1,5 @@
 pub mod admin;
+pub mod api_keys;
 pub mod auth;
 pub mod history;
 pub mod images;
@@ -321,6 +322,8 @@ pub fn create_api_router(state: AppState) -> Router {
         .route("/api/v1/user/webhook", get(user::get_webhook_info))
         .route("/api/v1/user/regenerate-token", post(user::regenerate_webhook_token))
         .route("/api/v1/user/export", get(user::export_user_data))
+        .route("/api/v1/user/api-keys", get(api_keys::list_api_keys_handler).post(api_keys::create_api_key_handler))
+        .route("/api/v1/user/api-keys/{id}", delete(api_keys::delete_api_key_handler))
         .route("/api/v1/user/settings", get(user_settings::get_user_settings_handler).post(user_settings::update_user_settings_handler).put(user_settings::update_user_settings_handler))
         .route("/api/v1/user/settings/test-outbound-webhook", post(outbound_webhooks::test_outbound_webhook_handler))
         // Image cache (serves cached posters from disk)

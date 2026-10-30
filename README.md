@@ -23,7 +23,7 @@ BingeSync is a lightweight, self-hosted media tracker and Trakt.tv alternative. 
 - **Library Integrations & Cleanup**: Cross-reference watched items against Radarr and Sonarr libraries to identify deletion candidates, calculate reclaimable disk space, and trigger media removal.
 - **Trakt.tv & Tautulli Imports**: Import watch history and ratings from Trakt export files (multi-file ZIP, JSON, CSV) or connected Tautulli instances with automatic deduplication.
 - **Backups & User Data Export**: Automated and on-demand SQLite database backups with 7-day retention and pre-restore snapshots, plus one-click user data export to a clean ZIP archive (scrobbles CSV, JSON, and ratings).
-- **Authentication & Back-Channel Logout**: OpenID Connect (OIDC) SSO with PKCE, OpenID Back-Channel Logout 1.0 for instant session termination upon access revocation, group role mapping, and local dev login.
+- **Authentication & Personal API Keys**: OpenID Connect (OIDC) SSO with PKCE, OpenID Back-Channel Logout 1.0 for instant session termination upon access revocation, group role mapping, local dev login, and personal scoped API keys for third-party tools (Home Assistant, scripts, automation) passed via `X-Api-Key`, `Authorization: Bearer`, or `?api_key=`.
 - **UI Customization & Multilingual Support**: Trakt-inspired responsive dark UI with accent theme switcher (Red, Amber, Purple, Cyan, Emerald, Rose, Slate/Black) and multi-language localization (English, Spanish, German, French).
 - **Single Binary Delivery**: Rust backend with embedded web assets (`rust-embed`) and zero external runtime dependencies.
 - **Interactive API Documentation**: Embedded OpenAPI 3.0 specification served at `/api/v1/openapi.json` and interactive Swagger UI at `/docs`.
@@ -219,6 +219,9 @@ Key endpoints:
 - `POST /api/v1/import/trakt` - Import Trakt export files.
 - `POST /api/v1/import/tautulli` - Import playback records from Tautulli.
 - `GET /api/v1/user/export` - Export watch history ZIP archive (CSV, JSON, ratings).
+- `GET /api/v1/user/api-keys` - List personal API keys with masked prefixes and usage timestamps.
+- `POST /api/v1/user/api-keys` - Generate a new scoped personal API key.
+- `DELETE /api/v1/user/api-keys/:id` - Revoke a personal API key.
 - `GET /api/v1/integrations/cleanup/candidates` - Find watched items remaining on Radarr or Sonarr.
 - `POST /api/v1/admin/backups` - Create a database backup.
 - `POST /api/v1/admin/settings` - Update system configuration.
@@ -240,10 +243,10 @@ cargo run
 ### Running Tests
 
 ```bash
-# Backend integration tests (55 tests)
+# Backend integration tests (57 tests)
 cargo test
 
-# Frontend browser E2E tests (41 tests)
+# Frontend browser E2E tests (43 tests)
 cd web
 npm install
 npx playwright test

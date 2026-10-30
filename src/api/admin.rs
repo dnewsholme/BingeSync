@@ -94,6 +94,12 @@ pub async fn delete_user(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "error": e.to_string() }))))?;
 
+    sqlx::query("DELETE FROM user_api_keys WHERE user_id = ?")
+        .bind(&target_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "error": e.to_string() }))))?;
+
     sqlx::query("DELETE FROM users WHERE id = ?")
         .bind(&target_id)
         .execute(&mut *tx)

@@ -7172,6 +7172,300 @@ async fn test_first_run_setup_flow_and_initial_admin_promotion() {
     assert_eq!(resp.status(), StatusCode::FORBIDDEN);
 }
 
+#[tokio::test]
+async fn test_user_api_keys_crud_scoping_and_authentication() {
+    let (app, pool, config) = setup_test_app().await;
+
+    // 1. Create two users: User A (standard) and User B (standard), and an Admin
+    let user_a_id = "user_a_apikey_test";
+    let user_a_jwt = create_jwt(user_a_id, "user_a@test.local", &config.jwt_secret).unwrap();
+    sqlx::query("INSERT INTO users (id, email, display_name, webhook_token, role) VALUES (?, ?, ?, ?, 'user')")
+        .bind(user_a_id)
+        .bind("user_a@test.local")
+        .bind("User A")
+        .bind("token_a")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let user_b_id = "user_b_apikey_test";
+    let user_b_jwt = create_jwt(user_b_id, "user_b@test.local", &config.jwt_secret).unwrap();
+    sqlx::query("INSERT INTO users (id, email, display_name, webhook_token, role) VALUES (?, ?, ?, ?, 'user')")
+        .bind(user_b_id)
+        .bind("user_b@test.local")
+        .bind("User B")
+        .bind("token_b")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let admin_id = "admin_apikey_test";
+    let admin_jwt = create_jwt(admin_id, "admin@test.local", &config.jwt_secret).unwrap();
+    sqlx::query("INSERT INTO users (id, email, display_name, webhook_token, role) VALUES (?, ?, ?, ?, 'admin')")
+        .bind(admin_id)
+        .bind("admin@test.local")
+        .bind("Admin")
+        .bind("token_admin")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    // 2. User A initially has 0 API keys
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/user/api-keys")
+        .header(header::AUTHORIZATION, format!("Bearer {}", user_a_jwt))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let keys: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap();
+    assert!(keys.is_empty());
+
+    // 3. User A creates an API key "Home Assistant"
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/user/api-keys")
+        .header(header::AUTHORIZATION, format!("Bearer {}", user_a_jwt))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(json!({ "name": "Home Assistant" }).to_string()))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let created: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(created["name"], "Home Assistant");
+    let full_api_key_a = created["api_key"].as_str().unwrap().to_string();
+    let key_id_a = created["id"].as_str().unwrap().to_string();
+    assert!(full_api_key_a.starts_with("bs_live_"));
+    assert!(created["key_prefix"].as_str().unwrap().starts_with("bs_live_"));
+
+    // 4. User A lists API keys -> 1 key present
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/user/api-keys")
+        .header(header::AUTHORIZATION, format!("Bearer {}", user_a_jwt))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let keys: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap();
+    assert_eq!(keys.len(), 1);
+    assert_eq!(keys[0]["id"], key_id_a);
+    assert_eq!(keys[0]["name"], "Home Assistant");
+
+    // 5. Multi-User Isolation: User B cannot see User A's API key
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/user/api-keys")
+        .header(header::AUTHORIZATION, format!("Bearer {}", user_b_jwt))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let keys_b: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap();
+    assert!(keys_b.is_empty());
+
+    // User B cannot delete User A's API key
+    let req = Request::builder()
+        .method("DELETE")
+        .uri(format!("/api/v1/user/api-keys/{}", key_id_a))
+        .header(header::AUTHORIZATION, format!("Bearer {}", user_b_jwt))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+
+    // 6. Third-party authentication via X-Api-Key
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/auth/me")
+        .header("x-api-key", &full_api_key_a)
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let me: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(me["id"], user_a_id);
+    assert_eq!(me["email"], "user_a@test.local");
+    assert_eq!(me["role"], "user");
+
+    // 7. Third-party authentication via Authorization: Bearer <api_key>
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/auth/me")
+        .header(header::AUTHORIZATION, format!("Bearer {}", full_api_key_a))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // 8. Third-party authentication via Query Param ?api_key=<api_key>
+    let req = Request::builder()
+        .method("GET")
+        .uri(format!("/api/v1/auth/me?api_key={}", full_api_key_a))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // 9. Scoping verification:
+    // Create scrobbles for User A and User B
+    sqlx::query("INSERT INTO scrobbles (id, user_id, title, media_type, watched_at) VALUES ('scrob_a', ?, 'Movie A', 'movie', '2026-10-30T10:00:00Z')")
+        .bind(user_a_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    sqlx::query("INSERT INTO scrobbles (id, user_id, title, media_type, watched_at) VALUES ('scrob_b', ?, 'Movie B', 'movie', '2026-10-30T11:00:00Z')")
+        .bind(user_b_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    // Query history using User A's API key: returns ONLY Movie A
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/history")
+        .header("x-api-key", &full_api_key_a)
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let hist: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let items = hist["items"].as_array().unwrap();
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0]["title"], "Movie A");
+
+    // Create a new scrobble using User A's API key
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/history")
+        .header("x-api-key", &full_api_key_a)
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(json!({
+            "title": "Interstellar",
+            "media_type": "movie",
+            "year": 2014
+        }).to_string()))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+
+    // Verify scrobble created under User A
+    let scrobble_owner: String = sqlx::query_scalar("SELECT user_id FROM scrobbles WHERE title = 'Interstellar'")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(scrobble_owner, user_a_id);
+
+    // 10. Role Permission Scoping:
+    // User A API key (standard role) attempting admin endpoint -> 403 Forbidden
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/admin/users")
+        .header("x-api-key", &full_api_key_a)
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+
+    // Admin creates API key and accesses admin endpoint -> 200 OK
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/user/api-keys")
+        .header(header::AUTHORIZATION, format!("Bearer {}", admin_jwt))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(json!({ "name": "Admin Script Key" }).to_string()))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let admin_key_resp: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let admin_api_key = admin_key_resp["api_key"].as_str().unwrap();
+
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/admin/users")
+        .header("x-api-key", admin_api_key)
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // 11. Invalid API key returns 401 Unauthorized
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/history")
+        .header("x-api-key", "bs_live_invalid_nonexistent_key_123")
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+
+    // 12. Revoke API Key: User A revokes their key
+    let req = Request::builder()
+        .method("DELETE")
+        .uri(format!("/api/v1/user/api-keys/{}", key_id_a))
+        .header(header::AUTHORIZATION, format!("Bearer {}", user_a_jwt))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // Subsequent call with revoked key returns 401 Unauthorized
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/auth/me")
+        .header("x-api-key", &full_api_key_a)
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+
+    // 13. Cascading Deletion on User Delete
+    // Create an API key for User B, then admin deletes User B
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/user/api-keys")
+        .header(header::AUTHORIZATION, format!("Bearer {}", user_b_jwt))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(json!({ "name": "User B Key" }).to_string()))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+
+    let key_count_b: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM user_api_keys WHERE user_id = ?")
+        .bind(user_b_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(key_count_b, 1);
+
+    // Admin deletes User B
+    let req = Request::builder()
+        .method("DELETE")
+        .uri(format!("/api/v1/admin/users/{}", user_b_id))
+        .header(header::AUTHORIZATION, format!("Bearer {}", admin_jwt))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // Verify User B's API keys were cascade-deleted
+    let key_count_b_after: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM user_api_keys WHERE user_id = ?")
+        .bind(user_b_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(key_count_b_after, 0);
+}
+
 
 
 

@@ -169,6 +169,16 @@ export const api = {
       method: 'POST',
     }),
   getUserSettings: () => request('/user/settings'),
+  getUserApiKeys: () => request('/user/api-keys'),
+  createUserApiKey: (name) =>
+    request('/user/api-keys', {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    }),
+  deleteUserApiKey: (id) =>
+    request(`/user/api-keys/${id}`, {
+      method: 'DELETE',
+    }),
   updateUserSettings: (data) =>
     request('/user/settings', {
       method: 'POST',

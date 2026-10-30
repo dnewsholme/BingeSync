@@ -130,7 +130,7 @@ Plex webhooks send:
 ```bash
 cargo test
 ```
-Tests in `tests/api_tests.rs` (55 integration tests) cover:
+Tests in `tests/api_tests.rs` (57 integration tests) cover:
 - Dev login and `/api/v1/auth/me`
 - Plex movie and TV episode scrobbling
 - Multi-user isolation (User A cannot see User B's data)
@@ -184,6 +184,7 @@ Tests in `tests/api_tests.rs` (55 integration tests) cover:
 - History and timeline rating threshold filters: arbitrary minimum rating thresholds (1+..10), rated, and unrated, combined with media type filters
 - OpenID Connect custom admin group configuration via `OIDC_ADMIN_GROUP` and Admin Settings with case-insensitive evaluation
 - First-run setup flow: guided 3-step OIDC setup wizard, live discovery test endpoint, immediate runtime activation, initial user automatic admin promotion, and 403 lockout when users exist
+- Personal user API keys: scoped generation, SHA-256 storage, prefix masking (`bs_live_...`), header & query param auth, multi-user isolation, and cascading deletion
 
 ### Run Playwright E2E UI Tests
 ```bash
@@ -191,7 +192,7 @@ cd web
 npm install
 npx playwright test
 ```
-Playwright tests in `web/tests/e2e.spec.js` (42 browser E2E tests) cover:
+Playwright tests in `web/tests/e2e.spec.js` (43 browser E2E tests) cover:
 - User sign-in flow, "+ Log Watch" modal, and timeline rendering
 - Multi-user separation in the web UI
 - Trakt history and rating import flow in the web UI (pasted JSON)
@@ -234,6 +235,7 @@ Playwright tests in `web/tests/e2e.spec.js` (42 browser E2E tests) cover:
 - Duplicate watch detector: scan for duplicate scrobbles and prune redundant watches
 - History view rating threshold filter: dropdown for minimum rating (10, 9+, 8+..1+) combined with media type pills (All, Movies, Episodes)
 - First-run setup wizard: 3-step navigation, copyable redirect URIs, test connection feedback, review summary, and skip to dev login toggle
+- Personal API keys: generate scoped keys, masked prefix display, clipboard copy, and revoke modal flow
 
 
 ### Run the App Locally

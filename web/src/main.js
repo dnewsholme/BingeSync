@@ -376,6 +376,26 @@ const el = {
   btnExportUserData: document.getElementById('btn-export-user-data'),
   exportUserDataStatus: document.getElementById('export-user-data-status'),
 
+  // Personal API Keys
+  cardUserApiKeys: document.getElementById('card-user-api-keys'),
+  btnOpenCreateApiKeyModal: document.getElementById('btn-open-create-api-key-modal'),
+  userApiKeysLoading: document.getElementById('user-api-keys-loading'),
+  userApiKeysEmpty: document.getElementById('user-api-keys-empty'),
+  userApiKeysTableWrap: document.getElementById('user-api-keys-table-wrap'),
+  userApiKeysTbody: document.getElementById('user-api-keys-tbody'),
+  modalCreateApiKey: document.getElementById('modal-create-api-key'),
+  btnCloseApiKeyModal: document.getElementById('btn-close-api-key-modal'),
+  btnCancelCreateApiKey: document.getElementById('btn-cancel-create-api-key'),
+  apiKeyCreateStep: document.getElementById('api-key-create-step'),
+  apiKeySuccessStep: document.getElementById('api-key-success-step'),
+  formCreateApiKey: document.getElementById('form-create-api-key'),
+  inputApiKeyName: document.getElementById('input-api-key-name'),
+  createApiKeyError: document.getElementById('create-api-key-error'),
+  btnSubmitCreateApiKey: document.getElementById('btn-submit-create-api-key'),
+  inputGeneratedApiKey: document.getElementById('input-generated-api-key'),
+  btnCopyGeneratedApiKey: document.getElementById('btn-copy-generated-api-key'),
+  btnDoneApiKeyModal: document.getElementById('btn-done-api-key-modal'),
+
   // Recommendations & Heatmap & Wrapped
   weeklyHeatmapGrid: document.getElementById('weekly-heatmap-grid'),
   btnOpenWrapped: document.getElementById('btn-open-wrapped'),
@@ -2613,6 +2633,7 @@ el.btnRegenToken.addEventListener('click', async () => {
 
 // User Settings (Connected Services: Plex, Jellyfin, Emby, Radarr, Sonarr, Tautulli, Overseerr, Outbound Webhooks)
 async function loadUserSettings() {
+  loadUserApiKeys();
   if (!el.formUserSettings) return;
   try {
     const s = await api.getUserSettings();
@@ -2764,6 +2785,166 @@ if (el.btnExportUserData) {
       }
     } finally {
       el.btnExportUserData.disabled = false;
+    }
+  });
+}
+
+// ==========================================================================
+// Personal User API Keys
+// ==========================================================================
+async function loadUserApiKeys() {
+  if (!el.cardUserApiKeys) return;
+  if (el.userApiKeysLoading) el.userApiKeysLoading.style.display = 'inline-block';
+  if (el.userApiKeysEmpty) el.userApiKeysEmpty.style.display = 'none';
+  if (el.userApiKeysTableWrap) el.userApiKeysTableWrap.style.display = 'none';
+
+  try {
+    const keys = await api.getUserApiKeys();
+    if (el.userApiKeysLoading) el.userApiKeysLoading.style.display = 'none';
+
+    if (!keys || keys.length === 0) {
+      if (el.userApiKeysEmpty) el.userApiKeysEmpty.style.display = 'block';
+      return;
+    }
+
+    if (el.userApiKeysTbody) {
+      el.userApiKeysTbody.innerHTML = keys.map(k => {
+        const createdDate = formatFullDateTime(k.created_at);
+        const lastUsed = k.last_used_at
+          ? formatFullDateTime(k.last_used_at)
+          : '<span class="badge-pill" style="font-size:0.75rem; background:rgba(255,255,255,0.06); color:var(--text-muted);">Never</span>';
+
+        return `
+          <tr data-key-id="${k.id}">
+            <td>
+              <strong style="color:var(--text-heading);">${escapeHtml(k.name || 'API Key')}</strong>
+            </td>
+            <td>
+              <code class="key-prefix-code">${escapeHtml(k.key_prefix)}</code>
+            </td>
+            <td style="color:var(--text-muted); font-size:0.83rem;">
+              ${createdDate}
+            </td>
+            <td style="color:var(--text-muted); font-size:0.83rem;">
+              ${lastUsed}
+            </td>
+            <td style="text-align: right;">
+              <button type="button" class="btn btn-ghost btn-sm text-danger btn-revoke-api-key" data-id="${k.id}" data-name="${escapeHtml(k.name || 'API Key')}" title="Revoke this API key">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                <span>Revoke</span>
+              </button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+
+      // Wire up revoke buttons
+      el.userApiKeysTbody.querySelectorAll('.btn-revoke-api-key').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const keyId = btn.dataset.id;
+          const keyName = btn.dataset.name;
+          if (!confirm(`Are you sure you want to revoke the API key "${keyName}"? Any third-party application using it will immediately lose access.`)) {
+            return;
+          }
+
+          btn.disabled = true;
+          try {
+            await api.deleteUserApiKey(keyId);
+            await loadUserApiKeys();
+          } catch (err) {
+            alert('Failed to revoke API key: ' + err.message);
+            btn.disabled = false;
+          }
+        });
+      });
+    }
+
+    if (el.userApiKeysTableWrap) el.userApiKeysTableWrap.style.display = 'block';
+  } catch (err) {
+    if (el.userApiKeysLoading) el.userApiKeysLoading.style.display = 'none';
+    console.error('Failed to load user API keys:', err);
+  }
+}
+
+function openCreateApiKeyModal() {
+  if (!el.modalCreateApiKey) return;
+  if (el.apiKeyCreateStep) el.apiKeyCreateStep.style.display = 'block';
+  if (el.apiKeySuccessStep) el.apiKeySuccessStep.style.display = 'none';
+  if (el.inputApiKeyName) {
+    el.inputApiKeyName.value = '';
+    setTimeout(() => el.inputApiKeyName.focus(), 50);
+  }
+  if (el.createApiKeyError) {
+    el.createApiKeyError.style.display = 'none';
+    el.createApiKeyError.textContent = '';
+  }
+  if (el.inputGeneratedApiKey) el.inputGeneratedApiKey.value = '';
+  el.modalCreateApiKey.style.display = 'flex';
+}
+
+function closeCreateApiKeyModal() {
+  if (el.modalCreateApiKey) el.modalCreateApiKey.style.display = 'none';
+}
+
+if (el.btnOpenCreateApiKeyModal) {
+  el.btnOpenCreateApiKeyModal.addEventListener('click', openCreateApiKeyModal);
+}
+
+if (el.btnCloseApiKeyModal) {
+  el.btnCloseApiKeyModal.addEventListener('click', closeCreateApiKeyModal);
+}
+
+if (el.btnCancelCreateApiKey) {
+  el.btnCancelCreateApiKey.addEventListener('click', closeCreateApiKeyModal);
+}
+
+if (el.btnDoneApiKeyModal) {
+  el.btnDoneApiKeyModal.addEventListener('click', closeCreateApiKeyModal);
+}
+
+if (el.modalCreateApiKey) {
+  el.modalCreateApiKey.addEventListener('click', (e) => {
+    if (e.target === el.modalCreateApiKey) closeCreateApiKeyModal();
+  });
+}
+
+if (el.formCreateApiKey) {
+  el.formCreateApiKey.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const name = el.inputApiKeyName ? el.inputApiKeyName.value.trim() : '';
+
+    if (el.btnSubmitCreateApiKey) {
+      el.btnSubmitCreateApiKey.disabled = true;
+      el.btnSubmitCreateApiKey.textContent = 'Generating...';
+    }
+    if (el.createApiKeyError) {
+      el.createApiKeyError.style.display = 'none';
+      el.createApiKeyError.textContent = '';
+    }
+
+    try {
+      const res = await api.createUserApiKey(name || 'Default API Key');
+      if (el.inputGeneratedApiKey) {
+        el.inputGeneratedApiKey.value = res.api_key;
+      }
+      const previewInlines = el.modalCreateApiKey.querySelectorAll('.api-key-preview-inline');
+      previewInlines.forEach(p => p.textContent = res.key_prefix);
+
+      if (el.apiKeyCreateStep) el.apiKeyCreateStep.style.display = 'none';
+      if (el.apiKeySuccessStep) el.apiKeySuccessStep.style.display = 'block';
+
+      loadUserApiKeys();
+    } catch (err) {
+      if (el.createApiKeyError) {
+        el.createApiKeyError.style.display = 'block';
+        el.createApiKeyError.textContent = 'Failed to generate API key: ' + err.message;
+      }
+    } finally {
+      if (el.btnSubmitCreateApiKey) {
+        el.btnSubmitCreateApiKey.disabled = false;
+        el.btnSubmitCreateApiKey.textContent = 'Generate Key';
+      }
     }
   });
 }

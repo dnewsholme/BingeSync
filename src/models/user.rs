@@ -64,3 +64,22 @@ impl User {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct UserApiKey {
+    pub id: String,
+    pub user_id: String,
+    pub name: String,
+    pub key_prefix: String,
+    pub created_at: String,
+    pub last_used_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateApiKeyResponse {
+    pub id: String,
+    pub name: String,
+    pub key_prefix: String,
+    pub api_key: String,
+    pub created_at: String,
+}
+

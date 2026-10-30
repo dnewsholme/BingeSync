@@ -2305,6 +2305,59 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     await expect(page.locator('#state-setup')).toBeHidden();
     await expect(page.locator('#state-auth')).toBeVisible();
   });
+
+  test('user api keys: generate personal api key, view prefix in table, copy key, and revoke key', async ({ page }) => {
+    const userEmail = `user_keys_${Date.now()}@bingesync.local`;
+    await page.goto('/');
+    await page.fill('#dev-email', userEmail);
+    await page.fill('#dev-name', 'API Key Tester');
+    await page.click('#btn-dev-submit');
+
+    // 1. Navigate to Settings view
+    const keysLoaded = page.waitForResponse(resp => resp.url().includes('/api/v1/user/api-keys') && resp.status() === 200);
+    await page.click('#tab-settings');
+    await keysLoaded;
+
+    await expect(page.locator('#view-settings')).toBeVisible();
+    await expect(page.locator('#card-user-api-keys')).toBeVisible();
+    await expect(page.locator('#user-api-keys-empty')).toBeVisible();
+
+    // 2. Open generate modal
+    await page.click('#btn-open-create-api-key-modal');
+    await expect(page.locator('#modal-create-api-key')).toBeVisible();
+    await expect(page.locator('#api-key-create-step')).toBeVisible();
+
+    // 3. Fill key name and submit
+    await page.fill('#input-api-key-name', 'Home Assistant Integration');
+    const keyCreated = page.waitForResponse(resp => resp.url().includes('/api/v1/user/api-keys') && resp.status() === 200);
+    await page.click('#btn-submit-create-api-key');
+    await keyCreated;
+
+    // 4. Verify generated key step displays live key with bs_live_ prefix
+    await expect(page.locator('#api-key-success-step')).toBeVisible();
+    const generatedKey = await page.inputValue('#input-generated-api-key');
+    expect(generatedKey).toMatch(/^bs_live_[A-Za-z0-9_-]{43}$/);
+
+    // 5. Click Done to close modal
+    await page.click('#btn-done-api-key-modal');
+    await expect(page.locator('#modal-create-api-key')).toBeHidden();
+
+    // 6. Verify key appears in active keys table with prefix and name
+    await expect(page.locator('#user-api-keys-table-wrap')).toBeVisible();
+    await expect(page.locator('#user-api-keys-tbody')).toContainText('Home Assistant Integration');
+    await expect(page.locator('#user-api-keys-tbody')).toContainText('bs_live_');
+    await expect(page.locator('#user-api-keys-empty')).toBeHidden();
+
+    // 7. Revoke key
+    page.once('dialog', dialog => dialog.accept());
+    const keyDeleted = page.waitForResponse(resp => resp.url().includes('/api/v1/user/api-keys') && resp.status() === 200);
+    await page.click('.btn-revoke-api-key');
+    await keyDeleted;
+
+    // 8. Verify table is empty again
+    await expect(page.locator('#user-api-keys-empty')).toBeVisible();
+    await expect(page.locator('#user-api-keys-table-wrap')).toBeHidden();
+  });
 });
 
 

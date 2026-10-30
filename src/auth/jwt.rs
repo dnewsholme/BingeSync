@@ -43,11 +43,58 @@ pub fn verify_jwt(token: &str, secret: &str) -> Result<Claims, jsonwebtoken::err
     Ok(token_data.claims)
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuthUser {
     pub user_id: String,
     pub email: String,
     pub role: String,
+}
+
+pub async fn validate_api_key(
+    pool: &sqlx::SqlitePool,
+    api_key: &str,
+) -> Option<AuthUser> {
+    let trimmed = api_key.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(trimmed.as_bytes());
+    let key_hash = format!("{:x}", hasher.finalize());
+
+    let row: Option<(String, String, String, String)> = sqlx::query_as(
+        r#"
+        SELECT u.id, u.email, u.role, k.id as key_id
+        FROM user_api_keys k
+        JOIN users u ON u.id = k.user_id
+        WHERE k.key_hash = ?
+        "#
+    )
+    .bind(&key_hash)
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten();
+
+    if let Some((user_id, email, role, key_id)) = row {
+        let pool_clone = pool.clone();
+        tokio::spawn(async move {
+            let _ = sqlx::query("UPDATE user_api_keys SET last_used_at = datetime('now') WHERE id = ?")
+                .bind(&key_id)
+                .execute(&pool_clone)
+                .await;
+        });
+
+        Some(AuthUser {
+            user_id,
+            email,
+            role,
+        })
+    } else {
+        None
+    }
 }
 
 impl<S> FromRequestParts<S> for AuthUser
@@ -69,17 +116,47 @@ where
                     .into_response()
             })?;
 
-        // 1. Try Authorization header: Bearer <token>
-        let mut token: Option<String> = None;
-        if let Some(auth_header) = parts.headers.get(header::AUTHORIZATION) {
-            if let Ok(auth_str) = auth_header.to_str() {
-                if let Some(bearer) = auth_str.strip_prefix("Bearer ") {
-                    token = Some(bearer.trim().to_string());
+        // 1. Try X-Api-Key header
+        if let Some(key_header) = parts.headers.get("x-api-key") {
+            if let Ok(key_str) = key_header.to_str() {
+                if let Some(auth_user) = validate_api_key(&app_state.pool, key_str).await {
+                    return Ok(auth_user);
                 }
             }
         }
 
-        // 2. Try Cookie if header not found
+        // 2. Try Authorization header: Bearer <token> or ApiKey <token>
+        let mut token: Option<String> = None;
+        if let Some(auth_header) = parts.headers.get(header::AUTHORIZATION) {
+            if let Ok(auth_str) = auth_header.to_str() {
+                if let Some(bearer) = auth_str.strip_prefix("Bearer ") {
+                    let trimmed = bearer.trim();
+                    if trimmed.starts_with("bs_") {
+                        if let Some(auth_user) = validate_api_key(&app_state.pool, trimmed).await {
+                            return Ok(auth_user);
+                        }
+                    }
+                    token = Some(trimmed.to_string());
+                } else if let Some(api_key) = auth_str.strip_prefix("ApiKey ") {
+                    if let Some(auth_user) = validate_api_key(&app_state.pool, api_key).await {
+                        return Ok(auth_user);
+                    }
+                }
+            }
+        }
+
+        // 3. Try query parameter ?api_key=<key>
+        if let Some(query) = parts.uri.query() {
+            for (key, val) in url::form_urlencoded::parse(query.as_bytes()) {
+                if key.eq_ignore_ascii_case("api_key") {
+                    if let Some(auth_user) = validate_api_key(&app_state.pool, &val).await {
+                        return Ok(auth_user);
+                    }
+                }
+            }
+        }
+
+        // 4. Try Cookie if header not found
         if token.is_none() {
             let jar = CookieJar::from_request_parts(parts, state)
                 .await
@@ -94,7 +171,7 @@ where
             None => {
                 return Err((
                     StatusCode::UNAUTHORIZED,
-                    Json(serde_json::json!({ "error": "Authentication required" })),
+                    Json(serde_json::json!({ "error": "Authentication required. Please sign in or provide a valid API key." })),
                 )
                     .into_response());
             }
@@ -103,6 +180,10 @@ where
         let claims = match verify_jwt(&token, &app_state.config.jwt_secret) {
             Ok(c) => c,
             Err(_) => {
+                // If JWT verification fails, check if the token was a valid API key passed as Bearer
+                if let Some(auth_user) = validate_api_key(&app_state.pool, &token).await {
+                    return Ok(auth_user);
+                }
                 return Err((
                     StatusCode::UNAUTHORIZED,
                     Json(serde_json::json!({ "error": "Invalid or expired authentication token" })),
