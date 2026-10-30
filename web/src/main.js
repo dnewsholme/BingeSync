@@ -585,7 +585,10 @@ async function init() {
       // Unauthenticated
     }
 
-    if (state.authStatus && state.authStatus.needs_setup) {
+    const urlParams = new URLSearchParams(window.location.search);
+    const forceSetup = urlParams.get('setup') === 'true' || window.location.hash === '#setup';
+
+    if (forceSetup || (state.authStatus && state.authStatus.needs_setup && !state.authStatus.dev_login_enabled)) {
       showSetupState();
     } else {
       showAuthState();
