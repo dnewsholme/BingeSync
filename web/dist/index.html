@@ -22,8 +22,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="BingeSync" />
-  <script type="module" crossorigin src="./assets/index-BLnEQEeh.js"></script>
-  <link rel="stylesheet" crossorigin href="./assets/index-rXO9Lj6N.css">
+  <script type="module" crossorigin src="./assets/index-BPvJ0apd.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-BsHJJjWV.css">
 </head>
 <body>
   <div id="app">
@@ -812,294 +812,18 @@
             </div>
           </div>
 
-          <div class="settings-grid-layout">
-            <!-- Appearance & Preferences (Language & Theme Accent) -->
-            <div class="card settings-card settings-grid-full" id="card-user-preferences">
-              <h2 class="card-title">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m4.93 4.93 4.24 4.24"/><path d="m14.83 9.17 4.24-4.24"/><path d="m14.83 14.83 4.24 4.24"/><path d="m9.17 14.83-4.24 4.24"/></svg>
-                <span>Appearance & Preferences</span>
-              </h2>
-              <p class="card-desc">
-                Personalize your display language and accent theme across BingeSync.
-              </p>
-              <div class="form-row">
-                <div class="form-group col-half">
-                  <label for="user-setting-language" data-i18n="settings.language_title">Display Language</label>
-                  <select id="user-setting-language" class="form-control language-select">
-                    <option value="en">🇬🇧 English</option>
-                    <option value="es">🇪🇸 Español</option>
-                    <option value="de">🇩🇪 Deutsch</option>
-                    <option value="fr">🇫🇷 Français</option>
-                  </select>
-                  <small class="form-hint" data-i18n="settings.language_desc">
-                    Choose your preferred language for the interface.
-                  </small>
-                </div>
-                <div class="form-group col-half">
-                  <label for="user-setting-theme" class="label-with-addon">
-                    <span>Theme Accent</span>
-                    <span id="theme-preview-dot" class="theme-preview-dot" title="Active Theme Accent"></span>
-                  </label>
-                  <div class="theme-select-wrap">
-                    <select id="user-setting-theme" class="form-control theme-select" aria-label="Theme Accent">
-                      <option value="red">Red</option>
-                      <option value="amber">Amber</option>
-                      <option value="purple">Purple</option>
-                      <option value="cyan">Cyan</option>
-                      <option value="emerald">Emerald</option>
-                      <option value="rose">Rose</option>
-                      <option value="oled">Black</option>
-                    </select>
-                  </div>
-                  <small class="form-hint">
-                    Curated color palette inspired by popular media hubs and OLED aesthetics.
-                  </small>
-                </div>
-              </div>
-            </div>
+          <!-- Settings Sub-Navigation Pills -->
+          <div class="settings-nav-pills" id="settings-subnav-pills">
+            <button class="pill active" data-subview="settings-sub-webhooks" id="pill-settings-webhooks" data-i18n="settings.webhooks_tab">Webhooks</button>
+            <button class="pill" data-subview="settings-sub-services" id="pill-settings-services" data-i18n="settings.services_tab">Connected Services</button>
+            <button class="pill" data-subview="settings-sub-api-keys" id="pill-settings-api-keys" data-i18n="settings.api_keys_tab">API Keys</button>
+            <button class="pill" data-subview="settings-sub-preferences" id="pill-settings-preferences" data-i18n="settings.preferences_tab">Preferences</button>
+            <button class="pill" data-subview="settings-sub-data" id="pill-settings-data" data-i18n="settings.data_tab">Data & Export</button>
+          </div>
 
-            <!-- Personal API Keys (Scoped to User) -->
-            <div class="card settings-card settings-grid-full" id="card-user-api-keys">
-              <div class="settings-card-header-flex">
-                <div>
-                  <h2 class="card-title">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21 2-2 2m-6 6 2-2m-8 8 2-2m-4 4 2-2m-2-2 7-7a5 5 0 1 0-7 7Z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/></svg>
-                    <span>Personal API Keys</span>
-                  </h2>
-                  <p class="card-desc">
-                    Generate API keys for third-party applications (scripts, Home Assistant, automation tools, CLI) to interact with BingeSync. API keys inherit your account permissions and are strictly scoped to your personal watch history and data.
-                  </p>
-                </div>
-                <button type="button" class="btn btn-primary btn-sm" id="btn-open-create-api-key-modal">
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                  <span>Generate New API Key</span>
-                </button>
-              </div>
-
-              <!-- List / Table Container -->
-              <div id="user-api-keys-container" style="margin-top: 14px;">
-                <div class="spinner-sm" id="user-api-keys-loading" style="display: none;"></div>
-                <div id="user-api-keys-empty" class="empty-state" style="display: none; padding: 24px 16px;">
-                  <p style="margin: 0; color: var(--text-muted); font-size: 0.9rem;">No API keys generated yet. Create one to integrate third-party applications.</p>
-                </div>
-                <div class="table-responsive" id="user-api-keys-table-wrap" style="display: none;">
-                  <table class="data-table api-keys-table">
-                    <thead>
-                      <tr>
-                        <th>Name</th>
-                        <th>Key Prefix</th>
-                        <th>Created</th>
-                        <th>Last Used</th>
-                        <th style="text-align: right;">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody id="user-api-keys-tbody"></tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-
-            <!-- Left Column: Connected Services Form -->
-            <div class="card settings-card" id="card-user-services">
-              <h2 class="card-title">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
-                <span data-i18n="settings.connected_services">Connected Services</span>
-              </h2>
-              <p class="card-desc" data-i18n="settings.connected_services_desc">
-                Configure your personal Plex username filter, Radarr, Sonarr, and Tautulli credentials. These settings are specific to your user account.
-              </p>
-
-              <form id="form-user-settings" style="margin-top: 18px;">
-                <!-- Plex Username Filter -->
-                <div class="settings-group-header">
-                  <span class="badge-pill" style="background: rgba(234, 179, 8, 0.15); color: #eab308; border: 1px solid rgba(234, 179, 8, 0.3);">Plex</span>
-                  <strong data-i18n="settings.plex_filter">Plex Account Filtering</strong>
-                </div>
-                <div class="form-row">
-                  <div class="form-group col-full">
-                    <label for="user-setting-plex-username" data-i18n="settings.plex_filter">Plex Username(s) or User ID(s)</label>
-                    <input type="text" id="user-setting-plex-username" class="form-control" placeholder="e.g. your_plex_username, 3078822f-..., 1 (comma-separated)" spellcheck="false" />
-                    <small style="color: var(--text-muted); font-size: 0.8rem; margin-top: 4px; display: block;" data-i18n="settings.plex_hint">
-                      Only record scrobbles matching these Plex username(s) or user ID(s). Incoming user IDs are automatically resolved and cached via your Tautulli integration.
-                    </small>
-                  </div>
-                </div>
-
-                <!-- Jellyfin Username Filter -->
-                <div class="settings-group-header" style="margin-top: 16px;">
-                  <span class="badge-pill" style="background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.3);">Jellyfin</span>
-                  <strong data-i18n="settings.jellyfin_filter">Jellyfin Account Filtering</strong>
-                </div>
-                <div class="form-row">
-                  <div class="form-group col-full">
-                    <label for="user-setting-jellyfin-username" data-i18n="settings.jellyfin_filter">Jellyfin Username(s) or User ID(s)</label>
-                    <input type="text" id="user-setting-jellyfin-username" class="form-control" placeholder="e.g. your_jellyfin_username, a1b2c3d4... (comma-separated)" spellcheck="false" />
-                    <small style="color: var(--text-muted); font-size: 0.8rem; margin-top: 4px; display: block;" data-i18n="settings.jellyfin_hint">
-                      Only record scrobbles matching these Jellyfin username(s) or user ID(s) (comma-separated).
-                    </small>
-                  </div>
-                </div>
-
-                <!-- Emby Username Filter -->
-                <div class="settings-group-header" style="margin-top: 16px;">
-                  <span class="badge-pill" style="background: rgba(6, 182, 212, 0.15); color: #06b6d4; border: 1px solid rgba(6, 182, 212, 0.3);">Emby</span>
-                  <strong>Emby Account Filtering</strong>
-                </div>
-                <div class="form-row">
-                  <div class="form-group col-full">
-                    <label for="user-setting-emby-username">Emby Username(s) or User ID(s)</label>
-                    <input type="text" id="user-setting-emby-username" class="form-control" placeholder="e.g. your_emby_username, a1b2c3d4... (comma-separated)" spellcheck="false" />
-                    <small style="color: var(--text-muted); font-size: 0.8rem; margin-top: 4px; display: block;">
-                      Only record scrobbles matching these Emby username(s) or user ID(s) (comma-separated).
-                    </small>
-                  </div>
-                </div>
-                <div class="form-row">
-                  <div class="form-group col-half">
-                    <label for="user-setting-jellyfin-url">Jellyfin Server URL (Optional for User Sync)</label>
-                    <input type="url" id="user-setting-jellyfin-url" class="form-control" placeholder="http://192.168.1.100:8096" />
-                  </div>
-                  <div class="form-group col-half">
-                    <label for="user-setting-jellyfin-api-key">Jellyfin API Key</label>
-                    <div class="input-secret-wrapper">
-                      <input type="text" id="user-setting-jellyfin-api-key" class="form-control font-mono" placeholder="Jellyfin API Key" autocomplete="off" spellcheck="false" />
-                      <button type="button" class="btn-toggle-secret" data-target="user-setting-jellyfin-api-key" title="Unhide / Show full key">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="7" r="3"/></svg>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Radarr -->
-                <div class="settings-group-header" style="margin-top: 16px;">
-                  <span class="arr-badge arr-badge-radarr">Radarr</span>
-                  <strong data-i18n="settings.radarr_title">Movie Library & Cleanup</strong>
-                </div>
-                <div class="form-row">
-                  <div class="form-group col-half">
-                    <label for="user-setting-radarr-url" data-i18n="settings.radarr_url">Radarr Base URL</label>
-                    <input type="url" id="user-setting-radarr-url" class="form-control" placeholder="http://192.168.1.100:7878" />
-                  </div>
-                  <div class="form-group col-half">
-                    <label for="user-setting-radarr-api-key" data-i18n="settings.radarr_key">Radarr API Key</label>
-                    <div class="input-secret-wrapper">
-                      <input type="text" id="user-setting-radarr-api-key" class="form-control font-mono" placeholder="API Key" autocomplete="off" spellcheck="false" />
-                      <button type="button" class="btn-toggle-secret" data-target="user-setting-radarr-api-key" title="Unhide / Show full key">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Sonarr -->
-                <div class="settings-group-header" style="margin-top: 16px;">
-                  <span class="arr-badge arr-badge-sonarr">Sonarr</span>
-                  <strong data-i18n="settings.sonarr_title">TV Series Library & Cleanup</strong>
-                </div>
-                <div class="form-row">
-                  <div class="form-group col-half">
-                    <label for="user-setting-sonarr-url" data-i18n="settings.sonarr_url">Sonarr Base URL</label>
-                    <input type="url" id="user-setting-sonarr-url" class="form-control" placeholder="http://192.168.1.100:8989" />
-                  </div>
-                  <div class="form-group col-half">
-                    <label for="user-setting-sonarr-api-key" data-i18n="settings.sonarr_key">Sonarr API Key</label>
-                    <div class="input-secret-wrapper">
-                      <input type="text" id="user-setting-sonarr-api-key" class="form-control font-mono" placeholder="API Key" autocomplete="off" spellcheck="false" />
-                      <button type="button" class="btn-toggle-secret" data-target="user-setting-sonarr-api-key" title="Unhide / Show full key">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Tautulli -->
-                <div class="settings-group-header" style="margin-top: 16px;">
-                  <span class="badge-pill" style="background: rgba(234, 88, 12, 0.15); color: #fb923c; border: 1px solid rgba(234, 88, 12, 0.3);">Tautulli</span>
-                  <strong data-i18n="settings.tautulli_title">Plex Watch History & Statistics</strong>
-                </div>
-                <div class="form-row">
-                  <div class="form-group col-half">
-                    <label for="user-setting-tautulli-url" data-i18n="settings.tautulli_url">Tautulli Base URL</label>
-                    <input type="url" id="user-setting-tautulli-url" class="form-control" placeholder="http://192.168.1.100:8181" />
-                  </div>
-                  <div class="form-group col-half">
-                    <label for="user-setting-tautulli-api-key" data-i18n="settings.tautulli_key">Tautulli API Key</label>
-                    <div class="input-secret-wrapper">
-                      <input type="text" id="user-setting-tautulli-api-key" class="form-control font-mono" placeholder="API Key" autocomplete="off" spellcheck="false" />
-                      <button type="button" class="btn-toggle-secret" data-target="user-setting-tautulli-api-key" title="Unhide / Show full key">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Overseerr / Jellyseerr -->
-                <div class="settings-group-header" style="margin-top: 16px;">
-                  <span class="arr-badge" style="background: rgba(236, 72, 153, 0.15); color: #f472b6; border: 1px solid rgba(236, 72, 153, 0.3);">Overseerr</span>
-                  <strong>Overseerr / Jellyseerr Media Requests</strong>
-                </div>
-                <div class="form-row">
-                  <div class="form-group col-half">
-                    <label for="user-setting-overseerr-url">Overseerr / Jellyseerr Base URL</label>
-                    <input type="url" id="user-setting-overseerr-url" class="form-control" placeholder="http://192.168.1.100:5055" />
-                  </div>
-                  <div class="form-group col-half">
-                    <label for="user-setting-overseerr-api-key">Overseerr API Key</label>
-                    <div class="input-secret-wrapper">
-                      <input type="text" id="user-setting-overseerr-api-key" class="form-control font-mono" placeholder="API Key" autocomplete="off" spellcheck="false" />
-                      <button type="button" class="btn-toggle-secret" data-target="user-setting-overseerr-api-key" title="Unhide / Show full key">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Outbound Webhooks -->
-                <div class="settings-group-header" style="margin-top: 16px;">
-                  <span class="badge-pill" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3);">Notifications</span>
-                  <strong>Outbound Webhooks (Discord, Telegram, ntfy, Gotify)</strong>
-                </div>
-                <div class="form-row">
-                  <div class="form-group col-half">
-                    <label for="user-setting-outbound-type">Webhook Provider</label>
-                    <select id="user-setting-outbound-type" class="form-control">
-                      <option value="">Disabled</option>
-                      <option value="discord">Discord (Rich Embed)</option>
-                      <option value="telegram">Telegram Bot</option>
-                      <option value="ntfy">ntfy.sh</option>
-                      <option value="gotify">Gotify</option>
-                      <option value="generic">Generic JSON Webhook</option>
-                    </select>
-                  </div>
-                  <div class="form-group col-half">
-                    <label for="user-setting-outbound-url">Webhook URL or Target</label>
-                    <input type="text" id="user-setting-outbound-url" class="form-control font-mono" placeholder="https://discord.com/api/webhooks/... or https://ntfy.sh/topic" spellcheck="false" />
-                  </div>
-                </div>
-                <div class="form-row">
-                  <div class="form-group col-full" style="display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;">
-                    <small class="form-hint" style="margin-top: 0;">
-                      For Telegram, format as: <code>https://api.telegram.org/bot&lt;token&gt;/sendMessage?chat_id=&lt;chat_id&gt;</code>.
-                    </small>
-                    <button type="button" class="btn btn-outline btn-sm" id="btn-test-outbound-webhook">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-                      <span>Send Test Notification</span>
-                    </button>
-                  </div>
-                </div>
-                <div id="outbound-webhook-test-status" style="margin-top: 6px; font-size: 0.85rem; display: none;"></div>
-
-                <div style="display:flex;align-items:center;gap:12px;margin-top:20px;">
-                  <button type="submit" class="btn btn-primary" id="btn-save-user-settings" data-i18n="settings.save">Save Settings</button>
-                  <span id="user-settings-status" style="font-size:0.85rem;"></span>
-                </div>
-              </form>
-            </div>
-
-            <!-- Right Column: Webhooks, Export & Attribution Stack -->
-            <div class="settings-column-stack">
-              <!-- Personal Webhook Endpoints (Plex, Jellyfin, Emby) with Expandable Guides -->
-              <div class="card settings-card" id="card-webhook-setup">
+          <!-- Sub-view 1: Webhooks -->
+          <div id="settings-sub-webhooks" class="settings-subview">
+            <div class="card settings-card" id="card-webhook-setup">
                 <div class="card-title">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
                   <span data-i18n="settings.webhooks_title">Personal Webhook Endpoints</span>
@@ -1272,9 +996,279 @@
                   <button class="btn btn-outline btn-sm text-danger" id="btn-regen-token" data-i18n="settings.regen_token">Regenerate Webhook URLs</button>
                 </div>
               </div>
+          </div>
 
-              <!-- Data Portability / One-Click Export Card -->
-              <div class="card settings-card" id="card-user-export">
+          <!-- Sub-view 2: Connected Services -->
+          <div id="settings-sub-services" class="settings-subview" style="display: none;">
+            <div class="card settings-card" id="card-user-services">
+              <h2 class="card-title">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
+                <span data-i18n="settings.connected_services">Connected Services</span>
+              </h2>
+              <p class="card-desc" data-i18n="settings.connected_services_desc">
+                Configure your personal Plex username filter, Radarr, Sonarr, and Tautulli credentials. These settings are specific to your user account.
+              </p>
+
+              <form id="form-user-settings" style="margin-top: 18px;">
+                <!-- Plex Username Filter -->
+                <div class="settings-group-header">
+                  <span class="badge-pill" style="background: rgba(234, 179, 8, 0.15); color: #eab308; border: 1px solid rgba(234, 179, 8, 0.3);">Plex</span>
+                  <strong data-i18n="settings.plex_filter">Plex Account Filtering</strong>
+                </div>
+                <div class="form-row">
+                  <div class="form-group col-full">
+                    <label for="user-setting-plex-username" data-i18n="settings.plex_filter">Plex Username(s) or User ID(s)</label>
+                    <input type="text" id="user-setting-plex-username" class="form-control" placeholder="e.g. your_plex_username, 3078822f-..., 1 (comma-separated)" spellcheck="false" />
+                    <small style="color: var(--text-muted); font-size: 0.8rem; margin-top: 4px; display: block;" data-i18n="settings.plex_hint">
+                      Only record scrobbles matching these Plex username(s) or user ID(s). Incoming user IDs are automatically resolved and cached via your Tautulli integration.
+                    </small>
+                  </div>
+                </div>
+
+                <!-- Jellyfin Username Filter -->
+                <div class="settings-group-header" style="margin-top: 16px;">
+                  <span class="badge-pill" style="background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.3);">Jellyfin</span>
+                  <strong data-i18n="settings.jellyfin_filter">Jellyfin Account Filtering</strong>
+                </div>
+                <div class="form-row">
+                  <div class="form-group col-full">
+                    <label for="user-setting-jellyfin-username" data-i18n="settings.jellyfin_filter">Jellyfin Username(s) or User ID(s)</label>
+                    <input type="text" id="user-setting-jellyfin-username" class="form-control" placeholder="e.g. your_jellyfin_username, a1b2c3d4... (comma-separated)" spellcheck="false" />
+                    <small style="color: var(--text-muted); font-size: 0.8rem; margin-top: 4px; display: block;" data-i18n="settings.jellyfin_hint">
+                      Only record scrobbles matching these Jellyfin username(s) or user ID(s) (comma-separated).
+                    </small>
+                  </div>
+                </div>
+
+                <!-- Emby Username Filter -->
+                <div class="settings-group-header" style="margin-top: 16px;">
+                  <span class="badge-pill" style="background: rgba(6, 182, 212, 0.15); color: #06b6d4; border: 1px solid rgba(6, 182, 212, 0.3);">Emby</span>
+                  <strong>Emby Account Filtering</strong>
+                </div>
+                <div class="form-row">
+                  <div class="form-group col-full">
+                    <label for="user-setting-emby-username">Emby Username(s) or User ID(s)</label>
+                    <input type="text" id="user-setting-emby-username" class="form-control" placeholder="e.g. your_emby_username, a1b2c3d4... (comma-separated)" spellcheck="false" />
+                    <small style="color: var(--text-muted); font-size: 0.8rem; margin-top: 4px; display: block;">
+                      Only record scrobbles matching these Emby username(s) or user ID(s) (comma-separated).
+                    </small>
+                  </div>
+                </div>
+                <div class="form-row">
+                  <div class="form-group col-half">
+                    <label for="user-setting-jellyfin-url">Jellyfin Server URL (Optional for User Sync)</label>
+                    <input type="url" id="user-setting-jellyfin-url" class="form-control" placeholder="http://192.168.1.100:8096" />
+                  </div>
+                  <div class="form-group col-half">
+                    <label for="user-setting-jellyfin-api-key">Jellyfin API Key</label>
+                    <div class="input-secret-wrapper">
+                      <input type="text" id="user-setting-jellyfin-api-key" class="form-control font-mono" placeholder="Jellyfin API Key" autocomplete="off" spellcheck="false" />
+                      <button type="button" class="btn-toggle-secret" data-target="user-setting-jellyfin-api-key" title="Unhide / Show full key">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="7" r="3"/></svg>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Radarr -->
+                <div class="settings-group-header" style="margin-top: 16px;">
+                  <span class="arr-badge arr-badge-radarr">Radarr</span>
+                  <strong data-i18n="settings.radarr_title">Movie Library & Cleanup</strong>
+                </div>
+                <div class="form-row">
+                  <div class="form-group col-half">
+                    <label for="user-setting-radarr-url" data-i18n="settings.radarr_url">Radarr Base URL</label>
+                    <input type="url" id="user-setting-radarr-url" class="form-control" placeholder="http://192.168.1.100:7878" />
+                  </div>
+                  <div class="form-group col-half">
+                    <label for="user-setting-radarr-api-key" data-i18n="settings.radarr_key">Radarr API Key</label>
+                    <div class="input-secret-wrapper">
+                      <input type="text" id="user-setting-radarr-api-key" class="form-control font-mono" placeholder="API Key" autocomplete="off" spellcheck="false" />
+                      <button type="button" class="btn-toggle-secret" data-target="user-setting-radarr-api-key" title="Unhide / Show full key">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Sonarr -->
+                <div class="settings-group-header" style="margin-top: 16px;">
+                  <span class="arr-badge arr-badge-sonarr">Sonarr</span>
+                  <strong data-i18n="settings.sonarr_title">TV Series Library & Cleanup</strong>
+                </div>
+                <div class="form-row">
+                  <div class="form-group col-half">
+                    <label for="user-setting-sonarr-url" data-i18n="settings.sonarr_url">Sonarr Base URL</label>
+                    <input type="url" id="user-setting-sonarr-url" class="form-control" placeholder="http://192.168.1.100:8989" />
+                  </div>
+                  <div class="form-group col-half">
+                    <label for="user-setting-sonarr-api-key" data-i18n="settings.sonarr_key">Sonarr API Key</label>
+                    <div class="input-secret-wrapper">
+                      <input type="text" id="user-setting-sonarr-api-key" class="form-control font-mono" placeholder="API Key" autocomplete="off" spellcheck="false" />
+                      <button type="button" class="btn-toggle-secret" data-target="user-setting-sonarr-api-key" title="Unhide / Show full key">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Tautulli -->
+                <div class="settings-group-header" style="margin-top: 16px;">
+                  <span class="badge-pill" style="background: rgba(234, 88, 12, 0.15); color: #fb923c; border: 1px solid rgba(234, 88, 12, 0.3);">Tautulli</span>
+                  <strong data-i18n="settings.tautulli_title">Plex Watch History & Statistics</strong>
+                </div>
+                <div class="form-row">
+                  <div class="form-group col-half">
+                    <label for="user-setting-tautulli-url" data-i18n="settings.tautulli_url">Tautulli Base URL</label>
+                    <input type="url" id="user-setting-tautulli-url" class="form-control" placeholder="http://192.168.1.100:8181" />
+                  </div>
+                  <div class="form-group col-half">
+                    <label for="user-setting-tautulli-api-key" data-i18n="settings.tautulli_key">Tautulli API Key</label>
+                    <div class="input-secret-wrapper">
+                      <input type="text" id="user-setting-tautulli-api-key" class="form-control font-mono" placeholder="API Key" autocomplete="off" spellcheck="false" />
+                      <button type="button" class="btn-toggle-secret" data-target="user-setting-tautulli-api-key" title="Unhide / Show full key">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Outbound Webhooks -->
+                <div class="settings-group-header" style="margin-top: 16px;">
+                  <span class="badge-pill" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3);">Notifications</span>
+                  <strong>Outbound Webhooks (Discord, Telegram, ntfy, Gotify)</strong>
+                </div>
+                <div class="form-row">
+                  <div class="form-group col-half">
+                    <label for="user-setting-outbound-type">Webhook Provider</label>
+                    <select id="user-setting-outbound-type" class="form-control">
+                      <option value="">Disabled</option>
+                      <option value="discord">Discord (Rich Embed)</option>
+                      <option value="telegram">Telegram Bot</option>
+                      <option value="ntfy">ntfy.sh</option>
+                      <option value="gotify">Gotify</option>
+                      <option value="generic">Generic JSON Webhook</option>
+                    </select>
+                  </div>
+                  <div class="form-group col-half">
+                    <label for="user-setting-outbound-url">Webhook URL or Target</label>
+                    <input type="text" id="user-setting-outbound-url" class="form-control font-mono" placeholder="https://discord.com/api/webhooks/... or https://ntfy.sh/topic" spellcheck="false" />
+                  </div>
+                </div>
+                <div class="form-row">
+                  <div class="form-group col-full" style="display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;">
+                    <small class="form-hint" style="margin-top: 0;">
+                      For Telegram, format as: <code>https://api.telegram.org/bot&lt;token&gt;/sendMessage?chat_id=&lt;chat_id&gt;</code>.
+                    </small>
+                    <button type="button" class="btn btn-outline btn-sm" id="btn-test-outbound-webhook">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                      <span>Send Test Notification</span>
+                    </button>
+                  </div>
+                </div>
+                <div id="outbound-webhook-test-status" style="margin-top: 6px; font-size: 0.85rem; display: none;"></div>
+
+                <div style="display:flex;align-items:center;gap:12px;margin-top:20px;">
+                  <button type="submit" class="btn btn-primary" id="btn-save-user-settings" data-i18n="settings.save">Save Settings</button>
+                  <span id="user-settings-status" style="font-size:0.85rem;"></span>
+                </div>
+              </form>
+            </div>
+          </div>
+
+          <!-- Sub-view 3: Personal API Keys -->
+          <div id="settings-sub-api-keys" class="settings-subview" style="display: none;">
+            <div class="card settings-card" id="card-user-api-keys">
+              <div class="settings-card-header-flex">
+                <div>
+                  <h2 class="card-title">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21 2-2 2m-6 6 2-2m-8 8 2-2m-4 4 2-2m-2-2 7-7a5 5 0 1 0-7 7Z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/></svg>
+                    <span>Personal API Keys</span>
+                  </h2>
+                  <p class="card-desc">
+                    Generate API keys for third-party applications (scripts, Home Assistant, automation tools, CLI) to interact with BingeSync. API keys inherit your account permissions and are strictly scoped to your personal watch history and data.
+                  </p>
+                </div>
+                <button type="button" class="btn btn-primary btn-sm" id="btn-open-create-api-key-modal">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                  <span>Generate New API Key</span>
+                </button>
+              </div>
+
+              <!-- List / Table Container -->
+              <div id="user-api-keys-container" style="margin-top: 14px;">
+                <div class="spinner-sm" id="user-api-keys-loading" style="display: none;"></div>
+                <div id="user-api-keys-empty" class="empty-state" style="display: none; padding: 24px 16px;">
+                  <p style="margin: 0; color: var(--text-muted); font-size: 0.9rem;">No API keys generated yet. Create one to integrate third-party applications.</p>
+                </div>
+                <div class="table-responsive" id="user-api-keys-table-wrap" style="display: none;">
+                  <table class="data-table api-keys-table">
+                    <thead>
+                      <tr>
+                        <th>Name</th>
+                        <th>Key Prefix</th>
+                        <th>Created</th>
+                        <th>Last Used</th>
+                        <th style="text-align: right;">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody id="user-api-keys-tbody"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Sub-view 4: Preferences -->
+          <div id="settings-sub-preferences" class="settings-subview" style="display: none;">
+            <div class="card settings-card" id="card-user-preferences">
+              <h2 class="card-title">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m4.93 4.93 4.24 4.24"/><path d="m14.83 9.17 4.24-4.24"/><path d="m14.83 14.83 4.24 4.24"/><path d="m9.17 14.83-4.24 4.24"/></svg>
+                <span>Appearance & Preferences</span>
+              </h2>
+              <p class="card-desc">
+                Personalize your display language and accent theme across BingeSync.
+              </p>
+              <div class="form-row">
+                <div class="form-group col-half">
+                  <label for="user-setting-language" data-i18n="settings.language_title">Display Language</label>
+                  <select id="user-setting-language" class="form-control language-select">
+                    <option value="en">🇬🇧 English</option>
+                    <option value="es">🇪🇸 Español</option>
+                    <option value="de">🇩🇪 Deutsch</option>
+                    <option value="fr">🇫🇷 Français</option>
+                  </select>
+                  <small class="form-hint" data-i18n="settings.language_desc">
+                    Choose your preferred language for the interface.
+                  </small>
+                </div>
+                <div class="form-group col-half">
+                  <label for="user-setting-theme" class="label-with-addon">
+                    <span>Theme Accent</span>
+                    <span id="theme-preview-dot" class="theme-preview-dot" title="Active Theme Accent"></span>
+                  </label>
+                  <div class="theme-select-wrap">
+                    <select id="user-setting-theme" class="form-control theme-select" aria-label="Theme Accent">
+                      <option value="red">Red</option>
+                      <option value="amber">Amber</option>
+                      <option value="purple">Purple</option>
+                      <option value="cyan">Cyan</option>
+                      <option value="emerald">Emerald</option>
+                      <option value="rose">Rose</option>
+                      <option value="oled">Black</option>
+                    </select>
+                  </div>
+                  <small class="form-hint">
+                    Curated color palette inspired by popular media hubs and OLED aesthetics.
+                  </small>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Sub-view 5: Data & Export -->
+          <div id="settings-sub-data" class="settings-subview" style="display: none;">
+            <div class="card settings-card" id="card-user-export">
                 <h2 class="card-title">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                   <span>Data Portability & Full Export</span>
@@ -1290,9 +1284,7 @@
                   <span id="export-user-data-status" style="font-size: 0.85rem; color: var(--text-muted);"></span>
                 </div>
               </div>
-
-              <!-- Metadata Integration & Attribution Card -->
-              <div class="card settings-card" id="settings-tvdb-card">
+            <div class="card settings-card" id="settings-tvdb-card">
                 <h2 class="card-title">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 11a9 9 0 0 1 9 9"/><path d="M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1"/></svg>
                   <span id="settings-metadata-card-title">TheTVDB Metadata Integration</span>
@@ -1310,7 +1302,6 @@
                   </p>
                 </div>
               </div>
-            </div>
           </div>
         </section>
 

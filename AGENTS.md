@@ -192,7 +192,7 @@ cd web
 npm install
 npx playwright test
 ```
-Playwright tests in `web/tests/e2e.spec.js` (43 browser E2E tests) cover:
+Playwright tests in `web/tests/e2e.spec.js` (44 browser E2E tests) cover:
 - User sign-in flow, "+ Log Watch" modal, and timeline rendering
 - Multi-user separation in the web UI
 - Trakt history and rating import flow in the web UI (pasted JSON)
@@ -229,13 +229,14 @@ Playwright tests in `web/tests/e2e.spec.js` (43 browser E2E tests) cover:
 - Theme accent switcher exclusively in Settings with pure colour swatches (Red, Amber, Purple, Cyan, Emerald, Rose, Black) and persistent state
 - Missing metadata filter pill and badge (`⚠️ Needs Match`) in history and timeline for quick match fixing
 - Stats view weekly 7x24 viewing heatmap grid and interactive Binge Wrapped / Year in Review modal with share card copy
-- User settings: Emby webhooks setup and guide, outbound webhooks configuration and test ping, Overseerr credentials, and one-click data export ZIP
+- User settings: Emby webhooks setup and guide, outbound webhooks configuration and test ping, and one-click data export ZIP
 - Fix match modal: search matching titles, provider selector (Auto / TMDB / TheTVDB), candidate card selection, and TMDB ID matching
 - Custom tags and review notes on scrobbles with interactive filtering and uniform Binge Wrapped poster cards
 - Duplicate watch detector: scan for duplicate scrobbles and prune redundant watches
 - History view rating threshold filter: dropdown for minimum rating (10, 9+, 8+..1+) combined with media type pills (All, Movies, Episodes)
 - First-run setup wizard: 3-step navigation, copyable redirect URIs, test connection feedback, review summary, and skip to dev login toggle
 - Personal API keys: generate scoped keys, masked prefix display, clipboard copy, and revoke modal flow
+- Settings menu sub-navigation tabs: switch between Webhooks, Connected Services, API Keys, Preferences, and Data & Export
 
 
 ### Run the App Locally

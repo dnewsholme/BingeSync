@@ -3259,9 +3259,10 @@ select.filter-ctrl {
 }
 
 /* ==========================================================================
-   Admin Sub-Navigation & Settings
+   Admin & Settings Sub-Navigation
    ========================================================================== */
-.admin-nav-pills {
+.admin-nav-pills,
+.settings-nav-pills {
   display: flex;
   gap: 8px;
   margin-bottom: 24px;
@@ -3270,10 +3271,15 @@ select.filter-ctrl {
   padding-bottom: 12px;
 }
 
-.admin-nav-pills .pill.active {
+.admin-nav-pills .pill.active,
+.settings-nav-pills .pill.active {
   background: var(--primary);
   color: #fff;
   border-color: var(--primary);
+}
+
+.settings-subview {
+  animation: fadeIn 0.2s ease-in-out;
 }
 
 .settings-group-header {
@@ -3817,7 +3823,8 @@ select option,
   .filter-pills,
   .stats-range-pills,
   .timeline-month-chips,
-  .admin-nav-pills {
+  .admin-nav-pills,
+  .settings-nav-pills {
     display: flex;
     overflow-x: auto;
     flex-wrap: nowrap;
@@ -3829,7 +3836,8 @@ select option,
   .filter-pills::-webkit-scrollbar,
   .stats-range-pills::-webkit-scrollbar,
   .timeline-month-chips::-webkit-scrollbar,
-  .admin-nav-pills::-webkit-scrollbar {
+  .admin-nav-pills::-webkit-scrollbar,
+  .settings-nav-pills::-webkit-scrollbar {
     display: none;
   }
   .pill {
@@ -4402,37 +4410,6 @@ body[data-theme="rose"] .heatmap-cell[data-level="4"] { background: rgba(244, 63
   width: 12px;
   height: 12px;
   border-radius: 2px;
-}
-
-
-.btn-overseerr-req {
-  width: 100%;
-  padding: 6px 10px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  border-radius: 6px;
-  background: rgba(229, 9, 20, 0.12);
-  color: var(--accent);
-  border: 1px solid rgba(229, 9, 20, 0.3);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  transition: all 0.15s ease;
-}
-
-.btn-overseerr-req:hover {
-  background: var(--accent);
-  color: #fff;
-  border-color: var(--accent);
-}
-
-.btn-overseerr-req.requested {
-  background: rgba(16, 185, 129, 0.15);
-  color: #10b981;
-  border-color: rgba(16, 185, 129, 0.4);
-  cursor: default;
 }
 
 /* ==========================================================================

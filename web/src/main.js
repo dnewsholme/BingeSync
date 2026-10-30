@@ -44,6 +44,9 @@ const state = {
   admin: {
     activeSubview: 'admin-sub-users',
   },
+  settings: {
+    activeSubview: 'settings-sub-webhooks',
+  },
   history: {
     page: 1,
     limit: 12,
@@ -350,6 +353,7 @@ const el = {
   linkGotoUserSettings: document.getElementById('link-goto-user-settings'),
 
   // User Settings & Themes
+  settingsSubnavPills: document.getElementById('settings-subnav-pills'),
   formUserSettings: document.getElementById('form-user-settings'),
   btnSaveUserSettings: document.getElementById('btn-save-user-settings'),
   userSettingsStatus: document.getElementById('user-settings-status'),
@@ -367,8 +371,6 @@ const el = {
   userSettingSonarrApiKey: document.getElementById('user-setting-sonarr-api-key'),
   userSettingTautulliUrl: document.getElementById('user-setting-tautulli-url'),
   userSettingTautulliApiKey: document.getElementById('user-setting-tautulli-api-key'),
-  userSettingOverseerrUrl: document.getElementById('user-setting-overseerr-url'),
-  userSettingOverseerrApiKey: document.getElementById('user-setting-overseerr-api-key'),
   userSettingOutboundType: document.getElementById('user-setting-outbound-type'),
   userSettingOutboundUrl: document.getElementById('user-setting-outbound-url'),
   btnTestOutboundWebhook: document.getElementById('btn-test-outbound-webhook'),
@@ -750,8 +752,6 @@ function onUserAuthenticated(user) {
     if (el.tabAdmin) el.tabAdmin.style.display = 'none';
   }
 
-  checkOverseerrStatus();
-
   // Load Initial Data
   loadTimeline();
   loadStats();
@@ -793,6 +793,7 @@ function switchTab(targetViewId) {
   if (targetViewId === 'view-settings') {
     loadWebhookInfo();
     loadUserSettings();
+    switchSettingsSubview(state.settings.activeSubview || 'settings-sub-webhooks');
   }
   if (targetViewId === 'view-admin') {
     switchAdminSubview(state.admin.activeSubview || 'admin-sub-users');
@@ -2631,7 +2632,38 @@ el.btnRegenToken.addEventListener('click', async () => {
   }
 });
 
-// User Settings (Connected Services: Plex, Jellyfin, Emby, Radarr, Sonarr, Tautulli, Overseerr, Outbound Webhooks)
+// ==========================================================================
+// User Settings: Sub-navigation Tabs
+// ==========================================================================
+function switchSettingsSubview(subviewId) {
+  state.settings.activeSubview = subviewId;
+
+  if (el.settingsSubnavPills) {
+    el.settingsSubnavPills.querySelectorAll('.pill').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.subview === subviewId);
+    });
+  }
+
+  document.querySelectorAll('.settings-subview').forEach(view => {
+    view.style.display = view.id === subviewId ? 'block' : 'none';
+  });
+
+  if (subviewId === 'settings-sub-api-keys') {
+    loadUserApiKeys();
+  }
+}
+
+if (el.settingsSubnavPills) {
+  el.settingsSubnavPills.querySelectorAll('.pill').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const subview = btn.dataset.subview;
+      if (subview) switchSettingsSubview(subview);
+    });
+  });
+}
+window.switchSettingsSubview = switchSettingsSubview;
+
+// User Settings (Connected Services: Plex, Jellyfin, Emby, Radarr, Sonarr, Tautulli, Outbound Webhooks)
 async function loadUserSettings() {
   loadUserApiKeys();
   if (!el.formUserSettings) return;
@@ -2653,9 +2685,6 @@ async function loadUserSettings() {
 
     if (el.userSettingTautulliUrl) el.userSettingTautulliUrl.value = s.tautulli_url || '';
     applySecretField(el.userSettingTautulliApiKey, s.tautulli_api_key, s.tautulli_api_key_masked);
-
-    if (el.userSettingOverseerrUrl) el.userSettingOverseerrUrl.value = s.overseerr_url || '';
-    applySecretField(el.userSettingOverseerrApiKey, s.overseerr_api_key, s.overseerr_api_key_masked);
 
     if (el.userSettingOutboundType) el.userSettingOutboundType.value = s.outbound_webhook_type || '';
     if (el.userSettingOutboundUrl) el.userSettingOutboundUrl.value = s.outbound_webhook_url || '';
@@ -2690,15 +2719,12 @@ if (el.formUserSettings) {
         sonarr_api_key: getSecretValue(el.userSettingSonarrApiKey),
         tautulli_url: el.userSettingTautulliUrl ? el.userSettingTautulliUrl.value.trim() : null,
         tautulli_api_key: getSecretValue(el.userSettingTautulliApiKey),
-        overseerr_url: el.userSettingOverseerrUrl ? el.userSettingOverseerrUrl.value.trim() : null,
-        overseerr_api_key: getSecretValue(el.userSettingOverseerrApiKey),
         outbound_webhook_type: el.userSettingOutboundType ? el.userSettingOutboundType.value : null,
         outbound_webhook_url: el.userSettingOutboundUrl ? el.userSettingOutboundUrl.value.trim() : null,
       };
 
       await api.updateUserSettings(payload);
       await loadUserSettings();
-      checkOverseerrStatus();
       if (el.userSettingsStatus) {
         el.userSettingsStatus.style.color = '#34d399';
         el.userSettingsStatus.textContent = 'Settings saved successfully!';
@@ -5685,20 +5711,6 @@ function renderWeeklyHeatmap(heatmapData) {
   }
 
   el.weeklyHeatmapGrid.innerHTML = html;
-}
-
-// ==========================================================================
-// Recommendations & Overseerr Request Integration
-// ==========================================================================
-let overseerrConfigured = false;
-
-async function checkOverseerrStatus() {
-  try {
-    const st = await api.getOverseerrStatus();
-    overseerrConfigured = Boolean(st && st.configured);
-  } catch (e) {
-    overseerrConfigured = false;
-  }
 }
 
 // ==========================================================================

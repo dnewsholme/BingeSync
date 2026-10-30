@@ -72,6 +72,7 @@ test.describe('BingeSync Web UI & Webhooks', () => {
     await expect(page.locator('#copy-status')).toBeVisible();
 
     // Configure Plex username filter in Connected Services
+    await page.click('[data-subview="settings-sub-services"]');
     await page.fill('#user-setting-plex-username', 'playwright_plex');
     await page.click('#btn-save-user-settings');
     await expect(page.locator('#user-settings-status')).toContainText('Settings saved successfully!');
@@ -574,6 +575,7 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
 
     // 3. Navigate to Settings and verify TheTVDB card
     await page.click('#tab-settings');
+    await page.click('[data-subview="settings-sub-data"]');
     await expect(page.locator('#settings-tvdb-card')).toBeVisible();
     await expect(page.locator('#settings-tvdb-card')).toContainText('TheTVDB Metadata Integration');
     await expect(page.locator('#settings-tvdb-card')).toContainText('Media metadata, plot outlines, genres, and cast details are provided by');
@@ -1157,6 +1159,7 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     await page.click('#tab-settings');
     await settingsLoaded;
     await expect(page.locator('#view-settings')).toBeVisible();
+    await page.click('[data-subview="settings-sub-services"]');
     await expect(page.locator('#card-user-services')).toBeVisible();
 
     // Fill in personal service settings
@@ -1204,6 +1207,7 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     await expect(page.locator('#btn-copy-jellyfin-webhook')).toBeVisible();
 
     // Configure Jellyfin username filter
+    await page.click('[data-subview="settings-sub-services"]');
     await page.fill('#user-setting-jellyfin-username', 'jellystreamer');
     await page.click('#btn-save-user-settings');
     await expect(page.locator('#user-settings-status')).toContainText('Settings saved successfully!');
@@ -1865,6 +1869,7 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     // Go to Settings view and test theme selection
     await page.click('#tab-settings');
     await expect(page.locator('#view-settings')).toBeVisible();
+    await page.click('[data-subview="settings-sub-preferences"]');
 
     // Verify theme dropdown exists and has pure colour options
     const themeSelect = page.locator('#user-setting-theme');
@@ -1965,7 +1970,7 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     await expect(page.locator('#modal-wrapped')).toBeHidden();
   });
 
-  test('settings view: emby webhooks, outbound webhooks, overseerr, and data export', async ({ page }) => {
+  test('settings view: emby webhooks, outbound webhooks, and data export', async ({ page }) => {
     await page.goto('/');
 
     const testEmail = `settings_ext_${Date.now()}@bingesync.local`;
@@ -1986,10 +1991,9 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     await page.click('#btn-copy-emby-webhook');
     await expect(page.locator('#emby-copy-status')).toBeVisible();
 
-    // 2. Configure Emby username, Overseerr, and Outbound webhooks
+    // 2. Configure Emby username and Outbound webhooks
+    await page.click('[data-subview="settings-sub-services"]');
     await page.fill('#user-setting-emby-username', 'emby_tester');
-    await page.fill('#user-setting-overseerr-url', 'http://192.168.1.100:5055');
-    await page.fill('#user-setting-overseerr-api-key', 'overseerr_test_key_123');
     await page.selectOption('#user-setting-outbound-type', 'discord');
     await page.fill('#user-setting-outbound-url', 'https://discord.com/api/webhooks/123/abc');
 
@@ -1997,6 +2001,7 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     await expect(page.locator('#user-settings-status')).toContainText('Settings saved successfully');
 
     // 3. Test One-Click Data Export button
+    await page.click('[data-subview="settings-sub-data"]');
     await expect(page.locator('#btn-export-user-data')).toBeVisible();
   });
 
@@ -2319,6 +2324,7 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     await keysLoaded;
 
     await expect(page.locator('#view-settings')).toBeVisible();
+    await page.click('[data-subview="settings-sub-api-keys"]');
     await expect(page.locator('#card-user-api-keys')).toBeVisible();
     await expect(page.locator('#user-api-keys-empty')).toBeVisible();
 
@@ -2357,6 +2363,63 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     // 8. Verify table is empty again
     await expect(page.locator('#user-api-keys-empty')).toBeVisible();
     await expect(page.locator('#user-api-keys-table-wrap')).toBeHidden();
+  });
+
+  test('settings menu: sub-navigation tabs switch between Webhooks, Connected Services, API Keys, Preferences, and Data', async ({ page }) => {
+    const userEmail = `user_tabs_${Date.now()}@bingesync.local`;
+    await page.goto('/');
+    await page.fill('#dev-email', userEmail);
+    await page.fill('#dev-name', 'Tabs User');
+    await page.click('#btn-dev-submit');
+
+    // 1. Navigate to Settings view
+    await page.click('#tab-settings');
+    await expect(page.locator('#view-settings')).toBeVisible();
+    await expect(page.locator('#settings-subnav-pills')).toBeVisible();
+
+    // Verify all 5 pills exist
+    await expect(page.locator('#pill-settings-webhooks')).toBeVisible();
+    await expect(page.locator('#pill-settings-services')).toBeVisible();
+    await expect(page.locator('#pill-settings-api-keys')).toBeVisible();
+    await expect(page.locator('#pill-settings-preferences')).toBeVisible();
+    await expect(page.locator('#pill-settings-data')).toBeVisible();
+
+    // 2. Default active tab is Webhooks
+    await expect(page.locator('#pill-settings-webhooks')).toHaveClass(/active/);
+    await expect(page.locator('#settings-sub-webhooks')).toBeVisible();
+    await expect(page.locator('#settings-sub-services')).toBeHidden();
+    await expect(page.locator('#settings-sub-api-keys')).toBeHidden();
+
+    // 3. Switch to Connected Services
+    await page.click('#pill-settings-services');
+    await expect(page.locator('#pill-settings-services')).toHaveClass(/active/);
+    await expect(page.locator('#pill-settings-webhooks')).not.toHaveClass(/active/);
+    await expect(page.locator('#settings-sub-services')).toBeVisible();
+    await expect(page.locator('#settings-sub-webhooks')).toBeHidden();
+
+    // 4. Switch to API Keys
+    await page.click('#pill-settings-api-keys');
+    await expect(page.locator('#pill-settings-api-keys')).toHaveClass(/active/);
+    await expect(page.locator('#settings-sub-api-keys')).toBeVisible();
+    await expect(page.locator('#settings-sub-services')).toBeHidden();
+
+    // 5. Switch to Preferences
+    await page.click('#pill-settings-preferences');
+    await expect(page.locator('#pill-settings-preferences')).toHaveClass(/active/);
+    await expect(page.locator('#settings-sub-preferences')).toBeVisible();
+    await expect(page.locator('#settings-sub-api-keys')).toBeHidden();
+
+    // 6. Switch to Data & Export
+    await page.click('#pill-settings-data');
+    await expect(page.locator('#pill-settings-data')).toHaveClass(/active/);
+    await expect(page.locator('#settings-sub-data')).toBeVisible();
+    await expect(page.locator('#settings-sub-preferences')).toBeHidden();
+
+    // 7. Switch back to Webhooks
+    await page.click('#pill-settings-webhooks');
+    await expect(page.locator('#pill-settings-webhooks')).toHaveClass(/active/);
+    await expect(page.locator('#settings-sub-webhooks')).toBeVisible();
+    await expect(page.locator('#settings-sub-data')).toBeHidden();
   });
 });
 

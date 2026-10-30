@@ -170,7 +170,7 @@ If metadata credentials are not set, BingeSync scrobbles with basic title inform
 | `TAUTULLI_URL` | *(none)* | Base URL of Tautulli server for history imports |
 | `TAUTULLI_API_KEY` | *(none)* | API key for Tautulli |
 
-Per-user integrations for Radarr, Sonarr, Tautulli, Overseerr, and outbound webhooks can also be configured directly on the User Settings page.
+Per-user integrations for Radarr, Sonarr, Tautulli, and outbound webhooks can also be configured directly on the User Settings page.
 
 ---
 
@@ -246,7 +246,7 @@ cargo run
 # Backend integration tests (57 tests)
 cargo test
 
-# Frontend browser E2E tests (43 tests)
+# Frontend browser E2E tests (44 tests)
 cd web
 npm install
 npx playwright test
