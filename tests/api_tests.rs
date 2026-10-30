@@ -31,6 +31,7 @@ async fn setup_test_app() -> (axum::Router, sqlx::SqlitePool, Arc<Config>) {
         log_buffer: Arc::new(bingesync::api::logs::LogBuffer::new(500)),
         task_tracker: Arc::new(bingesync::api::jobs::BackgroundTaskTracker::new()),
         db_backup_notify: Arc::new(tokio::sync::Notify::new()),
+        db_maintenance_notify: Arc::new(tokio::sync::Notify::new()),
     };
 
     let router = create_api_router(state);
@@ -1295,6 +1296,7 @@ async fn test_subpath_routing_and_assets() {
         log_buffer: Arc::new(bingesync::api::logs::LogBuffer::new(500)),
         task_tracker: Arc::new(bingesync::api::jobs::BackgroundTaskTracker::new()),
         db_backup_notify: Arc::new(tokio::sync::Notify::new()),
+        db_maintenance_notify: Arc::new(tokio::sync::Notify::new()),
     };
     let app = create_api_router(state).fallback(bingesync::assets::static_handler);
     let base = config.base_path.trim_end_matches('/').to_string();
@@ -1496,6 +1498,7 @@ async fn test_oidc_backchannel_logout() {
         log_buffer: Arc::new(bingesync::api::logs::LogBuffer::new(500)),
         task_tracker: Arc::new(bingesync::api::jobs::BackgroundTaskTracker::new()),
         db_backup_notify: Arc::new(tokio::sync::Notify::new()),
+        db_maintenance_notify: Arc::new(tokio::sync::Notify::new()),
     };
 
     let app = create_api_router(state);
@@ -1676,6 +1679,7 @@ async fn test_image_cache_serving_and_background_worker() {
         log_buffer: Arc::new(bingesync::api::logs::LogBuffer::new(500)),
         task_tracker: Arc::new(bingesync::api::jobs::BackgroundTaskTracker::new()),
         db_backup_notify: Arc::new(tokio::sync::Notify::new()),
+        db_maintenance_notify: Arc::new(tokio::sync::Notify::new()),
     };
 
     let app = create_api_router(state.clone());
@@ -1867,6 +1871,7 @@ async fn test_sonarr_delete_options() {
         log_buffer: Arc::new(bingesync::api::logs::LogBuffer::new(500)),
         task_tracker: Arc::new(bingesync::api::jobs::BackgroundTaskTracker::new()),
         db_backup_notify: Arc::new(tokio::sync::Notify::new()),
+        db_maintenance_notify: Arc::new(tokio::sync::Notify::new()),
     };
     let app = create_api_router(state);
 
@@ -2068,6 +2073,7 @@ async fn test_tvdb_metadata_enrichment_worker() {
         log_buffer: Arc::new(bingesync::api::logs::LogBuffer::new(500)),
         task_tracker: Arc::new(bingesync::api::jobs::BackgroundTaskTracker::new()),
         db_backup_notify: Arc::new(tokio::sync::Notify::new()),
+        db_maintenance_notify: Arc::new(tokio::sync::Notify::new()),
     };
 
     // 2. Create test user and insert a scrobble with missing overview, genres, actors, directors
@@ -2238,6 +2244,7 @@ async fn test_movie_tvdb_metadata_fallback_and_refresh() {
         log_buffer: Arc::new(bingesync::api::logs::LogBuffer::new(500)),
         task_tracker: Arc::new(bingesync::api::jobs::BackgroundTaskTracker::new()),
         db_backup_notify: Arc::new(tokio::sync::Notify::new()),
+        db_maintenance_notify: Arc::new(tokio::sync::Notify::new()),
     };
 
     // 2. Create test user and insert movie with title "Obsession" and year 2025
@@ -2593,11 +2600,12 @@ async fn test_admin_settings_logs_and_tasks_management() {
     let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
     let tasks_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     let tasks = tasks_json["tasks"].as_array().unwrap();
-    assert_eq!(tasks.len(), 4);
+    assert_eq!(tasks.len(), 5);
     let image_task = tasks.iter().find(|t| t["id"] == "image_cache").unwrap();
     let tvdb_task = tasks.iter().find(|t| t["id"] == "tvdb_metadata").unwrap();
     let user_sync_task = tasks.iter().find(|t| t["id"] == "user_sync").unwrap();
     let db_backup_task = tasks.iter().find(|t| t["id"] == "db_backup").unwrap();
+    let db_maintenance_task = tasks.iter().find(|t| t["id"] == "db_maintenance").unwrap();
     assert_eq!(image_task["schedule"], "Every 4 hours");
     assert_eq!(image_task["interval_hours"], 4);
     assert!(image_task["next_run_at"].is_string());
@@ -2608,6 +2616,9 @@ async fn test_admin_settings_logs_and_tasks_management() {
     assert!(user_sync_task["next_run_at"].is_string());
     assert_eq!(db_backup_task["interval_hours"], 24);
     assert_eq!(db_backup_task["schedule"], "Every 24 hours");
+    assert_eq!(db_maintenance_task["interval_hours"], 168);
+    assert_eq!(db_maintenance_task["schedule"], "Every 168 hours (Weekly)");
+    assert!(db_maintenance_task["next_run_at"].is_string());
 
     // 7. Test configuring background task schedule
     let req = Request::builder()
@@ -2684,6 +2695,20 @@ async fn test_admin_settings_logs_and_tasks_management() {
     let empty_logs: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(empty_logs["entries"].as_array().unwrap().len(), 0);
 
+    // Test triggering db_maintenance
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/admin/tasks/db_maintenance/run")
+        .header(header::AUTHORIZATION, format!("Bearer {}", admin_jwt))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let trigger_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(trigger_json["status"], "triggered");
+    assert_eq!(trigger_json["task_id"], "db_maintenance");
+
     // 10. Verify task Last Completed persistence / fallback across fresh tracker
     let fake_tracker = bingesync::api::jobs::BackgroundTaskTracker::new();
     sqlx::query("INSERT INTO system_settings (key, value, updated_at) VALUES ('task_last_success:tvdb_metadata', '2026-10-30T10:00:00Z', datetime('now'))")
@@ -2700,6 +2725,7 @@ async fn test_admin_settings_logs_and_tasks_management() {
         log_buffer: std::sync::Arc::new(bingesync::api::logs::LogBuffer::new(100)),
         task_tracker: std::sync::Arc::new(fake_tracker),
         db_backup_notify: std::sync::Arc::new(tokio::sync::Notify::new()),
+        db_maintenance_notify: std::sync::Arc::new(tokio::sync::Notify::new()),
     };
     let restored_tasks = state_with_fake.task_tracker.get_tasks_summary(&state_with_fake, true).await;
     let restored_tvdb = restored_tasks.iter().find(|t| t.id == "tvdb_metadata").unwrap();
@@ -4199,6 +4225,7 @@ async fn test_user_cache_background_sync_and_jellyfin_id_resolution() {
         log_buffer: std::sync::Arc::new(bingesync::api::logs::LogBuffer::new(100)),
         task_tracker: std::sync::Arc::new(bingesync::api::jobs::BackgroundTaskTracker::new()),
         db_backup_notify: std::sync::Arc::new(tokio::sync::Notify::new()),
+        db_maintenance_notify: std::sync::Arc::new(tokio::sync::Notify::new()),
     };
 
     let processed = bingesync::api::user_sync::sync_user_cache_once(&state).await;
@@ -5118,6 +5145,7 @@ async fn test_tmdb_metadata_enrichment_worker() {
         log_buffer: Arc::new(bingesync::api::logs::LogBuffer::new(500)),
         task_tracker: Arc::new(bingesync::api::jobs::BackgroundTaskTracker::new()),
         db_backup_notify: Arc::new(tokio::sync::Notify::new()),
+        db_maintenance_notify: Arc::new(tokio::sync::Notify::new()),
     };
 
     // 2. Insert test user and scrobble for "Stranger Things"
@@ -5203,6 +5231,7 @@ async fn test_admin_settings_metadata_source_and_tmdb() {
         log_buffer: Arc::new(bingesync::api::logs::LogBuffer::new(500)),
         task_tracker: Arc::new(bingesync::api::jobs::BackgroundTaskTracker::new()),
         db_backup_notify: Arc::new(tokio::sync::Notify::new()),
+        db_maintenance_notify: Arc::new(tokio::sync::Notify::new()),
     };
     let app = bingesync::api::create_api_router(state.clone());
 
@@ -5282,6 +5311,7 @@ async fn test_admin_database_backup_and_restore() {
         log_buffer: Arc::new(bingesync::api::logs::LogBuffer::new(500)),
         task_tracker: Arc::new(bingesync::api::jobs::BackgroundTaskTracker::new()),
         db_backup_notify: Arc::new(tokio::sync::Notify::new()),
+        db_maintenance_notify: Arc::new(tokio::sync::Notify::new()),
     };
     let app = bingesync::api::create_api_router(state.clone());
 
@@ -6249,6 +6279,7 @@ async fn test_tmdb_fix_match_cinematographer_filtering() {
         log_buffer: Arc::new(bingesync::api::logs::LogBuffer::new(500)),
         task_tracker: Arc::new(bingesync::api::jobs::BackgroundTaskTracker::new()),
         db_backup_notify: Arc::new(tokio::sync::Notify::new()),
+        db_maintenance_notify: Arc::new(tokio::sync::Notify::new()),
     };
 
     let app = create_api_router(state.clone());

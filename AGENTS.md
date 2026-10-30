@@ -188,6 +188,7 @@ Tests in `tests/api_tests.rs` (57 integration tests) cover:
 - Persistent background task execution tracking across restarts, job-specific "View Logs" routing, and database backup stored count display
 - First-run setup flow: guided 3-step OIDC setup wizard, live discovery test endpoint, immediate runtime activation, initial user automatic admin promotion, and 403 lockout when users exist
 - Personal user API keys: scoped generation, SHA-256 storage, prefix masking (`bs_live_...`), header & query param auth, multi-user isolation, and cascading deletion
+- Database maintenance & optimization worker: weekly default execution of VACUUM, REINDEX, ANALYZE, and SQLite PRAGMAs (WAL, NORMAL, cache size, temp store) with manual run and schedule customization
 
 ### Run Playwright E2E UI Tests
 ```bash

@@ -117,6 +117,14 @@ impl LogBuffer {
                             "db_backup" | "backup" => {
                                 target_lower.contains("backup") || msg_lower.contains("backup")
                             }
+                            "db_maintenance" | "maintenance" | "optimize" => {
+                                target_lower.contains("maintenance")
+                                    || msg_lower.contains("maintenance")
+                                    || msg_lower.contains("vacuum")
+                                    || msg_lower.contains("reindex")
+                                    || msg_lower.contains("analyze")
+                                    || msg_lower.contains("optimize")
+                            }
                             _ => msg_lower.contains(q) || target_lower.contains(q),
                         };
 

@@ -4720,8 +4720,8 @@ function renderAdminTasks(tasks) {
             <strong>${escapeHtml(msg)}</strong>
           </div>
           <div class="task-meta-row">
-            <span>${t.id === 'db_backup' ? 'Backups Stored:' : 'Processed Items:'}</span>
-            <strong>${t.id === 'db_backup' ? `${t.items_processed} backup${t.items_processed === 1 ? '' : 's'}` : `${t.items_processed} processed (${pending} pending)`}</strong>
+            <span>${t.id === 'db_backup' ? 'Backups Stored:' : (t.id === 'db_maintenance' || t.id === 'maintenance') ? 'Maintenance Runs:' : 'Processed Items:'}</span>
+            <strong>${t.id === 'db_backup' ? `${t.items_processed} backup${t.items_processed === 1 ? '' : 's'}` : (t.id === 'db_maintenance' || t.id === 'maintenance') ? `${t.items_processed} run${t.items_processed === 1 ? '' : 's'} completed` : `${t.items_processed} processed (${pending} pending)`}</strong>
           </div>
           <div class="task-meta-row" style="align-items: center;">
             <span>Run Schedule:</span>
@@ -4729,10 +4729,11 @@ function renderAdminTasks(tasks) {
               <select class="input-select task-schedule-select" data-task-id="${t.id}" style="padding: 3px 8px; font-size: 0.85rem; width: auto; background: var(--bg-card); color: var(--text-main); border: 1px solid var(--border-color); border-radius: 4px;">
                 <option value="1" ${intervalHours === 1 ? 'selected' : ''}>Every 1 hour</option>
                 <option value="2" ${intervalHours === 2 ? 'selected' : ''}>Every 2 hours</option>
-                <option value="4" ${intervalHours === 4 ? 'selected' : ''}>Every 4 hours (Default)</option>
+                <option value="4" ${intervalHours === 4 ? 'selected' : ''}>Every 4 hours${t.id !== 'db_backup' && t.id !== 'db_maintenance' ? ' (Default)' : ''}</option>
                 <option value="6" ${intervalHours === 6 ? 'selected' : ''}>Every 6 hours</option>
                 <option value="12" ${intervalHours === 12 ? 'selected' : ''}>Every 12 hours</option>
-                <option value="24" ${intervalHours === 24 ? 'selected' : ''}>Every 24 hours (Daily)</option>
+                <option value="24" ${intervalHours === 24 ? 'selected' : ''}>Every 24 hours (Daily${t.id === 'db_backup' ? ' - Default' : ''})</option>
+                <option value="168" ${intervalHours === 168 ? 'selected' : ''}>Every 168 hours (Weekly${t.id === 'db_maintenance' ? ' - Default' : ''})</option>
               </select>
               <span class="schedule-save-status" data-task-id="${t.id}" style="font-size: 0.75rem; color: #34d399;"></span>
             </div>
@@ -4755,7 +4756,7 @@ function renderAdminTasks(tasks) {
           <button class="btn btn-outline btn-sm btn-trigger-task" data-task-id="${t.id}">
             ${isRunning ? 'Running... (Run Again)' : 'Run Now'}
           </button>
-          ${t.id !== 'db_backup' && t.id !== 'backup' ? `
+          ${t.id !== 'db_backup' && t.id !== 'backup' && t.id !== 'db_maintenance' && t.id !== 'maintenance' ? `
           <button class="btn btn-outline btn-sm btn-force-task" data-task-id="${t.id}" title="${
             t.id === 'image_cache'
               ? 'Reset poster thumbnails and re-download posters for all records'

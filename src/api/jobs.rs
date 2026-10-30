@@ -55,6 +55,13 @@ pub struct BackgroundTaskTracker {
     pub db_backup_last_success: RwLock<Option<String>>,
     pub db_backup_next_run: RwLock<Option<String>>,
     pub db_backup_last_message: RwLock<Option<String>>,
+
+    pub db_maintenance_status: RwLock<String>,
+    pub db_maintenance_processed: AtomicUsize,
+    pub db_maintenance_last_run: RwLock<Option<String>>,
+    pub db_maintenance_last_success: RwLock<Option<String>>,
+    pub db_maintenance_next_run: RwLock<Option<String>>,
+    pub db_maintenance_last_message: RwLock<Option<String>>,
 }
 
 impl Default for BackgroundTaskTracker {
@@ -68,6 +75,7 @@ impl BackgroundTaskTracker {
         let initial_next = chrono::Utc::now() + chrono::Duration::hours(4);
         let next_str = Some(initial_next.to_rfc3339());
         let initial_backup_next = chrono::Utc::now() + chrono::Duration::hours(24);
+        let initial_maintenance_next = chrono::Utc::now() + chrono::Duration::hours(168);
         Self {
             image_status: RwLock::new("idle".to_string()),
             image_processed: AtomicUsize::new(0),
@@ -96,6 +104,13 @@ impl BackgroundTaskTracker {
             db_backup_last_success: RwLock::new(None),
             db_backup_next_run: RwLock::new(Some(initial_backup_next.to_rfc3339())),
             db_backup_last_message: RwLock::new(Some("Worker initialized. Ready for database backups.".to_string())),
+
+            db_maintenance_status: RwLock::new("idle".to_string()),
+            db_maintenance_processed: AtomicUsize::new(0),
+            db_maintenance_last_run: RwLock::new(None),
+            db_maintenance_last_success: RwLock::new(None),
+            db_maintenance_next_run: RwLock::new(Some(initial_maintenance_next.to_rfc3339())),
+            db_maintenance_last_message: RwLock::new(Some("Worker initialized. Ready for database maintenance.".to_string())),
         }
     }
 
@@ -204,6 +219,33 @@ impl BackgroundTaskTracker {
 
     pub async fn set_db_backup_next_run(&self, next_run: Option<String>) {
         *self.db_backup_next_run.write().await = next_run;
+    }
+
+    pub async fn set_db_maintenance_running(&self, pool: Option<&sqlx::SqlitePool>, message: &str) {
+        let now = chrono::Utc::now().to_rfc3339();
+        *self.db_maintenance_status.write().await = "running".to_string();
+        *self.db_maintenance_last_run.write().await = Some(now.clone());
+        *self.db_maintenance_last_message.write().await = Some(message.to_string());
+        if let Some(p) = pool {
+            let _ = crate::api::settings::set_db_setting(p, "task_last_run:db_maintenance", &now).await;
+        }
+    }
+
+    pub async fn set_db_maintenance_idle(&self, pool: Option<&sqlx::SqlitePool>, processed: usize, message: &str) {
+        let now = chrono::Utc::now().to_rfc3339();
+        *self.db_maintenance_status.write().await = "idle".to_string();
+        self.db_maintenance_processed.fetch_add(processed, Ordering::Relaxed);
+        if processed > 0 {
+            *self.db_maintenance_last_success.write().await = Some(now.clone());
+            if let Some(p) = pool {
+                let _ = crate::api::settings::set_db_setting(p, "task_last_success:db_maintenance", &now).await;
+            }
+        }
+        *self.db_maintenance_last_message.write().await = Some(message.to_string());
+    }
+
+    pub async fn set_db_maintenance_next_run(&self, next_run: Option<String>) {
+        *self.db_maintenance_next_run.write().await = next_run;
     }
 
     pub async fn get_tasks_summary(&self, state: &AppState, tvdb_configured: bool) -> Vec<BackgroundTaskInfo> {
@@ -418,7 +460,39 @@ impl BackgroundTaskTracker {
             last_message: self.db_backup_last_message.read().await.clone(),
         };
 
-        vec![image_task, tvdb_task, user_sync_task, db_backup_task]
+        let db_maintenance_interval = state.get_task_interval_hours("db_maintenance").await;
+        let db_maintenance_sched_str = if db_maintenance_interval == 168 {
+            "Every 168 hours (Weekly)".to_string()
+        } else {
+            format!("Every {} hour{}", db_maintenance_interval, if db_maintenance_interval == 1 { "" } else { "s" })
+        };
+
+        let db_maintenance_last_run = match self.db_maintenance_last_run.read().await.clone() {
+            Some(lr) => Some(lr),
+            None => crate::api::settings::get_db_setting(pool, "task_last_run:db_maintenance").await,
+        };
+
+        let db_maintenance_last_success = match self.db_maintenance_last_success.read().await.clone() {
+            Some(ls) => Some(ls),
+            None => crate::api::settings::get_db_setting(pool, "task_last_success:db_maintenance").await,
+        };
+
+        let db_maintenance_task = BackgroundTaskInfo {
+            id: "db_maintenance".to_string(),
+            name: "Database Maintenance & Optimization".to_string(),
+            description: "Runs VACUUM, REINDEX, ANALYZE, and optimizes SQLite PRAGMAs (WAL mode, NORMAL synchronous, cache size, memory temp store).".to_string(),
+            status: self.db_maintenance_status.read().await.clone(),
+            schedule: db_maintenance_sched_str,
+            interval_hours: db_maintenance_interval,
+            items_processed: self.db_maintenance_processed.load(Ordering::Relaxed),
+            items_pending: 0,
+            last_run_at: db_maintenance_last_run,
+            last_success_at: db_maintenance_last_success,
+            next_run_at: self.db_maintenance_next_run.read().await.clone(),
+            last_message: self.db_maintenance_last_message.read().await.clone(),
+        };
+
+        vec![image_task, tvdb_task, user_sync_task, db_backup_task, db_maintenance_task]
     }
 }
 
@@ -566,6 +640,34 @@ pub async fn trigger_admin_task_handler(
                     state
                         .task_tracker
                         .set_db_backup_idle(Some(&state.pool), 0, &format!("Backup failed: {}", e))
+                        .await;
+                    Err((
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(serde_json::json!({ "error": e })),
+                    ))
+                }
+            }
+        }
+        "db_maintenance" | "maintenance" | "optimize" => {
+            state.task_tracker.set_db_maintenance_running(Some(&state.pool), "Manual maintenance triggered...").await;
+            state.log_buffer.push("INFO", "bingesync::tasks", "Manual run triggered for Database Maintenance worker");
+
+            match crate::api::db_maintenance::run_database_maintenance(&state).await {
+                Ok(msg) => {
+                    state
+                        .task_tracker
+                        .set_db_maintenance_idle(Some(&state.pool), 1, &msg)
+                        .await;
+                    Ok(Json(serde_json::json!({
+                        "status": "triggered",
+                        "task_id": "db_maintenance",
+                        "message": msg
+                    })))
+                }
+                Err(e) => {
+                    state
+                        .task_tracker
+                        .set_db_maintenance_idle(Some(&state.pool), 0, &format!("Maintenance failed: {}", e))
                         .await;
                     Err((
                         StatusCode::INTERNAL_SERVER_ERROR,
@@ -752,6 +854,12 @@ pub async fn update_admin_task_schedule_handler(
         }
         "user_sync" | "users" | "plex_users" => {
             state.task_tracker.set_user_sync_next_run(Some(next_run.clone())).await;
+        }
+        "db_backup" | "backup" => {
+            state.task_tracker.set_db_backup_next_run(Some(next_run.clone())).await;
+        }
+        "db_maintenance" | "maintenance" => {
+            state.task_tracker.set_db_maintenance_next_run(Some(next_run.clone())).await;
         }
         _ => {}
     }

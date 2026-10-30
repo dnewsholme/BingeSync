@@ -879,9 +879,9 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     await page.click('#admin-subnav-pills button[data-subview="admin-sub-tasks"]');
     await expect(page.locator('#admin-sub-tasks')).toBeVisible();
 
-    // Verify task cards exist (poster_cache, tvdb_metadata, user_sync, and db_backup)
+    // Verify task cards exist (poster_cache, tvdb_metadata, user_sync, db_backup, and db_maintenance)
     const taskCards = page.locator('.task-card');
-    await expect(taskCards).toHaveCount(4);
+    await expect(taskCards).toHaveCount(5);
     const posterCard = page.locator('.task-card', { hasText: 'Media Poster & Thumbnail Caching' });
     await expect(posterCard).toBeVisible();
     await expect(page.locator('.task-card', { hasText: /Metadata Enrichment/ })).toBeVisible();
@@ -889,6 +889,8 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     const backupCard = page.locator('.task-card', { hasText: 'Database Backup' });
     await expect(backupCard).toBeVisible();
     await expect(backupCard).toContainText('Backups Stored:');
+    const maintenanceCard = page.locator('.task-card', { hasText: 'Database Maintenance' });
+    await expect(maintenanceCard).toBeVisible();
 
     // Verify View Logs button exists on each background task card
     await expect(posterCard.locator('.btn-task-logs')).toBeVisible();
