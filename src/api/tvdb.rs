@@ -902,9 +902,9 @@ pub fn start_metadata_worker(state: AppState) -> tokio::task::JoinHandle<()> {
             };
 
             if let Some(provider) = provider_opt {
-                state.task_tracker.set_tvdb_running(&format!("Searching {} for missing metadata...", provider_name)).await;
+                state.task_tracker.set_tvdb_running(Some(&state.pool), &format!("Searching {} for missing metadata...", provider_name)).await;
                 let processed = process_missing_metadata_batch_provider(&state, provider.as_ref(), &mut failed_lookups).await;
-                state.task_tracker.set_tvdb_idle(processed, &format!("Processed {} item(s)", processed)).await;
+                state.task_tracker.set_tvdb_idle(Some(&state.pool), processed, &format!("Processed {} item(s)", processed)).await;
 
                 if processed > 0 {
                     // Throttle slightly between batches to respect API limits
@@ -912,7 +912,7 @@ pub fn start_metadata_worker(state: AppState) -> tokio::task::JoinHandle<()> {
                     continue;
                 }
             } else {
-                state.task_tracker.set_tvdb_idle(0, &format!("{} API key not configured", provider_name)).await;
+                state.task_tracker.set_tvdb_idle_unconfigured(&format!("{} API key not configured", provider_name)).await;
             }
 
             let interval_hours = state.get_task_interval_hours("tvdb_metadata").await;

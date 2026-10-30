@@ -183,6 +183,9 @@ Tests in `tests/api_tests.rs` (57 integration tests) cover:
 - Duplicate watch detector & cleanup tool: detection within configurable time windows, auto-pruning (keep oldest/newest), selective deletion, and multi-user isolation
 - History and timeline rating threshold filters: arbitrary minimum rating thresholds (1+..10), rated, and unrated, combined with media type filters
 - OpenID Connect custom admin group configuration via `OIDC_ADMIN_GROUP` and Admin Settings with case-insensitive evaluation
+- OpenID Connect custom standard user group restriction via `OIDC_USER_GROUP` and Admin Settings
+- Application versioning, automated GitHub release creation with commit changelogs, and one-click GitHub release update checks in Admin Settings
+- Persistent background task execution tracking across restarts, job-specific "View Logs" routing, and database backup stored count display
 - First-run setup flow: guided 3-step OIDC setup wizard, live discovery test endpoint, immediate runtime activation, initial user automatic admin promotion, and 403 lockout when users exist
 - Personal user API keys: scoped generation, SHA-256 storage, prefix masking (`bs_live_...`), header & query param auth, multi-user isolation, and cascading deletion
 
@@ -274,6 +277,7 @@ docker run -p 8080:8080 -v bingesync_data:/data -v bingesync_backups:/backup bin
 | `OIDC_CLIENT_SECRET` | *(none)* | OIDC client secret |
 | `OIDC_REDIRECT_URL` | `${APP_URL}/api/v1/auth/callback` | Callback URL |
 | `OIDC_ADMIN_GROUP` | *(none)* | Custom group name(s) (comma-separated) granting the admin role |
+| `OIDC_USER_GROUP` | *(none)* | Custom group name(s) (comma-separated) required for standard users |
 | `DEV_LOGIN_ENABLED` | `true` | Allows local email/username login |
 | `METADATA_SOURCE` | `tvdb` | Active metadata enrichment provider (`tvdb` or `tmdb`) |
 | `TVDB_API_KEY` | *(none)* | TheTVDB v4 API key for background metadata enrichment |

@@ -135,6 +135,20 @@ pub async fn callback_handler(
     let custom_admin_group = state.get_effective_oidc_admin_group().await;
     let is_admin = user_info.is_admin(custom_admin_group.as_deref());
 
+    let custom_user_group = state.get_effective_oidc_user_group().await;
+    if !is_admin {
+        if let Some(ref req_group) = custom_user_group.filter(|g| !g.trim().is_empty()) {
+            if !user_info.has_group(Some(req_group)) {
+                return Err((
+                    StatusCode::FORBIDDEN,
+                    Json(serde_json::json!({
+                        "error": format!("Access denied: user is not a member of the required group '{}'", req_group)
+                    })),
+                ));
+            }
+        }
+    }
+
     let display_name = user_info
         .name
         .clone()

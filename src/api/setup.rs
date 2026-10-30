@@ -22,6 +22,7 @@ pub struct SetupStatusResponse {
     pub oidc_issuer_url: Option<String>,
     pub oidc_client_id: Option<String>,
     pub oidc_admin_group: Option<String>,
+    pub oidc_user_group: Option<String>,
     pub dev_login_enabled: bool,
 }
 
@@ -56,6 +57,7 @@ pub struct SaveSetupRequest {
     pub oidc_client_secret: Option<String>,
     pub oidc_redirect_url: Option<String>,
     pub oidc_admin_group: Option<String>,
+    pub oidc_user_group: Option<String>,
 }
 
 pub async fn get_setup_status_handler(
@@ -96,6 +98,11 @@ pub async fn get_setup_status_handler(
         _ => state.config.oidc_admin_group.clone(),
     };
 
+    let oidc_user_group = match get_db_setting(&state.pool, "oidc_user_group").await {
+        Some(v) if !v.trim().is_empty() => Some(v),
+        _ => state.config.oidc_user_group.clone(),
+    };
+
     Ok(Json(SetupStatusResponse {
         needs_setup,
         completed: !needs_setup,
@@ -107,6 +114,7 @@ pub async fn get_setup_status_handler(
         oidc_issuer_url,
         oidc_client_id,
         oidc_admin_group,
+        oidc_user_group,
         dev_login_enabled: state.config.dev_login_enabled,
     }))
 }
@@ -344,6 +352,15 @@ pub async fn save_setup_handler(
         let trimmed = group.trim();
         if !trimmed.is_empty() {
             set_db_setting(pool, "oidc_admin_group", trimmed)
+                .await
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "error": e.to_string() }))))?;
+        }
+    }
+
+    if let Some(group) = &payload.oidc_user_group {
+        let trimmed = group.trim();
+        if !trimmed.is_empty() {
+            set_db_setting(pool, "oidc_user_group", trimmed)
                 .await
                 .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "error": e.to_string() }))))?;
         }

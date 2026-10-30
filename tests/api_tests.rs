@@ -2660,6 +2660,50 @@ async fn test_admin_settings_logs_and_tasks_management() {
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
+
+    // 9. Test logs search filtering (for viewing logs specific to a background job)
+    let req = Request::builder()
+        .uri("/api/v1/admin/logs?search=tasks")
+        .header(header::AUTHORIZATION, format!("Bearer {}", admin_jwt))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let filtered_logs: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert!(filtered_logs["entries"].as_array().unwrap().len() > 0);
+
+    let req = Request::builder()
+        .uri("/api/v1/admin/logs?search=completely_non_existent_query_xyz")
+        .header(header::AUTHORIZATION, format!("Bearer {}", admin_jwt))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let empty_logs: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(empty_logs["entries"].as_array().unwrap().len(), 0);
+
+    // 10. Verify task Last Completed persistence / fallback across fresh tracker
+    let fake_tracker = bingesync::api::jobs::BackgroundTaskTracker::new();
+    sqlx::query("INSERT INTO system_settings (key, value, updated_at) VALUES ('task_last_success:tvdb_metadata', '2026-10-30T10:00:00Z', datetime('now'))")
+        .execute(&pool)
+        .await
+        .unwrap();
+    let state_with_fake = bingesync::api::AppState {
+        pool: pool.clone(),
+        config: config.clone(),
+        oidc_client: None,
+        image_notify: std::sync::Arc::new(tokio::sync::Notify::new()),
+        metadata_notify: std::sync::Arc::new(tokio::sync::Notify::new()),
+        user_sync_notify: std::sync::Arc::new(tokio::sync::Notify::new()),
+        log_buffer: std::sync::Arc::new(bingesync::api::logs::LogBuffer::new(100)),
+        task_tracker: std::sync::Arc::new(fake_tracker),
+        db_backup_notify: std::sync::Arc::new(tokio::sync::Notify::new()),
+    };
+    let restored_tasks = state_with_fake.task_tracker.get_tasks_summary(&state_with_fake, true).await;
+    let restored_tvdb = restored_tasks.iter().find(|t| t.id == "tvdb_metadata").unwrap();
+    assert_eq!(restored_tvdb.last_success_at.as_deref(), Some("2026-10-30T10:00:00Z"));
 }
 
 #[tokio::test]
@@ -5336,7 +5380,8 @@ async fn test_admin_database_backup_and_restore() {
     assert_eq!(backup_task.name, "Database Backup");
     assert_eq!(backup_task.interval_hours, 24);
     assert_eq!(backup_task.schedule, "Every 24 hours");
-    assert_eq!(backup_task.items_pending, 1);
+    assert_eq!(backup_task.items_pending, 0);
+    assert_eq!(backup_task.items_processed, 1);
 
     // 7. Mutate current database: add a second movie and delete the first movie
     let second_scrobble_id = "scrobble_mutated_2";
@@ -7464,6 +7509,91 @@ async fn test_user_api_keys_crud_scoping_and_authentication() {
         .await
         .unwrap();
     assert_eq!(key_count_b_after, 0);
+}
+
+#[tokio::test]
+async fn test_admin_version_and_oidc_user_group_configuration() {
+    let (app, pool, config) = setup_test_app().await;
+
+    let admin_id = "admin_version_test";
+    let admin_jwt = create_jwt(admin_id, "admin@test.local", &config.jwt_secret).unwrap();
+    sqlx::query("INSERT INTO users (id, email, display_name, webhook_token, role) VALUES (?, ?, ?, ?, 'admin')")
+        .bind(admin_id)
+        .bind("admin@test.local")
+        .bind("Admin Version Tester")
+        .bind("tok_admin_version")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    // 1. Test GET /api/v1/admin/version
+    let req = Request::builder()
+        .uri("/api/v1/admin/version")
+        .header(header::AUTHORIZATION, format!("Bearer {}", admin_jwt))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let ver_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert!(ver_json["current_version"].is_string());
+
+    // 2. Test is_version_newer helper
+    assert!(bingesync::api::settings::is_version_newer("0.2.0", "0.1.0"));
+    assert!(bingesync::api::settings::is_version_newer("v0.1.1", "0.1.0"));
+    assert!(!bingesync::api::settings::is_version_newer("0.1.0", "0.1.0"));
+    assert!(!bingesync::api::settings::is_version_newer("0.0.9", "0.1.0"));
+
+    // 3. Test saving oidc_user_group in admin settings
+    let update_body = json!({
+        "oidc_user_group": "bingesync-viewers, family-members"
+    });
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/admin/settings")
+        .header(header::AUTHORIZATION, format!("Bearer {}", admin_jwt))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(update_body.to_string()))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // Verify settings response contains oidc_user_group and app_version
+    let req = Request::builder()
+        .uri("/api/v1/admin/settings")
+        .header(header::AUTHORIZATION, format!("Bearer {}", admin_jwt))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let settings: bingesync::api::settings::SystemSettingsView = serde_json::from_slice(&body).unwrap();
+    assert_eq!(settings.oidc_user_group.as_deref(), Some("bingesync-viewers, family-members"));
+    assert_eq!(settings.app_version, bingesync::api::settings::APP_VERSION);
+
+    // 4. Test OidcUserInfo.has_group with various formats
+    let required_user_group = Some("bingesync-viewers, family-members");
+
+    let allowed_user: bingesync::auth::OidcUserInfo = serde_json::from_value(json!({
+        "sub": "sub-user-allowed",
+        "email": "allowed@example.com",
+        "groups": ["bingesync-viewers"]
+    })).unwrap();
+    assert!(allowed_user.has_group(required_user_group));
+
+    let case_insensitive_user: bingesync::auth::OidcUserInfo = serde_json::from_value(json!({
+        "sub": "sub-user-case",
+        "email": "case@example.com",
+        "groups": ["/Family-Members"]
+    })).unwrap();
+    assert!(case_insensitive_user.has_group(required_user_group));
+
+    let forbidden_user: bingesync::auth::OidcUserInfo = serde_json::from_value(json!({
+        "sub": "sub-user-forbidden",
+        "email": "forbidden@example.com",
+        "groups": ["strangers", "guests"]
+    })).unwrap();
+    assert!(!forbidden_user.has_group(required_user_group));
 }
 
 

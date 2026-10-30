@@ -60,16 +60,75 @@ impl LogBuffer {
         }
     }
 
-    pub fn get_entries(&self, limit: usize, min_level: Option<&str>) -> Vec<LogEntry> {
+    pub fn get_entries(&self, limit: usize, min_level: Option<&str>, search: Option<&str>) -> Vec<LogEntry> {
         if let Ok(lock) = self.entries.read() {
             let iter = lock.iter().rev();
 
-            let filtered: Vec<LogEntry> = match min_level.map(|s| s.to_uppercase()) {
-                Some(ref lvl) if lvl == "ERROR" => iter.filter(|e| e.level == "ERROR").cloned().collect(),
-                Some(ref lvl) if lvl == "WARN" => iter.filter(|e| e.level == "WARN" || e.level == "ERROR").cloned().collect(),
-                Some(ref lvl) if lvl == "INFO" => iter.filter(|e| e.level != "DEBUG" && e.level != "TRACE").cloned().collect(),
-                _ => iter.cloned().collect(),
-            };
+            let search_term = search
+                .map(|s| s.trim().to_lowercase())
+                .filter(|s| !s.is_empty());
+
+            let filtered: Vec<LogEntry> = iter
+                .filter(|e| {
+                    if let Some(ref lvl) = min_level.map(|s| s.to_uppercase()) {
+                        match lvl.as_str() {
+                            "ERROR" => {
+                                if e.level != "ERROR" {
+                                    return false;
+                                }
+                            }
+                            "WARN" => {
+                                if e.level != "WARN" && e.level != "ERROR" {
+                                    return false;
+                                }
+                            }
+                            "INFO" => {
+                                if e.level == "DEBUG" || e.level == "TRACE" {
+                                    return false;
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+
+                    if let Some(ref q) = search_term {
+                        let msg_lower = e.message.to_lowercase();
+                        let target_lower = e.target.to_lowercase();
+
+                        let matches = match q.as_str() {
+                            "image_cache" | "images" => {
+                                target_lower.contains("image")
+                                    || msg_lower.contains("image")
+                                    || msg_lower.contains("poster")
+                            }
+                            "tvdb_metadata" | "tvdb" | "metadata" => {
+                                target_lower.contains("tvdb")
+                                    || target_lower.contains("tmdb")
+                                    || msg_lower.contains("tvdb")
+                                    || msg_lower.contains("tmdb")
+                                    || msg_lower.contains("metadata")
+                            }
+                            "user_sync" | "users" => {
+                                target_lower.contains("user_sync")
+                                    || target_lower.contains("user")
+                                    || msg_lower.contains("user")
+                                    || msg_lower.contains("sync")
+                            }
+                            "db_backup" | "backup" => {
+                                target_lower.contains("backup") || msg_lower.contains("backup")
+                            }
+                            _ => msg_lower.contains(q) || target_lower.contains(q),
+                        };
+
+                        if !matches {
+                            return false;
+                        }
+                    }
+
+                    true
+                })
+                .cloned()
+                .collect();
 
             filtered.into_iter().take(limit).collect()
         } else {
@@ -137,6 +196,7 @@ impl tracing::field::Visit for LogMessageVisitor {
 pub struct LogsQuery {
     pub limit: Option<usize>,
     pub level: Option<String>,
+    pub search: Option<String>,
 }
 
 pub async fn get_admin_logs_handler(
@@ -152,7 +212,7 @@ pub async fn get_admin_logs_handler(
     }
 
     let limit = query.limit.unwrap_or(200).clamp(1, 1000);
-    let entries = state.log_buffer.get_entries(limit, query.level.as_deref());
+    let entries = state.log_buffer.get_entries(limit, query.level.as_deref(), query.search.as_deref());
 
     Ok(Json(serde_json::json!({
         "total": entries.len(),

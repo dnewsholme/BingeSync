@@ -43,6 +43,7 @@ const state = {
   },
   admin: {
     activeSubview: 'admin-sub-users',
+    logsFilterTask: null,
   },
   settings: {
     activeSubview: 'settings-sub-webhooks',
@@ -456,7 +457,17 @@ const el = {
   settingOidcClientSecret: document.getElementById('setting-oidc-client-secret'),
   settingOidcRedirectUrl: document.getElementById('setting-oidc-redirect-url'),
   settingOidcAdminGroup: document.getElementById('setting-oidc-admin-group'),
+  settingOidcUserGroup: document.getElementById('setting-oidc-user-group'),
   settingScrobbleThreshold: document.getElementById('setting-scrobble-threshold'),
+
+  // Admin Version & Updates
+  adminVersionTag: document.getElementById('admin-version-tag'),
+  adminVersionStatusDesc: document.getElementById('admin-version-status-desc'),
+  btnCheckVersionUpdates: document.getElementById('btn-check-version-updates'),
+  adminVersionUpdateBanner: document.getElementById('admin-version-update-banner'),
+  adminVersionUpdateTitle: document.getElementById('admin-version-update-title'),
+  adminVersionUpdateDetails: document.getElementById('admin-version-update-details'),
+  adminVersionReleaseLink: document.getElementById('admin-version-release-link'),
 
   // Admin Background Tasks
   btnRefreshAdminTasks: document.getElementById('btn-refresh-admin-tasks'),
@@ -468,7 +479,12 @@ const el = {
   btnClearAdminLogs: document.getElementById('btn-clear-admin-logs'),
   adminLogsViewer: document.getElementById('admin-logs-viewer'),
   adminLogsFilterLevel: document.getElementById('admin-logs-filter-level'),
+  adminLogsFilterSearch: document.getElementById('admin-logs-filter-search'),
   adminLogsAutorefresh: document.getElementById('admin-logs-autorefresh'),
+  adminLogsActiveFilter: document.getElementById('admin-logs-active-filter'),
+  adminLogsActiveFilterBadge: document.getElementById('admin-logs-active-filter-badge'),
+  adminLogsActiveFilterName: document.getElementById('admin-logs-active-filter-name'),
+  btnClearAdminLogsFilter: document.getElementById('btn-clear-admin-logs-filter'),
 
   // Admin Database Backups & Restore
   pillAdminBackups: document.getElementById('pill-admin-backups'),
@@ -4408,6 +4424,7 @@ function switchAdminSubview(subviewId) {
     stopLogsAutoRefresh();
     loadAdminTasks();
   } else if (subviewId === 'admin-sub-logs') {
+    updateAdminLogsFilterBadge();
     loadAdminLogs();
     startLogsAutoRefresh();
   } else if (subviewId === 'admin-sub-backups') {
@@ -4529,7 +4546,10 @@ async function loadAdminSettings() {
     applySecretField(el.settingOidcClientSecret, s.oidc_client_secret, s.oidc_client_secret_masked);
     if (el.settingOidcRedirectUrl) el.settingOidcRedirectUrl.value = s.oidc_redirect_url || '';
     if (el.settingOidcAdminGroup) el.settingOidcAdminGroup.value = s.oidc_admin_group || '';
+    if (el.settingOidcUserGroup) el.settingOidcUserGroup.value = s.oidc_user_group || '';
     if (el.settingScrobbleThreshold) el.settingScrobbleThreshold.value = s.scrobble_threshold_percent != null ? s.scrobble_threshold_percent : 80;
+
+    renderVersionInfo(s);
   } catch (err) {
     console.error('Failed to load admin settings:', err);
     if (el.adminSettingsStatus) {
@@ -4537,6 +4557,64 @@ async function loadAdminSettings() {
       el.adminSettingsStatus.textContent = 'Failed to load settings: ' + err.message;
     }
   }
+}
+
+function renderVersionInfo(info) {
+  if (!el.adminVersionTag) return;
+  const current = info.app_version || info.current_version || '0.1.0';
+  el.adminVersionTag.textContent = `v${current}`;
+
+  if (info.update_available) {
+    if (el.adminVersionStatusDesc) {
+      el.adminVersionStatusDesc.innerHTML = `<span style="color:#fbbf24;font-weight:600;">🚀 Update available: v${escapeHtml(info.latest_version)}</span>`;
+    }
+    if (el.adminVersionUpdateBanner) el.adminVersionUpdateBanner.style.display = 'block';
+    if (el.adminVersionUpdateTitle) {
+      el.adminVersionUpdateTitle.textContent = `A new version (v${info.latest_version}) is available!`;
+    }
+    if (el.adminVersionUpdateDetails) {
+      el.adminVersionUpdateDetails.textContent = info.release_notes
+        ? (info.release_notes.length > 200 ? info.release_notes.slice(0, 200) + '...' : info.release_notes)
+        : `A newer release (v${info.latest_version}) was published on GitHub.`;
+    }
+    if (el.adminVersionReleaseLink && info.release_url) {
+      el.adminVersionReleaseLink.href = info.release_url;
+    }
+  } else if (info.latest_version) {
+    if (el.adminVersionStatusDesc) {
+      el.adminVersionStatusDesc.innerHTML = `<span style="color:#34d399;font-weight:600;">✓ Up to date (v${escapeHtml(current)})</span>`;
+    }
+    if (el.adminVersionUpdateBanner) el.adminVersionUpdateBanner.style.display = 'none';
+  } else {
+    if (el.adminVersionStatusDesc) {
+      el.adminVersionStatusDesc.textContent = `BingeSync v${current} (GitHub releases check completed)`;
+    }
+    if (el.adminVersionUpdateBanner) el.adminVersionUpdateBanner.style.display = 'none';
+  }
+}
+
+if (el.btnCheckVersionUpdates) {
+  el.btnCheckVersionUpdates.addEventListener('click', async () => {
+    el.btnCheckVersionUpdates.disabled = true;
+    const origHtml = el.btnCheckVersionUpdates.innerHTML;
+    el.btnCheckVersionUpdates.textContent = 'Checking...';
+    try {
+      const ver = await api.checkAdminVersion();
+      renderVersionInfo(ver);
+      setTimeout(() => {
+        if (el.btnCheckVersionUpdates) {
+          el.btnCheckVersionUpdates.disabled = false;
+          el.btnCheckVersionUpdates.innerHTML = origHtml;
+        }
+      }, 1000);
+    } catch (err) {
+      if (el.adminVersionStatusDesc) {
+        el.adminVersionStatusDesc.textContent = 'Update check failed: ' + err.message;
+      }
+      el.btnCheckVersionUpdates.disabled = false;
+      el.btnCheckVersionUpdates.innerHTML = origHtml;
+    }
+  });
 }
 
 if (el.formAdminSettings) {
@@ -4562,6 +4640,7 @@ if (el.formAdminSettings) {
         oidc_client_secret: getSecretValue(el.settingOidcClientSecret),
         oidc_redirect_url: el.settingOidcRedirectUrl ? el.settingOidcRedirectUrl.value.trim() : null,
         oidc_admin_group: el.settingOidcAdminGroup ? el.settingOidcAdminGroup.value.trim() : null,
+        oidc_user_group: el.settingOidcUserGroup ? el.settingOidcUserGroup.value.trim() : null,
         scrobble_threshold_percent: el.settingScrobbleThreshold && el.settingScrobbleThreshold.value ? parseInt(el.settingScrobbleThreshold.value, 10) : null,
       };
 
@@ -4641,8 +4720,8 @@ function renderAdminTasks(tasks) {
             <strong>${escapeHtml(msg)}</strong>
           </div>
           <div class="task-meta-row">
-            <span>Processed Items:</span>
-            <strong>${t.items_processed} processed (${pending} pending)</strong>
+            <span>${t.id === 'db_backup' ? 'Backups Stored:' : 'Processed Items:'}</span>
+            <strong>${t.id === 'db_backup' ? `${t.items_processed} backup${t.items_processed === 1 ? '' : 's'}` : `${t.items_processed} processed (${pending} pending)`}</strong>
           </div>
           <div class="task-meta-row" style="align-items: center;">
             <span>Run Schedule:</span>
@@ -4687,10 +4766,21 @@ function renderAdminTasks(tasks) {
             Force Refresh All
           </button>
           ` : ''}
+          <button class="btn btn-outline btn-sm btn-task-logs" data-task-id="${t.id}" data-task-name="${escapeHtml(t.name)}">
+            View Logs
+          </button>
         </div>
       </div>
     `;
   }).join('');
+
+  el.adminTasksContainer.querySelectorAll('.btn-task-logs').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const taskId = btn.dataset.taskId;
+      const taskName = btn.dataset.taskName;
+      viewLogsForTask(taskId, taskName);
+    });
+  });
 
   el.adminTasksContainer.querySelectorAll('.task-schedule-select').forEach(select => {
     select.addEventListener('change', async (e) => {
@@ -4801,11 +4891,36 @@ if (el.btnForceRefreshAllMetadata) {
 // Admin: Application Logs
 let logsAutoRefreshInterval = null;
 
+function viewLogsForTask(taskId, taskName) {
+  state.admin.logsFilterTask = { id: taskId, name: taskName };
+  if (el.adminLogsFilterSearch) {
+    el.adminLogsFilterSearch.value = taskId;
+  }
+  updateAdminLogsFilterBadge();
+  switchAdminSubview('admin-sub-logs');
+}
+
+function updateAdminLogsFilterBadge() {
+  if (!el.adminLogsActiveFilter) return;
+  if (state.admin.logsFilterTask) {
+    el.adminLogsActiveFilter.style.display = 'flex';
+    if (el.adminLogsActiveFilterName) {
+      el.adminLogsActiveFilterName.textContent = state.admin.logsFilterTask.name || state.admin.logsFilterTask.id;
+    }
+  } else {
+    el.adminLogsActiveFilter.style.display = 'none';
+  }
+}
+
 async function loadAdminLogs() {
   if (!el.adminLogsViewer) return;
   try {
     const level = el.adminLogsFilterLevel ? el.adminLogsFilterLevel.value : '';
-    const res = await api.getAdminLogs(level ? { level } : {});
+    const search = el.adminLogsFilterSearch ? el.adminLogsFilterSearch.value.trim() : '';
+    const params = {};
+    if (level) params.level = level;
+    if (search) params.search = search;
+    const res = await api.getAdminLogs(params);
     const logs = Array.isArray(res) ? res : (res && res.entries ? res.entries : []);
     renderAdminLogs(logs);
   } catch (err) {
@@ -4864,6 +4979,29 @@ if (el.btnRefreshAdminLogs) {
 
 if (el.adminLogsFilterLevel) {
   el.adminLogsFilterLevel.addEventListener('change', () => loadAdminLogs());
+}
+
+if (el.btnClearAdminLogsFilter) {
+  el.btnClearAdminLogsFilter.addEventListener('click', () => {
+    state.admin.logsFilterTask = null;
+    if (el.adminLogsFilterSearch) el.adminLogsFilterSearch.value = '';
+    updateAdminLogsFilterBadge();
+    loadAdminLogs();
+  });
+}
+
+if (el.adminLogsFilterSearch) {
+  let searchDebounce = null;
+  el.adminLogsFilterSearch.addEventListener('input', () => {
+    clearTimeout(searchDebounce);
+    searchDebounce = setTimeout(() => {
+      if (state.admin.logsFilterTask && el.adminLogsFilterSearch.value.trim() !== state.admin.logsFilterTask.id) {
+        state.admin.logsFilterTask = null;
+        updateAdminLogsFilterBadge();
+      }
+      loadAdminLogs();
+    }, 300);
+  });
 }
 
 if (el.adminLogsAutorefresh) {

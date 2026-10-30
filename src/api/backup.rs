@@ -381,20 +381,20 @@ pub fn start_db_backup_worker(state: AppState) -> tokio::task::JoinHandle<()> {
 
             state
                 .task_tracker
-                .set_db_backup_running("Creating scheduled database backup...")
+                .set_db_backup_running(Some(&state.pool), "Creating scheduled database backup...")
                 .await;
 
             match create_database_backup(&state, None).await {
                 Ok(item) => {
                     state
                         .task_tracker
-                        .set_db_backup_idle(1, &format!("Backup created: {}", item.filename))
+                        .set_db_backup_idle(Some(&state.pool), 1, &format!("Backup created: {}", item.filename))
                         .await;
                 }
                 Err(e) => {
                     state
                         .task_tracker
-                        .set_db_backup_idle(0, &format!("Backup failed: {}", e))
+                        .set_db_backup_idle(Some(&state.pool), 0, &format!("Backup failed: {}", e))
                         .await;
                 }
             }
@@ -449,13 +449,13 @@ pub async fn create_admin_backup_handler(
         ));
     }
 
-    state.task_tracker.set_db_backup_running("Manual backup triggered...").await;
+    state.task_tracker.set_db_backup_running(Some(&state.pool), "Manual backup triggered...").await;
 
     match create_database_backup(&state, None).await {
         Ok(item) => {
             state
                 .task_tracker
-                .set_db_backup_idle(1, &format!("Backup created: {}", item.filename))
+                .set_db_backup_idle(Some(&state.pool), 1, &format!("Backup created: {}", item.filename))
                 .await;
             state.log_buffer.push("INFO", "bingesync::backup", &format!("Database backup created: {}", item.filename));
 
@@ -468,7 +468,7 @@ pub async fn create_admin_backup_handler(
         Err(e) => {
             state
                 .task_tracker
-                .set_db_backup_idle(0, &format!("Backup failed: {}", e))
+                .set_db_backup_idle(Some(&state.pool), 0, &format!("Backup failed: {}", e))
                 .await;
             Err((
                 StatusCode::INTERNAL_SERVER_ERROR,

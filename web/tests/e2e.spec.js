@@ -886,7 +886,12 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     await expect(posterCard).toBeVisible();
     await expect(page.locator('.task-card', { hasText: /Metadata Enrichment/ })).toBeVisible();
     await expect(page.locator('.task-card', { hasText: 'Plex & Media Server User Cache Sync' })).toBeVisible();
-    await expect(page.locator('.task-card', { hasText: 'Database Backup' })).toBeVisible();
+    const backupCard = page.locator('.task-card', { hasText: 'Database Backup' });
+    await expect(backupCard).toBeVisible();
+    await expect(backupCard).toContainText('Backups Stored:');
+
+    // Verify View Logs button exists on each background task card
+    await expect(posterCard.locator('.btn-task-logs')).toBeVisible();
 
     // Verify schedule selector and next run time are displayed
     await expect(posterCard.locator('.task-schedule-select')).toBeVisible();
@@ -901,14 +906,19 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     await runBtn.click();
     await expect(runBtn).toBeVisible();
 
-    // 3. Test Subview: Application Logs
-    await page.click('#admin-subnav-pills button[data-subview="admin-sub-logs"]');
+    // Click "View Logs" on poster card to navigate to logs filtered for that task
+    await posterCard.locator('.btn-task-logs').click();
     await expect(page.locator('#admin-sub-logs')).toBeVisible();
+    await expect(page.locator('#admin-logs-active-filter')).toBeVisible();
+    await expect(page.locator('#admin-logs-active-filter-name')).toContainText('Media Poster');
 
     // Verify logs terminal has entries
     const logsViewer = page.locator('#admin-logs-viewer');
     await expect(logsViewer).toBeVisible();
-    await expect(page.locator('#admin-logs-viewer .log-entry').first()).toBeVisible();
+
+    // Clear active task logs filter
+    await page.click('#btn-clear-admin-logs-filter');
+    await expect(page.locator('#admin-logs-active-filter')).toBeHidden();
 
     // Test log level filter
     await page.selectOption('#admin-logs-filter-level', 'WARN');
@@ -1807,6 +1817,21 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     await expect(page.locator('#setting-tmdb-api-key')).toHaveValue('tmdb_ui_test_key_789');
     await toggleBtn.click();
     await expect(page.locator('#setting-tmdb-api-key')).toHaveValue(/^tm.*•/);
+
+    // 9. Verify version card and check for updates
+    await expect(page.locator('#admin-settings-version-card')).toBeVisible();
+    await expect(page.locator('#admin-version-tag')).toContainText('v0.');
+    const checkUpdatesBtn = page.locator('#btn-check-version-updates');
+    await expect(checkUpdatesBtn).toBeVisible();
+    await checkUpdatesBtn.click();
+    await expect(page.locator('#admin-version-status-desc')).toBeVisible();
+
+    // 10. Verify standard user group setting
+    await expect(page.locator('#setting-oidc-user-group')).toBeVisible();
+    await page.fill('#setting-oidc-user-group', 'family, friends');
+    await page.click('#btn-save-admin-settings');
+    await expect(page.locator('#admin-settings-status')).toContainText('Settings saved successfully');
+    await expect(page.locator('#setting-oidc-user-group')).toHaveValue('family, friends');
 
     // 9. Reset source back to tvdb to leave environment clean
     await sourceSelect.selectOption('tvdb');

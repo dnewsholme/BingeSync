@@ -30,6 +30,9 @@ COPY --from=frontend-builder /app/web/dist ./web/dist
 COPY Cargo.toml Cargo.lock ./
 COPY src/ ./src/
 
+ARG APP_VERSION=0.1.0
+ENV BINGESYNC_VERSION=$APP_VERSION
+
 # Compile optimized release binary
 RUN cargo build --release
 

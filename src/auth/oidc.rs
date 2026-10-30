@@ -44,7 +44,7 @@ pub struct OidcUserInfo {
 }
 
 impl OidcUserInfo {
-    pub fn is_admin(&self, custom_admin_group: Option<&str>) -> bool {
+    pub fn extract_groups(&self) -> Vec<String> {
         let mut extracted: Vec<String> = Vec::new();
 
         let mut extract = |val: &serde_json::Value| {
@@ -78,6 +78,11 @@ impl OidcUserInfo {
 
         extract(&self.groups);
         extract(&self.roles);
+        extracted
+    }
+
+    pub fn is_admin(&self, custom_admin_group: Option<&str>) -> bool {
+        let extracted = self.extract_groups();
 
         let mut admin_targets: Vec<String> = vec![
             "admin".to_string(),
@@ -102,6 +107,42 @@ impl OidcUserInfo {
         extracted.iter().any(|g| {
             let norm_g = normalize(g);
             admin_targets.iter().any(|target| {
+                let norm_t = normalize(target);
+                norm_g == norm_t
+            })
+        })
+    }
+
+    pub fn has_group(&self, custom_group: Option<&str>) -> bool {
+        let Some(custom) = custom_group else {
+            return true;
+        };
+
+        let trimmed_custom = custom.trim();
+        if trimmed_custom.is_empty() {
+            return true;
+        }
+
+        let mut targets: Vec<String> = Vec::new();
+        for part in trimmed_custom.split([',', ';']) {
+            let trimmed = part.trim();
+            if !trimmed.is_empty() {
+                targets.push(trimmed.to_string());
+            }
+        }
+
+        if targets.is_empty() {
+            return true;
+        }
+
+        let extracted = self.extract_groups();
+        let normalize = |s: &str| -> String {
+            s.trim().trim_start_matches('/').to_lowercase()
+        };
+
+        extracted.iter().any(|g| {
+            let norm_g = normalize(g);
+            targets.iter().any(|target| {
                 let norm_t = normalize(target);
                 norm_g == norm_t
             })

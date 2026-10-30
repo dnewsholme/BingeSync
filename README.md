@@ -159,6 +159,7 @@ If metadata credentials are not set, BingeSync scrobbles with basic title inform
 | `OIDC_CLIENT_SECRET` | *(none)* | OIDC client secret |
 | `OIDC_REDIRECT_URL` | `${APP_URL}/api/v1/auth/callback` | OAuth redirect URL |
 | `OIDC_ADMIN_GROUP` | *(none)* | Custom group name(s) (comma-separated) granting the admin role |
+| `OIDC_USER_GROUP` | *(none)* | Custom group name(s) (comma-separated) required for standard users |
 | `METADATA_SOURCE` | `tvdb` | Active metadata enrichment provider (`tvdb` or `tmdb`) |
 | `TVDB_API_KEY` | *(none)* | TheTVDB v4 API key |
 | `TVDB_PIN` | *(none)* | TheTVDB v4 subscriber PIN (optional) |
@@ -187,14 +188,15 @@ For fresh instances where OIDC is not yet configured or no users exist, BingeSyn
 - Configure your provider via the First-Run Setup Flow, Admin Settings, or environment variables (`OIDC_ENABLED=true`, `OIDC_ISSUER_URL`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`).
 - Set the callback URL in your provider to `${APP_URL}/api/v1/auth/callback`.
 - Users belonging to `admin`, `admins`, `administrator`, `administrators`, or any group configured in `OIDC_ADMIN_GROUP` (or Admin Settings) are automatically granted admin permissions.
+- Standard user access can optionally be restricted to specific group(s) via `OIDC_USER_GROUP` (or Admin Settings). If configured, non-admin users outside the specified group are denied login.
 - Back-Channel Logout is supported at `/api/v1/auth/backchannel-logout` to terminate sessions immediately upon IdP revocation.
 
 ### Admin Controls
 - **User Management**: Inspect users, scrobble totals, and remove accounts with cascading data cleanup.
 - **Database Backups**: Create point-in-time SQLite snapshots, view backup history, and restore with automatic pre-restore safety snapshots.
-- **System Settings**: Switch metadata providers, update API keys, and adjust scrobble completion thresholds.
-- **Background Tasks**: Monitor task execution and trigger metadata, image cache, or user sync jobs on demand.
-- **Live Log Viewer**: Streaming application log buffer accessible from the admin panel.
+- **System Settings & Versioning**: Display current application version, check for newer GitHub releases with one click, switch metadata providers, update API keys, and adjust scrobble completion thresholds.
+- **Background Tasks**: Monitor task execution, persist last run and completion timestamps across restarts, trigger jobs on demand, and jump straight to task-filtered logs via "View Logs".
+- **Live Log Viewer**: Streaming application log buffer with log-level and full-text keyword / background job search filters.
 
 ---
 

@@ -99,37 +99,54 @@ impl BackgroundTaskTracker {
         }
     }
 
-    pub async fn set_image_running(&self, message: &str) {
+    pub async fn set_image_running(&self, pool: Option<&sqlx::SqlitePool>, message: &str) {
+        let now = chrono::Utc::now().to_rfc3339();
         *self.image_status.write().await = "running".to_string();
-        *self.image_last_run.write().await = Some(chrono::Utc::now().to_rfc3339());
+        *self.image_last_run.write().await = Some(now.clone());
         *self.image_last_message.write().await = Some(message.to_string());
+        if let Some(p) = pool {
+            let _ = crate::api::settings::set_db_setting(p, "task_last_run:image_cache", &now).await;
+        }
     }
 
-    pub async fn set_image_idle(&self, processed: usize, message: &str) {
+    pub async fn set_image_idle(&self, pool: Option<&sqlx::SqlitePool>, processed: usize, message: &str) {
+        let now = chrono::Utc::now().to_rfc3339();
         *self.image_status.write().await = "idle".to_string();
-        if processed > 0 {
-            self.image_processed.fetch_add(processed, Ordering::Relaxed);
-            *self.image_last_success.write().await = Some(chrono::Utc::now().to_rfc3339());
-        }
+        self.image_processed.fetch_add(processed, Ordering::Relaxed);
+        *self.image_last_success.write().await = Some(now.clone());
         *self.image_last_message.write().await = Some(message.to_string());
+        if let Some(p) = pool {
+            let _ = crate::api::settings::set_db_setting(p, "task_last_success:image_cache", &now).await;
+        }
     }
 
     pub async fn set_image_next_run(&self, next_run: Option<String>) {
         *self.image_next_run.write().await = next_run;
     }
 
-    pub async fn set_tvdb_running(&self, message: &str) {
+    pub async fn set_tvdb_running(&self, pool: Option<&sqlx::SqlitePool>, message: &str) {
+        let now = chrono::Utc::now().to_rfc3339();
         *self.tvdb_status.write().await = "running".to_string();
-        *self.tvdb_last_run.write().await = Some(chrono::Utc::now().to_rfc3339());
+        *self.tvdb_last_run.write().await = Some(now.clone());
         *self.tvdb_last_message.write().await = Some(message.to_string());
+        if let Some(p) = pool {
+            let _ = crate::api::settings::set_db_setting(p, "task_last_run:tvdb_metadata", &now).await;
+        }
     }
 
-    pub async fn set_tvdb_idle(&self, processed: usize, message: &str) {
+    pub async fn set_tvdb_idle(&self, pool: Option<&sqlx::SqlitePool>, processed: usize, message: &str) {
+        let now = chrono::Utc::now().to_rfc3339();
         *self.tvdb_status.write().await = "idle".to_string();
-        if processed > 0 {
-            self.tvdb_processed.fetch_add(processed, Ordering::Relaxed);
-            *self.tvdb_last_success.write().await = Some(chrono::Utc::now().to_rfc3339());
+        self.tvdb_processed.fetch_add(processed, Ordering::Relaxed);
+        *self.tvdb_last_success.write().await = Some(now.clone());
+        *self.tvdb_last_message.write().await = Some(message.to_string());
+        if let Some(p) = pool {
+            let _ = crate::api::settings::set_db_setting(p, "task_last_success:tvdb_metadata", &now).await;
         }
+    }
+
+    pub async fn set_tvdb_idle_unconfigured(&self, message: &str) {
+        *self.tvdb_status.write().await = "idle".to_string();
         *self.tvdb_last_message.write().await = Some(message.to_string());
     }
 
@@ -137,36 +154,50 @@ impl BackgroundTaskTracker {
         *self.tvdb_next_run.write().await = next_run;
     }
 
-    pub async fn set_user_sync_running(&self, message: &str) {
+    pub async fn set_user_sync_running(&self, pool: Option<&sqlx::SqlitePool>, message: &str) {
+        let now = chrono::Utc::now().to_rfc3339();
         *self.user_sync_status.write().await = "running".to_string();
-        *self.user_sync_last_run.write().await = Some(chrono::Utc::now().to_rfc3339());
+        *self.user_sync_last_run.write().await = Some(now.clone());
         *self.user_sync_last_message.write().await = Some(message.to_string());
+        if let Some(p) = pool {
+            let _ = crate::api::settings::set_db_setting(p, "task_last_run:user_sync", &now).await;
+        }
     }
 
-    pub async fn set_user_sync_idle(&self, processed: usize, message: &str) {
+    pub async fn set_user_sync_idle(&self, pool: Option<&sqlx::SqlitePool>, processed: usize, message: &str) {
+        let now = chrono::Utc::now().to_rfc3339();
         *self.user_sync_status.write().await = "idle".to_string();
-        if processed > 0 {
-            self.user_sync_processed.fetch_add(processed, Ordering::Relaxed);
-            *self.user_sync_last_success.write().await = Some(chrono::Utc::now().to_rfc3339());
-        }
+        self.user_sync_processed.fetch_add(processed, Ordering::Relaxed);
+        *self.user_sync_last_success.write().await = Some(now.clone());
         *self.user_sync_last_message.write().await = Some(message.to_string());
+        if let Some(p) = pool {
+            let _ = crate::api::settings::set_db_setting(p, "task_last_success:user_sync", &now).await;
+        }
     }
 
     pub async fn set_user_sync_next_run(&self, next_run: Option<String>) {
         *self.user_sync_next_run.write().await = next_run;
     }
 
-    pub async fn set_db_backup_running(&self, message: &str) {
+    pub async fn set_db_backup_running(&self, pool: Option<&sqlx::SqlitePool>, message: &str) {
+        let now = chrono::Utc::now().to_rfc3339();
         *self.db_backup_status.write().await = "running".to_string();
-        *self.db_backup_last_run.write().await = Some(chrono::Utc::now().to_rfc3339());
+        *self.db_backup_last_run.write().await = Some(now.clone());
         *self.db_backup_last_message.write().await = Some(message.to_string());
+        if let Some(p) = pool {
+            let _ = crate::api::settings::set_db_setting(p, "task_last_run:db_backup", &now).await;
+        }
     }
 
-    pub async fn set_db_backup_idle(&self, processed: usize, message: &str) {
+    pub async fn set_db_backup_idle(&self, pool: Option<&sqlx::SqlitePool>, processed: usize, message: &str) {
+        let now = chrono::Utc::now().to_rfc3339();
         *self.db_backup_status.write().await = "idle".to_string();
+        self.db_backup_processed.fetch_add(processed, Ordering::Relaxed);
         if processed > 0 {
-            self.db_backup_processed.fetch_add(processed, Ordering::Relaxed);
-            *self.db_backup_last_success.write().await = Some(chrono::Utc::now().to_rfc3339());
+            *self.db_backup_last_success.write().await = Some(now.clone());
+            if let Some(p) = pool {
+                let _ = crate::api::settings::set_db_setting(p, "task_last_success:db_backup", &now).await;
+            }
         }
         *self.db_backup_last_message.write().await = Some(message.to_string());
     }
@@ -211,6 +242,28 @@ impl BackgroundTaskTracker {
         let image_sched_str = format!("Every {} hour{}", image_interval, if image_interval == 1 { "" } else { "s" });
         let tvdb_sched_str = format!("Every {} hour{}", tvdb_interval, if tvdb_interval == 1 { "" } else { "s" });
 
+        let image_last_run = match self.image_last_run.read().await.clone() {
+            Some(lr) => Some(lr),
+            None => crate::api::settings::get_db_setting(pool, "task_last_run:image_cache").await,
+        };
+
+        let image_last_success = match self.image_last_success.read().await.clone() {
+            Some(ls) => Some(ls),
+            None => {
+                if let Some(saved) = crate::api::settings::get_db_setting(pool, "task_last_success:image_cache").await {
+                    Some(saved)
+                } else {
+                    let max_thumb: Option<String> = sqlx::query_scalar(
+                        "SELECT MAX(created_at) FROM scrobbles WHERE thumb_url IS NOT NULL AND thumb_url != '' AND thumb_url NOT LIKE '/library/%' AND thumb_url NOT LIKE '/photo/%'"
+                    )
+                    .fetch_optional(pool)
+                    .await
+                    .unwrap_or(None);
+                    max_thumb
+                }
+            }
+        };
+
         let image_task = BackgroundTaskInfo {
             id: "image_cache".to_string(),
             name: "Media Poster & Thumbnail Caching".to_string(),
@@ -220,8 +273,8 @@ impl BackgroundTaskTracker {
             interval_hours: image_interval,
             items_processed: (processed_images.max(0) as usize).max(self.image_processed.load(Ordering::Relaxed)),
             items_pending: pending_images.max(0) as usize,
-            last_run_at: self.image_last_run.read().await.clone(),
-            last_success_at: self.image_last_success.read().await.clone(),
+            last_run_at: image_last_run,
+            last_success_at: image_last_success,
             next_run_at: self.image_next_run.read().await.clone(),
             last_message: self.image_last_message.read().await.clone(),
         };
@@ -241,6 +294,28 @@ impl BackgroundTaskTracker {
             )
         };
 
+        let tvdb_last_run = match self.tvdb_last_run.read().await.clone() {
+            Some(lr) => Some(lr),
+            None => crate::api::settings::get_db_setting(pool, "task_last_run:tvdb_metadata").await,
+        };
+
+        let tvdb_last_success = match self.tvdb_last_success.read().await.clone() {
+            Some(ls) => Some(ls),
+            None => {
+                if let Some(saved) = crate::api::settings::get_db_setting(pool, "task_last_success:tvdb_metadata").await {
+                    Some(saved)
+                } else {
+                    let max_meta: Option<String> = sqlx::query_scalar(
+                        "SELECT MAX(metadata_updated_at) FROM scrobbles WHERE metadata_updated_at IS NOT NULL"
+                    )
+                    .fetch_optional(pool)
+                    .await
+                    .unwrap_or(None);
+                    max_meta
+                }
+            }
+        };
+
         let tvdb_task = BackgroundTaskInfo {
             id: "tvdb_metadata".to_string(),
             name: "Metadata Enrichment".to_string(),
@@ -250,8 +325,8 @@ impl BackgroundTaskTracker {
             interval_hours: tvdb_interval,
             items_processed: (processed_metadata.max(0) as usize).max(self.tvdb_processed.load(Ordering::Relaxed)),
             items_pending: pending_metadata.max(0) as usize,
-            last_run_at: self.tvdb_last_run.read().await.clone(),
-            last_success_at: self.tvdb_last_success.read().await.clone(),
+            last_run_at: tvdb_last_run,
+            last_success_at: tvdb_last_success,
             next_run_at: self.tvdb_next_run.read().await.clone(),
             last_message: self.tvdb_last_message.read().await.clone(),
         };
@@ -264,6 +339,28 @@ impl BackgroundTaskTracker {
             .await
             .unwrap_or(0);
 
+        let user_sync_last_run = match self.user_sync_last_run.read().await.clone() {
+            Some(lr) => Some(lr),
+            None => crate::api::settings::get_db_setting(pool, "task_last_run:user_sync").await,
+        };
+
+        let user_sync_last_success = match self.user_sync_last_success.read().await.clone() {
+            Some(ls) => Some(ls),
+            None => {
+                if let Some(saved) = crate::api::settings::get_db_setting(pool, "task_last_success:user_sync").await {
+                    Some(saved)
+                } else {
+                    let max_sync: Option<String> = sqlx::query_scalar(
+                        "SELECT MAX(last_synced_at) FROM plex_user_cache"
+                    )
+                    .fetch_optional(pool)
+                    .await
+                    .unwrap_or(None);
+                    max_sync
+                }
+            }
+        };
+
         let user_sync_task = BackgroundTaskInfo {
             id: "user_sync".to_string(),
             name: "Plex & Media Server User Cache Sync".to_string(),
@@ -273,8 +370,8 @@ impl BackgroundTaskTracker {
             interval_hours: user_sync_interval,
             items_processed: (cached_users.max(0) as usize).max(self.user_sync_processed.load(Ordering::Relaxed)),
             items_pending: 0,
-            last_run_at: self.user_sync_last_run.read().await.clone(),
-            last_success_at: self.user_sync_last_success.read().await.clone(),
+            last_run_at: user_sync_last_run,
+            last_success_at: user_sync_last_success,
             next_run_at: self.user_sync_next_run.read().await.clone(),
             last_message: self.user_sync_last_message.read().await.clone(),
         };
@@ -287,6 +384,25 @@ impl BackgroundTaskTracker {
             .map(|r| r.backups.len())
             .unwrap_or(0);
 
+        let db_backup_last_run = match self.db_backup_last_run.read().await.clone() {
+            Some(lr) => Some(lr),
+            None => crate::api::settings::get_db_setting(pool, "task_last_run:db_backup").await,
+        };
+
+        let db_backup_last_success = match self.db_backup_last_success.read().await.clone() {
+            Some(ls) => Some(ls),
+            None => {
+                if let Some(saved) = crate::api::settings::get_db_setting(pool, "task_last_success:db_backup").await {
+                    Some(saved)
+                } else {
+                    crate::api::backup::list_backups(state)
+                        .await
+                        .ok()
+                        .and_then(|r| r.backups.first().map(|b| b.created_at.clone()))
+                }
+            }
+        };
+
         let db_backup_task = BackgroundTaskInfo {
             id: "db_backup".to_string(),
             name: "Database Backup".to_string(),
@@ -294,10 +410,10 @@ impl BackgroundTaskTracker {
             status: self.db_backup_status.read().await.clone(),
             schedule: db_backup_sched_str,
             interval_hours: db_backup_interval,
-            items_processed: self.db_backup_processed.load(Ordering::Relaxed),
-            items_pending: current_backups_count,
-            last_run_at: self.db_backup_last_run.read().await.clone(),
-            last_success_at: self.db_backup_last_success.read().await.clone(),
+            items_processed: current_backups_count,
+            items_pending: 0,
+            last_run_at: db_backup_last_run,
+            last_success_at: db_backup_last_success,
             next_run_at: self.db_backup_next_run.read().await.clone(),
             last_message: self.db_backup_last_message.read().await.clone(),
         };
@@ -351,7 +467,7 @@ pub async fn trigger_admin_task_handler(
             if is_forced {
                 force_refresh_all_images_internal(&state).await
             } else {
-                state.task_tracker.set_image_running("Manual run triggered...").await;
+                state.task_tracker.set_image_running(Some(&state.pool), "Manual run triggered...").await;
                 state.image_notify.notify_waiters();
                 state.image_notify.notify_one();
                 state.log_buffer.push("INFO", "bingesync::tasks", "Manual run triggered for Image Caching worker");
@@ -372,7 +488,7 @@ pub async fn trigger_admin_task_handler(
                 let _ = sqlx::query("UPDATE scrobbles SET metadata_updated_at = NULL")
                     .execute(&state.pool)
                     .await;
-                state.task_tracker.set_tvdb_running("Forced full metadata refresh triggered...").await;
+                state.task_tracker.set_tvdb_running(Some(&state.pool), "Forced full metadata refresh triggered...").await;
                 state.metadata_notify.notify_waiters();
                 state.metadata_notify.notify_one();
                 state.log_buffer.push(
@@ -394,7 +510,7 @@ pub async fn trigger_admin_task_handler(
                 .execute(&state.pool)
                 .await;
 
-                state.task_tracker.set_tvdb_running("Manual run triggered...").await;
+                state.task_tracker.set_tvdb_running(Some(&state.pool), "Manual run triggered...").await;
                 state.metadata_notify.notify_waiters();
                 state.metadata_notify.notify_one();
                 state.log_buffer.push("INFO", "bingesync::tasks", "Manual run triggered for TheTVDB Metadata worker");
@@ -414,7 +530,7 @@ pub async fn trigger_admin_task_handler(
             if is_forced {
                 force_refresh_user_cache_internal(&state).await
             } else {
-                state.task_tracker.set_user_sync_running("Manual run triggered...").await;
+                state.task_tracker.set_user_sync_running(Some(&state.pool), "Manual run triggered...").await;
                 state.user_sync_notify.notify_waiters();
                 state.user_sync_notify.notify_one();
                 state.log_buffer.push("INFO", "bingesync::tasks", "Manual run triggered for User Cache Sync worker");
@@ -430,14 +546,14 @@ pub async fn trigger_admin_task_handler(
             force_refresh_user_cache_internal(&state).await
         }
         "db_backup" | "backup" => {
-            state.task_tracker.set_db_backup_running("Manual backup triggered...").await;
+            state.task_tracker.set_db_backup_running(Some(&state.pool), "Manual backup triggered...").await;
             state.log_buffer.push("INFO", "bingesync::tasks", "Manual run triggered for Database Backup worker");
 
             match crate::api::backup::create_database_backup(&state, None).await {
                 Ok(item) => {
                     state
                         .task_tracker
-                        .set_db_backup_idle(1, &format!("Backup created: {}", item.filename))
+                        .set_db_backup_idle(Some(&state.pool), 1, &format!("Backup created: {}", item.filename))
                         .await;
                     Ok(Json(serde_json::json!({
                         "status": "triggered",
@@ -449,7 +565,7 @@ pub async fn trigger_admin_task_handler(
                 Err(e) => {
                     state
                         .task_tracker
-                        .set_db_backup_idle(0, &format!("Backup failed: {}", e))
+                        .set_db_backup_idle(Some(&state.pool), 0, &format!("Backup failed: {}", e))
                         .await;
                     Err((
                         StatusCode::INTERNAL_SERVER_ERROR,
@@ -479,7 +595,7 @@ pub async fn force_refresh_all_images_internal(
         })?;
 
     let count = res.rows_affected();
-    state.task_tracker.set_image_running("Forced full poster refresh triggered...").await;
+    state.task_tracker.set_image_running(Some(&state.pool), "Forced full poster refresh triggered...").await;
     state.image_notify.notify_waiters();
     state.image_notify.notify_one();
     state.log_buffer.push(
@@ -524,7 +640,7 @@ pub async fn force_refresh_user_cache_internal(
         })?;
 
     let count = res.rows_affected();
-    state.task_tracker.set_user_sync_running("Forced user cache refresh triggered...").await;
+    state.task_tracker.set_user_sync_running(Some(&state.pool), "Forced user cache refresh triggered...").await;
     state.user_sync_notify.notify_waiters();
     state.user_sync_notify.notify_one();
     state.log_buffer.push(
@@ -569,7 +685,7 @@ async fn force_refresh_all_metadata_internal(
         })?;
 
     let count = res.rows_affected();
-    state.task_tracker.set_tvdb_running("Forced full metadata refresh triggered...").await;
+    state.task_tracker.set_tvdb_running(Some(&state.pool), "Forced full metadata refresh triggered...").await;
     state.metadata_notify.notify_waiters();
     state.metadata_notify.notify_one();
     state.log_buffer.push(

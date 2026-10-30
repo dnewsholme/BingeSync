@@ -47,9 +47,21 @@ jobs:
   build-and-push:
     needs: test
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute version
+        id: version
+        run: |
+          VERSION="0.1.${{ github.run_number }}"
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "tag=v${VERSION}" >> $GITHUB_OUTPUT
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -69,9 +81,19 @@ jobs:
           context: .
           push: true
           build-args: |
-            APP_VERSION=0.1.${{ github.run_number }}
+            APP_VERSION=${{ steps.version.outputs.version }}
           tags: |
             dnewsholme/bingesync:latest
-            dnewsholme/bingesync:0.1.${{ github.run_number }}
+            dnewsholme/bingesync:${{ steps.version.outputs.version }}
+            dnewsholme/bingesync:${{ steps.version.outputs.tag }}
           cache-from: type=registry,ref=dnewsholme/bingesync:buildcache
           cache-to: type=registry,ref=dnewsholme/bingesync:buildcache,mode=max
+
+      - name: Create GitHub Tag and Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ steps.version.outputs.tag }}" \
+            --title "BingeSync ${{ steps.version.outputs.tag }}" \
+            --generate-notes \
+            --target "${{ github.sha }}"

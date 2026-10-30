@@ -273,9 +273,12 @@ export const api = {
   deleteAdminUser: (userId) => request(`/admin/users/${userId}`, { method: 'DELETE' }),
   getAdminSettings: () => request('/admin/settings'),
   updateAdminSettings: (data) => request('/admin/settings', { method: 'POST', body: JSON.stringify(data) }),
+  getAdminVersion: () => request('/admin/version'),
+  checkAdminVersion: () => request('/admin/version/check', { method: 'POST' }),
   getAdminLogs: (params = {}) => {
     let url = `/admin/logs?limit=${params.limit || 200}`;
     if (params.level) url += `&level=${encodeURIComponent(params.level)}`;
+    if (params.search) url += `&search=${encodeURIComponent(params.search)}`;
     return request(url);
   },
   clearAdminLogs: () => request('/admin/logs', { method: 'DELETE' }),

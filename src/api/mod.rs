@@ -66,6 +66,15 @@ impl AppState {
         self.config.oidc_admin_group.clone()
     }
 
+    pub async fn get_effective_oidc_user_group(&self) -> Option<String> {
+        if let Some(val) = settings::get_db_setting(&self.pool, "oidc_user_group").await {
+            if !val.trim().is_empty() {
+                return Some(val);
+            }
+        }
+        self.config.oidc_user_group.clone()
+    }
+
     pub async fn get_effective_oidc_client(&self) -> Option<Arc<OidcClient>> {
         let is_enabled = self.is_oidc_enabled().await;
         if !is_enabled {
@@ -340,6 +349,8 @@ pub fn create_api_router(state: AppState) -> Router {
         .route("/api/v1/admin/users", get(admin::list_users))
         .route("/api/v1/admin/users/{id}", delete(admin::delete_user))
         .route("/api/v1/admin/settings", get(settings::get_admin_settings_handler).post(settings::update_admin_settings_handler).put(settings::update_admin_settings_handler))
+        .route("/api/v1/admin/version", get(settings::get_admin_version_handler))
+        .route("/api/v1/admin/version/check", post(settings::get_admin_version_handler))
         .route("/api/v1/admin/logs", get(logs::get_admin_logs_handler).delete(logs::clear_admin_logs_handler))
         .route("/api/v1/admin/tasks", get(jobs::get_admin_tasks_handler))
         .route("/api/v1/admin/tasks/{id}/run", post(jobs::trigger_admin_task_handler))

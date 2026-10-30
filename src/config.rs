@@ -13,6 +13,7 @@ pub struct Config {
     pub oidc_client_secret: Option<String>,
     pub oidc_redirect_url: Option<String>,
     pub oidc_admin_group: Option<String>,
+    pub oidc_user_group: Option<String>,
     pub dev_login_enabled: bool,
     pub base_path: String,
     pub image_cache_dir: String,
@@ -94,6 +95,12 @@ impl Config {
             .ok()
             .filter(|s| !s.trim().is_empty());
 
+        let oidc_user_group = env::var("OIDC_USER_GROUP")
+            .or_else(|_| env::var("OIDC_USERS_GROUP"))
+            .or_else(|_| env::var("OIDC_USER_GROUPS"))
+            .ok()
+            .filter(|s| !s.trim().is_empty());
+
         let oidc_enabled = env::var("OIDC_ENABLED")
             .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
             .unwrap_or_else(|_| oidc_issuer_url.is_some() && oidc_client_id.is_some());
@@ -151,6 +158,7 @@ impl Config {
             oidc_client_secret,
             oidc_redirect_url,
             oidc_admin_group,
+            oidc_user_group,
             dev_login_enabled,
             base_path,
             image_cache_dir,

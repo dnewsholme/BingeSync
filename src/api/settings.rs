@@ -31,9 +31,95 @@ pub struct SystemSettingsView {
     pub oidc_client_secret: Option<String>,
     pub oidc_redirect_url: Option<String>,
     pub oidc_admin_group: Option<String>,
+    pub oidc_user_group: Option<String>,
     pub scrobble_threshold_percent: i64,
     pub task_image_interval_hours: u64,
     pub task_tvdb_interval_hours: u64,
+
+    pub app_version: String,
+    pub latest_version: Option<String>,
+    pub update_available: bool,
+    pub release_url: Option<String>,
+    pub release_notes: Option<String>,
+}
+
+pub const APP_VERSION: &str = match option_env!("BINGESYNC_VERSION") {
+    Some(v) => v,
+    None => env!("CARGO_PKG_VERSION"),
+};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VersionCheckResponse {
+    pub current_version: String,
+    pub latest_version: Option<String>,
+    pub update_available: bool,
+    pub release_url: Option<String>,
+    pub release_notes: Option<String>,
+    pub published_at: Option<String>,
+}
+
+pub fn is_version_newer(latest: &str, current: &str) -> bool {
+    let parse_parts = |s: &str| -> Vec<u64> {
+        s.trim_start_matches('v')
+            .split('.')
+            .filter_map(|p| p.parse::<u64>().ok())
+            .collect()
+    };
+    let l_parts = parse_parts(latest);
+    let c_parts = parse_parts(current);
+    if !l_parts.is_empty() && !c_parts.is_empty() {
+        l_parts > c_parts
+    } else {
+        let l_clean = latest.trim_start_matches('v');
+        let c_clean = current.trim_start_matches('v');
+        l_clean != c_clean && !l_clean.is_empty()
+    }
+}
+
+pub async fn check_latest_github_release() -> VersionCheckResponse {
+    let current = APP_VERSION.to_string();
+    let client = reqwest::Client::builder()
+        .user_agent("BingeSync-Server")
+        .timeout(std::time::Duration::from_secs(5))
+        .build()
+        .unwrap_or_default();
+
+    let res = client
+        .get("https://api.github.com/repos/dnewsholme/BingeSync/releases/latest")
+        .send()
+        .await;
+
+    if let Ok(resp) = res {
+        if resp.status().is_success() {
+            if let Ok(json) = resp.json::<serde_json::Value>().await {
+                if let Some(tag) = json.get("tag_name").and_then(|v| v.as_str()) {
+                    let latest = tag.trim_start_matches('v').to_string();
+                    let release_url = json.get("html_url").and_then(|v| v.as_str()).map(|s| s.to_string());
+                    let release_notes = json.get("body").and_then(|v| v.as_str()).map(|s| s.to_string());
+                    let published_at = json.get("published_at").and_then(|v| v.as_str()).map(|s| s.to_string());
+                    let update_available = is_version_newer(&latest, &current);
+
+                    return VersionCheckResponse {
+                        current_version: current,
+                        latest_version: Some(latest),
+                        update_available,
+                        release_url,
+                        release_notes,
+                        published_at,
+                    };
+                }
+            }
+        }
+    }
+
+    VersionCheckResponse {
+        current_version: current,
+        latest_version: None,
+        update_available: false,
+        release_url: None,
+        release_notes: None,
+        published_at: None,
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -52,6 +138,7 @@ pub struct UpdateSettingsRequest {
     pub oidc_client_secret: Option<String>,
     pub oidc_redirect_url: Option<String>,
     pub oidc_admin_group: Option<String>,
+    pub oidc_user_group: Option<String>,
     pub scrobble_threshold_percent: Option<i64>,
     pub task_image_interval_hours: Option<u64>,
     pub task_tvdb_interval_hours: Option<u64>,
@@ -155,6 +242,12 @@ pub async fn get_admin_settings_handler(
         Some(v) if !v.trim().is_empty() => Some(v),
         _ => state.config.oidc_admin_group.clone(),
     };
+    let oidc_user_group = match get_db_setting(&state.pool, "oidc_user_group").await {
+        Some(v) if !v.trim().is_empty() => Some(v),
+        _ => state.config.oidc_user_group.clone(),
+    };
+
+    let ver_info = check_latest_github_release().await;
 
     let view = SystemSettingsView {
         metadata_source,
@@ -177,12 +270,32 @@ pub async fn get_admin_settings_handler(
         oidc_client_secret: None,
         oidc_redirect_url,
         oidc_admin_group,
+        oidc_user_group,
         scrobble_threshold_percent: state.get_effective_scrobble_threshold().await,
         task_image_interval_hours: state.get_task_interval_hours("image_cache").await,
         task_tvdb_interval_hours: state.get_task_interval_hours("tvdb_metadata").await,
+
+        app_version: ver_info.current_version,
+        latest_version: ver_info.latest_version,
+        update_available: ver_info.update_available,
+        release_url: ver_info.release_url,
+        release_notes: ver_info.release_notes,
     };
 
     Ok(Json(view))
+}
+
+pub async fn get_admin_version_handler(
+    auth: AuthUser,
+) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
+    if auth.role != "admin" {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(serde_json::json!({ "error": "Admin privileges required" })),
+        ));
+    }
+    let info = check_latest_github_release().await;
+    Ok(Json(serde_json::json!(info)))
 }
 
 pub async fn update_admin_settings_handler(
@@ -255,6 +368,9 @@ pub async fn update_admin_settings_handler(
     }
     if let Some(ref val) = payload.oidc_admin_group {
         let _ = set_db_setting(&state.pool, "oidc_admin_group", val.trim()).await;
+    }
+    if let Some(ref val) = payload.oidc_user_group {
+        let _ = set_db_setting(&state.pool, "oidc_user_group", val.trim()).await;
     }
 
     if let Some(pct) = payload.scrobble_threshold_percent {

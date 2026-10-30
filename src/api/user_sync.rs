@@ -18,13 +18,14 @@ pub fn start_user_cache_worker(state: AppState) -> tokio::task::JoinHandle<()> {
         loop {
             state
                 .task_tracker
-                .set_user_sync_running("Syncing user accounts from Tautulli / Jellyfin...")
+                .set_user_sync_running(Some(&state.pool), "Syncing user accounts from Tautulli / Jellyfin...")
                 .await;
 
             let processed = sync_user_cache_once_with_client(&state, &client).await;
             state
                 .task_tracker
                 .set_user_sync_idle(
+                    Some(&state.pool),
                     processed,
                     &format!("Synced {} user mapping(s)", processed),
                 )
