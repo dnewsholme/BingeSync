@@ -241,6 +241,7 @@ Playwright tests in `web/tests/e2e.spec.js` (44 browser E2E tests) cover:
 - First-run setup wizard: 3-step navigation, copyable redirect URIs, test connection feedback, review summary, and skip to dev login toggle
 - Personal API keys: generate scoped keys, masked prefix display, clipboard copy, and revoke modal flow
 - Settings menu sub-navigation tabs: switch between Webhooks, Connected Services, API Keys, Preferences, and Data & Export
+- Admin "About" tab: dedicated system information view displaying dynamic runtime versions (Docker base image, SQLite engine, Rust compiler, OS kernel, Axum, Tokio), GitHub release update checks, and clean status badges
 
 
 ### Run the App Locally

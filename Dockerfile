@@ -68,7 +68,8 @@ ENV HOST=0.0.0.0 \
     BACKUP_DIR=/backup \
     APP_URL=http://localhost:8080 \
     OIDC_ENABLED=false \
-    DEV_LOGIN_ENABLED=true
+    DEV_LOGIN_ENABLED=true \
+    DOCKER_BASE_IMAGE="debian:bookworm-slim"
 
 # Storage volumes for SQLite database and database backups
 VOLUME ["/data", "/backup"]

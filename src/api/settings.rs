@@ -41,6 +41,14 @@ pub struct SystemSettingsView {
     pub update_available: bool,
     pub release_url: Option<String>,
     pub release_notes: Option<String>,
+    #[serde(default)]
+    pub docker_base_image: Option<String>,
+    #[serde(default)]
+    pub sqlite_version: Option<String>,
+    #[serde(default)]
+    pub rust_version: Option<String>,
+    #[serde(default)]
+    pub components: Option<Vec<SystemComponentInfo>>,
 }
 
 pub const APP_VERSION: &str = match option_env!("BINGESYNC_VERSION") {
@@ -48,14 +56,119 @@ pub const APP_VERSION: &str = match option_env!("BINGESYNC_VERSION") {
     None => env!("CARGO_PKG_VERSION"),
 };
 
+pub const RUSTC_VERSION: &str = match option_env!("RUSTC_VERSION") {
+    Some(v) => v,
+    None => "rustc 1.85+",
+};
+
+pub fn get_os_pretty_name() -> String {
+    if let Ok(content) = std::fs::read_to_string("/etc/os-release") {
+        for line in content.lines() {
+            if let Some(val) = line.strip_prefix("PRETTY_NAME=") {
+                let unquoted = val.trim_matches('"').trim_matches('\'').trim();
+                if !unquoted.is_empty() {
+                    return unquoted.to_string();
+                }
+            }
+        }
+    }
+    format!("{} ({})", std::env::consts::OS, std::env::consts::ARCH)
+}
+
+pub fn get_docker_base_image() -> String {
+    if let Ok(val) = std::env::var("DOCKER_BASE_IMAGE") {
+        let clean = val.trim();
+        if !clean.is_empty() {
+            return clean.to_string();
+        }
+    }
+    "debian:bookworm-slim".to_string()
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SystemComponentInfo {
+    pub name: String,
+    pub version: String,
+    pub description: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VersionCheckResponse {
     pub current_version: String,
+    pub app_version: String,
     pub latest_version: Option<String>,
     pub update_available: bool,
     pub release_url: Option<String>,
     pub release_notes: Option<String>,
     pub published_at: Option<String>,
+
+    pub docker_base_image: String,
+    pub os_name: String,
+    pub sqlite_version: String,
+    pub rust_version: String,
+    pub target_arch: String,
+    pub target_os: String,
+    pub components: Vec<SystemComponentInfo>,
+}
+
+pub async fn build_system_components(pool: Option<&sqlx::SqlitePool>) -> (String, String, String, String, Vec<SystemComponentInfo>) {
+    let sqlite_ver = if let Some(p) = pool {
+        sqlx::query_scalar("SELECT sqlite_version()")
+            .fetch_one(p)
+            .await
+            .unwrap_or_else(|_| "3.45+".to_string())
+    } else {
+        "3.45+".to_string()
+    };
+
+    let docker_base = get_docker_base_image();
+    let os_name = get_os_pretty_name();
+    let rustc_ver = RUSTC_VERSION.to_string();
+
+    let components = vec![
+        SystemComponentInfo {
+            name: "BingeSync".to_string(),
+            version: format!("v{}", APP_VERSION),
+            description: "Self-hosted media tracker and scrobbler service".to_string(),
+        },
+        SystemComponentInfo {
+            name: "Docker Base Image".to_string(),
+            version: docker_base.clone(),
+            description: "Official minimal Debian slim container runtime".to_string(),
+        },
+        SystemComponentInfo {
+            name: "Operating System".to_string(),
+            version: os_name.clone(),
+            description: format!("Host/container runtime environment ({})", std::env::consts::ARCH),
+        },
+        SystemComponentInfo {
+            name: "SQLite Engine".to_string(),
+            version: sqlite_ver.clone(),
+            description: "Embedded SQL database engine (WAL journal mode)".to_string(),
+        },
+        SystemComponentInfo {
+            name: "Rust Toolchain".to_string(),
+            version: rustc_ver.clone(),
+            description: "Binary compiler and build environment".to_string(),
+        },
+        SystemComponentInfo {
+            name: "Axum Web Framework".to_string(),
+            version: "0.8".to_string(),
+            description: "Asynchronous HTTP routing and middleware framework".to_string(),
+        },
+        SystemComponentInfo {
+            name: "Tokio Async Runtime".to_string(),
+            version: "1.40".to_string(),
+            description: "Multi-threaded asynchronous task runtime".to_string(),
+        },
+        SystemComponentInfo {
+            name: "Web Interface".to_string(),
+            version: "Vite 5 / SPA".to_string(),
+            description: "Embedded reactive Trakt-inspired single-page frontend".to_string(),
+        },
+    ];
+
+    (docker_base, os_name, sqlite_ver, rustc_ver, components)
 }
 
 pub fn is_version_newer(latest: &str, current: &str) -> bool {
@@ -76,8 +189,10 @@ pub fn is_version_newer(latest: &str, current: &str) -> bool {
     }
 }
 
-pub async fn check_latest_github_release() -> VersionCheckResponse {
+pub async fn check_latest_github_release(pool: Option<&sqlx::SqlitePool>) -> VersionCheckResponse {
     let current = APP_VERSION.to_string();
+    let (docker_base_image, os_name, sqlite_version, rust_version, components) = build_system_components(pool).await;
+
     let client = reqwest::Client::builder()
         .user_agent("BingeSync-Server")
         .timeout(std::time::Duration::from_secs(5))
@@ -100,12 +215,20 @@ pub async fn check_latest_github_release() -> VersionCheckResponse {
                     let update_available = is_version_newer(&latest, &current);
 
                     return VersionCheckResponse {
-                        current_version: current,
+                        current_version: current.clone(),
+                        app_version: current,
                         latest_version: Some(latest),
                         update_available,
                         release_url,
                         release_notes,
                         published_at,
+                        docker_base_image,
+                        os_name,
+                        sqlite_version,
+                        rust_version,
+                        target_arch: std::env::consts::ARCH.to_string(),
+                        target_os: std::env::consts::OS.to_string(),
+                        components,
                     };
                 }
             }
@@ -113,12 +236,20 @@ pub async fn check_latest_github_release() -> VersionCheckResponse {
     }
 
     VersionCheckResponse {
-        current_version: current,
+        current_version: current.clone(),
+        app_version: current,
         latest_version: None,
         update_available: false,
         release_url: None,
         release_notes: None,
         published_at: None,
+        docker_base_image,
+        os_name,
+        sqlite_version,
+        rust_version,
+        target_arch: std::env::consts::ARCH.to_string(),
+        target_os: std::env::consts::OS.to_string(),
+        components,
     }
 }
 
@@ -247,7 +378,7 @@ pub async fn get_admin_settings_handler(
         _ => state.config.oidc_user_group.clone(),
     };
 
-    let ver_info = check_latest_github_release().await;
+    let ver_info = check_latest_github_release(Some(&state.pool)).await;
 
     let view = SystemSettingsView {
         metadata_source,
@@ -280,12 +411,17 @@ pub async fn get_admin_settings_handler(
         update_available: ver_info.update_available,
         release_url: ver_info.release_url,
         release_notes: ver_info.release_notes,
+        docker_base_image: Some(ver_info.docker_base_image),
+        sqlite_version: Some(ver_info.sqlite_version),
+        rust_version: Some(ver_info.rust_version),
+        components: Some(ver_info.components),
     };
 
     Ok(Json(view))
 }
 
 pub async fn get_admin_version_handler(
+    State(state): State<AppState>,
     auth: AuthUser,
 ) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
     if auth.role != "admin" {
@@ -294,8 +430,8 @@ pub async fn get_admin_version_handler(
             Json(serde_json::json!({ "error": "Admin privileges required" })),
         ));
     }
-    let info = check_latest_github_release().await;
-    Ok(Json(serde_json::json!(info)))
+    let info = check_latest_github_release(Some(&state.pool)).await;
+    Ok(Json(serde_json::to_value(info).unwrap()))
 }
 
 pub async fn update_admin_settings_handler(

@@ -468,6 +468,10 @@ const el = {
   adminVersionUpdateTitle: document.getElementById('admin-version-update-title'),
   adminVersionUpdateDetails: document.getElementById('admin-version-update-details'),
   adminVersionReleaseLink: document.getElementById('admin-version-release-link'),
+  pillAdminAbout: document.getElementById('pill-admin-about'),
+  adminAboutVersionCard: document.getElementById('admin-about-version-card'),
+  adminSystemComponentsTable: document.getElementById('admin-system-components-table'),
+  adminSystemComponentsTbody: document.getElementById('admin-system-components-tbody'),
 
   // Admin Background Tasks
   btnRefreshAdminTasks: document.getElementById('btn-refresh-admin-tasks'),
@@ -4377,6 +4381,8 @@ if (el.btnRefreshAdminUsers) {
   el.btnRefreshAdminUsers.addEventListener('click', () => {
     if (state.admin.activeSubview === 'admin-sub-backups') {
       loadAdminBackups();
+    } else if (state.admin.activeSubview === 'admin-sub-about') {
+      loadAdminAbout();
     } else if (state.admin.activeSubview === 'admin-sub-tasks') {
       loadAdminTasks();
     } else if (state.admin.activeSubview === 'admin-sub-logs') {
@@ -4430,6 +4436,9 @@ function switchAdminSubview(subviewId) {
   } else if (subviewId === 'admin-sub-backups') {
     stopLogsAutoRefresh();
     loadAdminBackups();
+  } else if (subviewId === 'admin-sub-about') {
+    stopLogsAutoRefresh();
+    loadAdminAbout();
   }
 }
 
@@ -4559,10 +4568,21 @@ async function loadAdminSettings() {
   }
 }
 
+async function loadAdminAbout() {
+  try {
+    const ver = await api.getAdminVersion();
+    renderVersionInfo(ver);
+  } catch (err) {
+    console.error('Failed to load admin about info:', err);
+  }
+}
+
 function renderVersionInfo(info) {
-  if (!el.adminVersionTag) return;
+  if (!info) return;
   const current = info.app_version || info.current_version || '0.1.0';
-  el.adminVersionTag.textContent = `v${current}`;
+  if (el.adminVersionTag) {
+    el.adminVersionTag.textContent = `v${current}`;
+  }
 
   if (info.update_available) {
     if (el.adminVersionStatusDesc) {
@@ -4590,6 +4610,36 @@ function renderVersionInfo(info) {
       el.adminVersionStatusDesc.textContent = `BingeSync v${current} (GitHub releases check completed)`;
     }
     if (el.adminVersionUpdateBanner) el.adminVersionUpdateBanner.style.display = 'none';
+  }
+
+  // Render components table in About tab
+  if (el.adminSystemComponentsTbody) {
+    const components = info.components || [
+      { name: 'BingeSync', version: `v${current}`, description: 'Self-hosted media tracker and scrobbler service' },
+      { name: 'Docker Base Image', version: info.docker_base_image || 'debian:bookworm-slim', description: 'Official minimal Debian slim container runtime' },
+      { name: 'Operating System', version: info.os_name || 'Linux', description: 'Host/container runtime environment' },
+      { name: 'SQLite Engine', version: info.sqlite_version || '3.45+', description: 'Embedded SQL database engine (WAL journal mode)' },
+      { name: 'Rust Toolchain', version: info.rust_version || 'rustc 1.85+', description: 'Binary compiler and build environment' },
+      { name: 'Axum Web Framework', version: '0.8', description: 'Asynchronous HTTP routing and middleware framework' },
+      { name: 'Tokio Async Runtime', version: '1.40', description: 'Multi-threaded asynchronous task runtime' },
+      { name: 'Web Interface', version: 'Vite 5 / SPA', description: 'Embedded reactive Trakt-inspired single-page frontend' },
+    ];
+
+    el.adminSystemComponentsTbody.innerHTML = components.map(c => `
+      <tr>
+        <td style="font-weight: 600; color: var(--text-main);">
+          ${escapeHtml(c.name)}
+        </td>
+        <td>
+          <code style="background: rgba(255, 255, 255, 0.06); padding: 2px 8px; border-radius: 4px; color: var(--accent-primary, #818cf8); font-family: monospace; font-size: 0.85rem; border: 1px solid rgba(255, 255, 255, 0.08);">
+            ${escapeHtml(c.version)}
+          </code>
+        </td>
+        <td style="color: var(--text-muted); font-size: 0.85rem;">
+          ${escapeHtml(c.description)}
+        </td>
+      </tr>
+    `).join('');
   }
 }
 

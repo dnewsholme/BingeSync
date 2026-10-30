@@ -1326,6 +1326,7 @@
             <button class="pill" data-subview="admin-sub-tasks" data-i18n="admin.tasks_tab">Background Tasks</button>
             <button class="pill" data-subview="admin-sub-logs" data-i18n="admin.logs_tab">Application Logs</button>
             <button class="pill" data-subview="admin-sub-backups" id="pill-admin-backups" data-i18n="admin.backups_tab">Database Backups & Restore</button>
+            <button class="pill" data-subview="admin-sub-about" id="pill-admin-about" data-i18n="admin.about_tab">About</button>
           </div>
 
           <!-- Sub-view 1: Users & Access -->
@@ -1367,35 +1368,6 @@
 
           <!-- Sub-view 2: System Settings & API Keys -->
           <div id="admin-sub-settings" class="admin-subview" style="display: none;">
-            <!-- Application Version & Update Check Card -->
-            <div class="settings-card" id="admin-settings-version-card" style="margin-bottom: 24px;">
-              <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
-                <div>
-                  <h2 class="card-title" style="display:flex;align-items:center;gap:10px;">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
-                    Application Version
-                    <span id="admin-version-tag" class="badge" style="background:var(--bg-card);border:1px solid var(--border-color);color:var(--text-main);font-size:0.8rem;padding:3px 8px;font-family:monospace;">v0.1.0</span>
-                  </h2>
-                  <p class="card-desc" id="admin-version-status-desc">Checking for newer releases on GitHub...</p>
-                </div>
-                <div style="display:flex;align-items:center;gap:10px;">
-                  <button type="button" class="btn btn-outline btn-sm" id="btn-check-version-updates">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-                    Check for Updates
-                  </button>
-                </div>
-              </div>
-              <div id="admin-version-update-banner" style="display:none;margin-top:14px;padding:12px 14px;background:rgba(99,102,241,0.1);border:1px solid var(--accent-primary,#6366f1);border-radius:6px;">
-                <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
-                  <div>
-                    <strong style="color:var(--accent-primary,#6366f1);font-size:0.9rem;" id="admin-version-update-title">A new version is available!</strong>
-                    <div style="font-size:0.8rem;color:var(--text-dim);margin-top:4px;" id="admin-version-update-details"></div>
-                  </div>
-                  <a id="admin-version-release-link" href="#" target="_blank" rel="noopener noreferrer" class="btn btn-primary btn-sm">View Release on GitHub</a>
-                </div>
-              </div>
-            </div>
-
             <div class="settings-card">
               <h2 class="card-title">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
@@ -1635,6 +1607,73 @@
                   </thead>
                   <tbody id="admin-backups-tbody">
                     <!-- Injected via JavaScript -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- Sub-view 6: About & System Information -->
+          <div id="admin-sub-about" class="admin-subview" style="display: none;">
+            <!-- Application Hero & Updates Card -->
+            <div class="settings-card" id="admin-about-version-card" style="margin-bottom: 24px;">
+              <div style="display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 16px;">
+                <div>
+                  <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 6px;">
+                    <h2 class="card-title" style="margin: 0; font-size: 1.25rem;">
+                      BingeSync
+                    </h2>
+                    <span id="admin-version-tag" class="badge" style="background: rgba(99, 102, 241, 0.15); border: 1px solid var(--accent-primary, #6366f1); color: var(--accent-primary, #6366f1); font-size: 0.85rem; padding: 3px 10px; font-weight: 600; font-family: monospace; border-radius: 6px;">v0.1.0</span>
+                  </div>
+                  <p class="card-desc" id="admin-version-status-desc" style="margin: 0;">
+                    Checking for newer releases on GitHub...
+                  </p>
+                </div>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                  <button type="button" class="btn btn-outline btn-sm" id="btn-check-version-updates">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                    Check for Updates
+                  </button>
+                  <a href="https://github.com/dnewsholme/BingeSync" target="_blank" rel="noopener noreferrer" class="btn btn-outline btn-sm" title="View Source on GitHub">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
+                    GitHub
+                  </a>
+                </div>
+              </div>
+
+              <!-- Update Available Notification Banner -->
+              <div id="admin-version-update-banner" style="display: none; margin-top: 16px; padding: 14px 16px; background: rgba(99, 102, 241, 0.08); border: 1px solid var(--accent-primary, #6366f1); border-radius: 8px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+                  <div>
+                    <strong style="color: var(--accent-primary, #6366f1); font-size: 0.95rem; display: block;" id="admin-version-update-title">A new version is available!</strong>
+                    <div style="font-size: 0.85rem; color: var(--text-dim); margin-top: 4px;" id="admin-version-update-details"></div>
+                  </div>
+                  <a id="admin-version-release-link" href="#" target="_blank" rel="noopener noreferrer" class="btn btn-primary btn-sm">View Release on GitHub</a>
+                </div>
+              </div>
+            </div>
+
+            <!-- System & Component Versions Card -->
+            <div class="settings-card">
+              <h2 class="card-title">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
+                System & Component Versions
+              </h2>
+              <p class="card-desc">
+                Runtime environment, dynamic build specifications, database engine, and major backend components.
+              </p>
+
+              <div class="table-responsive" style="margin-top: 16px;">
+                <table class="admin-table" id="admin-system-components-table">
+                  <thead>
+                    <tr>
+                      <th style="width: 28%;">Component</th>
+                      <th style="width: 32%;">Version</th>
+                      <th>Description</th>
+                    </tr>
+                  </thead>
+                  <tbody id="admin-system-components-tbody">
+                    <!-- Populated dynamically -->
                   </tbody>
                 </table>
               </div>

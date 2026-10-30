@@ -355,6 +355,7 @@ pub fn create_api_router(state: AppState) -> Router {
         .route("/api/v1/admin/settings", get(settings::get_admin_settings_handler).post(settings::update_admin_settings_handler).put(settings::update_admin_settings_handler))
         .route("/api/v1/admin/version", get(settings::get_admin_version_handler))
         .route("/api/v1/admin/version/check", post(settings::get_admin_version_handler))
+        .route("/api/v1/admin/system-info", get(settings::get_admin_version_handler))
         .route("/api/v1/admin/logs", get(logs::get_admin_logs_handler).delete(logs::clear_admin_logs_handler))
         .route("/api/v1/admin/tasks", get(jobs::get_admin_tasks_handler))
         .route("/api/v1/admin/tasks/{id}/run", post(jobs::trigger_admin_task_handler))

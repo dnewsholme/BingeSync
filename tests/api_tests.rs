@@ -7557,7 +7557,7 @@ async fn test_admin_version_and_oidc_user_group_configuration() {
         .await
         .unwrap();
 
-    // 1. Test GET /api/v1/admin/version
+    // 1. Test GET /api/v1/admin/version and /api/v1/admin/system-info
     let req = Request::builder()
         .uri("/api/v1/admin/version")
         .header(header::AUTHORIZATION, format!("Bearer {}", admin_jwt))
@@ -7568,6 +7568,22 @@ async fn test_admin_version_and_oidc_user_group_configuration() {
     let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
     let ver_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert!(ver_json["current_version"].is_string());
+    assert!(ver_json["docker_base_image"].is_string());
+    assert!(ver_json["sqlite_version"].is_string());
+    assert!(ver_json["rust_version"].is_string());
+    assert!(ver_json["components"].is_array());
+    let comps = ver_json["components"].as_array().unwrap();
+    assert!(comps.iter().any(|c| c["name"] == "Docker Base Image"));
+    assert!(comps.iter().any(|c| c["name"] == "SQLite Engine"));
+    assert!(comps.iter().any(|c| c["name"] == "Rust Toolchain"));
+
+    let req = Request::builder()
+        .uri("/api/v1/admin/system-info")
+        .header(header::AUTHORIZATION, format!("Bearer {}", admin_jwt))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
 
     // 2. Test is_version_newer helper
     assert!(bingesync::api::settings::is_version_newer("0.2.0", "0.1.0"));

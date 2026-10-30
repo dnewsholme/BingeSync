@@ -194,7 +194,8 @@ For fresh instances where OIDC is not yet configured or no users exist, BingeSyn
 ### Admin Controls
 - **User Management**: Inspect users, scrobble totals, and remove accounts with cascading data cleanup.
 - **Database Backups & Maintenance**: Create point-in-time SQLite snapshots, restore from backups, and automate weekly SQLite optimization (PRAGMA WAL, synchronous, cache size, REINDEX, ANALYZE, and VACUUM).
-- **System Settings & Versioning**: Display current application version, check for newer GitHub releases with one click, switch metadata providers, update API keys, and adjust scrobble completion thresholds.
+- **System Settings**: Switch metadata providers (TheTVDB or TMDB), update API keys, manage OIDC access groups, and adjust scrobble completion thresholds.
+- **About & System Information**: Dedicated view listing dynamic component versions (Docker base image, SQLite runtime, Rust compiler toolchain, host/container OS, Axum, Tokio), with one-click GitHub release update checks.
 - **Background Tasks**: Monitor task execution (Poster Caching, Metadata Enrichment, User Cache Sync, Backups, and Database Maintenance), persist execution metrics across restarts, customize schedules, trigger on-demand runs, and inspect filtered logs.
 - **Live Log Viewer**: Streaming application log buffer with log-level and full-text keyword / background job search filters.
 

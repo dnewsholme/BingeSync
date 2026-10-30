@@ -1820,13 +1820,25 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     await toggleBtn.click();
     await expect(page.locator('#setting-tmdb-api-key')).toHaveValue(/^tm.*•/);
 
-    // 9. Verify version card and check for updates
-    await expect(page.locator('#admin-settings-version-card')).toBeVisible();
+    // 9. Verify About subtab, dynamic system components, and check for updates
+    await page.click('#admin-subnav-pills button[data-subview="admin-sub-about"]');
+    await expect(page.locator('#admin-sub-about')).toBeVisible();
+    await expect(page.locator('#admin-about-version-card')).toBeVisible();
     await expect(page.locator('#admin-version-tag')).toContainText('v0.');
     const checkUpdatesBtn = page.locator('#btn-check-version-updates');
     await expect(checkUpdatesBtn).toBeVisible();
     await checkUpdatesBtn.click();
     await expect(page.locator('#admin-version-status-desc')).toBeVisible();
+
+    // Verify dynamic system component versions table in About
+    await expect(page.locator('#admin-system-components-table')).toBeVisible();
+    await expect(page.locator('#admin-system-components-tbody')).toContainText('Docker Base Image');
+    await expect(page.locator('#admin-system-components-tbody')).toContainText('SQLite Engine');
+    await expect(page.locator('#admin-system-components-tbody')).toContainText('Rust Toolchain');
+
+    // Switch back to settings subtab for standard user group testing
+    await page.click('#admin-subnav-pills button[data-subview="admin-sub-settings"]');
+    await expect(page.locator('#admin-sub-settings')).toBeVisible();
 
     // 10. Verify standard user group setting
     await expect(page.locator('#setting-oidc-user-group')).toBeVisible();
