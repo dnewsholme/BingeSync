@@ -5,10 +5,20 @@ on:
     branches:
       - main
       - master
+    paths-ignore:
+      - 'wiki/**'
+      - 'wiki'
+      - 'docs/**'
+      - 'docs'
   pull_request:
     branches:
       - main
       - master
+    paths-ignore:
+      - 'wiki/**'
+      - 'wiki'
+      - 'docs/**'
+      - 'docs'
   # Allow manual triggering of the workflow
   workflow_dispatch:
 
