@@ -249,7 +249,7 @@ Playwright tests in `web/tests/e2e.spec.js` (47 browser E2E tests) cover:
 - Admin "About" tab: dedicated system information view displaying dynamic runtime versions (Docker base image, SQLite engine, Rust compiler, OS kernel, Axum, Tokio), GitHub release update checks, and clean status badges
 - Tautulli continuous 1-way sync: user settings configuration, dynamic user selector dropdown with "Fetch Users" trigger, sync toggle, and background task management card (schedule, Run Now, View Logs)
 - Bidirectional media sync: user settings configuration (Plex & Jellyfin), test connection buttons, per-service sync checkboxes (Plex & Jellyfin), collapsible token extraction guides, scheduled and on-demand writeback, and dedicated admin background task management card (schedule, Run Now, View Logs)
-- Scrobble source and watched-by user: source tags (Plex, Jellyfin, Emby, Tautulli, Trakt, Manual), user chips with click-to-filter, detail modal display, and source/user filtering in History and Timeline
+- Scrobble source and watched-by user: colour-coded service badges with logos (Plex, Jellyfin, Emby, Tautulli, Trakt, Manual), user chips with click-to-filter, detail modal display, settings service logo icons (Plex, Jellyfin, Emby, Radarr, Sonarr, Tautulli), and source/user filtering in History and Timeline
 
 
 ### Run the App Locally
