@@ -8,3 +8,12 @@ web/playwright-report/
 *.db-shm
 *.db-wal
 .env
+backup/
+data/
+docs/
+wiki/
+*.zip
+tasks
+bingesync.yaml
+kubernetes.yaml
+
