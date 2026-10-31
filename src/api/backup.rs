@@ -285,73 +285,101 @@ pub async fn restore_database_backup(state: &AppState, filename: &str) -> Result
         // Temporarily disable foreign keys during restore
         sqlx::query("PRAGMA foreign_keys = OFF").execute(&mut *conn).await?;
 
-        // Discover all user tables present in the backup database
-        #[derive(sqlx::FromRow)]
-        struct TableRow {
-            name: String,
-        }
-        let backup_tables: Vec<TableRow> = sqlx::query_as(
-            "SELECT name FROM backup_db.sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"
-        )
-        .fetch_all(&mut *conn)
-        .await?;
+        // Begin transaction to prevent concurrent worker writes during restore
+        sqlx::query("BEGIN IMMEDIATE").execute(&mut *conn).await?;
 
-        // Clear existing tables in main database in dependent order
-        for table in ["active_sessions", "scrobbles", "user_settings", "oidc_states", "plex_user_cache", "system_settings", "users"] {
-            let delete_sql = format!("DELETE FROM main.{}", table);
-            let _ = sqlx::query(sqlx::AssertSqlSafe(&*delete_sql)).execute(&mut *conn).await;
-        }
-
-        // Copy records for each table that exists in the backup
-        for t in backup_tables {
-            let table = t.name;
-
+        let op_result: Result<(), sqlx::Error> = async {
+            // Discover all user tables present in the backup database
             #[derive(sqlx::FromRow)]
-            struct ColInfo {
+            struct TableRow {
                 name: String,
             }
+            let backup_tables: Vec<TableRow> = sqlx::query_as(
+                "SELECT name FROM backup_db.sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"
+            )
+            .fetch_all(&mut *conn)
+            .await?;
 
-            let main_info_sql = format!("PRAGMA main.table_info({})", table);
-            let main_cols: Vec<String> = sqlx::query_as::<_, ColInfo>(sqlx::AssertSqlSafe(&*main_info_sql))
-                .fetch_all(&mut *conn)
-                .await
-                .unwrap_or_default()
-                .into_iter()
-                .map(|c| c.name)
-                .collect();
-
-            let bkp_info_sql = format!("PRAGMA backup_db.table_info({})", table);
-            let bkp_cols: Vec<String> = sqlx::query_as::<_, ColInfo>(sqlx::AssertSqlSafe(&*bkp_info_sql))
-                .fetch_all(&mut *conn)
-                .await
-                .unwrap_or_default()
-                .into_iter()
-                .map(|c| c.name)
-                .collect();
-
-            let common_cols: Vec<String> = main_cols
-                .into_iter()
-                .filter(|c| bkp_cols.contains(c))
-                .collect();
-
-            if !common_cols.is_empty() {
-                let col_names = common_cols
-                    .iter()
-                    .map(|c| format!("\"{}\"", c))
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                let insert_sql = format!(
-                    "INSERT INTO main.\"{}\" ({}) SELECT {} FROM backup_db.\"{}\"",
-                    table, col_names, col_names, table
-                );
-                sqlx::query(sqlx::AssertSqlSafe(&*insert_sql)).execute(&mut *conn).await?;
+            // Clear existing tables in main database
+            for table in [
+                "active_sessions",
+                "scrobbles",
+                "user_settings",
+                "user_api_keys",
+                "oidc_states",
+                "plex_user_cache",
+                "system_settings",
+                "users",
+            ] {
+                let delete_sql = format!("DELETE FROM main.{}", table);
+                let _ = sqlx::query(sqlx::AssertSqlSafe(&*delete_sql)).execute(&mut *conn).await;
             }
+
+            for t in &backup_tables {
+                let delete_sql = format!("DELETE FROM main.\"{}\"", t.name);
+                let _ = sqlx::query(sqlx::AssertSqlSafe(&*delete_sql)).execute(&mut *conn).await;
+            }
+
+            // Copy records for each table that exists in the backup using INSERT OR REPLACE
+            for t in backup_tables {
+                let table = t.name;
+
+                #[derive(sqlx::FromRow)]
+                struct ColInfo {
+                    name: String,
+                }
+
+                let main_info_sql = format!("PRAGMA main.table_info({})", table);
+                let main_cols: Vec<String> = sqlx::query_as::<_, ColInfo>(sqlx::AssertSqlSafe(&*main_info_sql))
+                    .fetch_all(&mut *conn)
+                    .await
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|c| c.name)
+                    .collect();
+
+                let bkp_info_sql = format!("PRAGMA backup_db.table_info({})", table);
+                let bkp_cols: Vec<String> = sqlx::query_as::<_, ColInfo>(sqlx::AssertSqlSafe(&*bkp_info_sql))
+                    .fetch_all(&mut *conn)
+                    .await
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|c| c.name)
+                    .collect();
+
+                let common_cols: Vec<String> = main_cols
+                    .into_iter()
+                    .filter(|c| bkp_cols.contains(c))
+                    .collect();
+
+                if !common_cols.is_empty() {
+                    let col_names = common_cols
+                        .iter()
+                        .map(|c| format!("\"{}\"", c))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    let insert_sql = format!(
+                        "INSERT OR REPLACE INTO main.\"{}\" ({}) SELECT {} FROM backup_db.\"{}\"",
+                        table, col_names, col_names, table
+                    );
+                    sqlx::query(sqlx::AssertSqlSafe(&*insert_sql)).execute(&mut *conn).await?;
+                }
+            }
+
+            Ok(())
+        }
+        .await;
+
+        if op_result.is_ok() {
+            sqlx::query("COMMIT").execute(&mut *conn).await?;
+        } else {
+            let _ = sqlx::query("ROLLBACK").execute(&mut *conn).await;
         }
 
         // Re-enable foreign keys
         sqlx::query("PRAGMA foreign_keys = ON").execute(&mut *conn).await?;
 
-        Ok::<(), sqlx::Error>(())
+        op_result
     }
     .await;
 

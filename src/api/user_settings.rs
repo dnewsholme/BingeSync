@@ -34,6 +34,8 @@ pub struct UserSettingsResponse {
     pub tautulli_api_key_configured: bool,
     pub tautulli_api_key_masked: Option<String>,
     pub tautulli_api_key: Option<String>,
+    pub tautulli_user: Option<String>,
+    pub tautulli_sync_enabled: bool,
 
     pub outbound_webhook_url: Option<String>,
     pub outbound_webhook_type: Option<String>,
@@ -60,6 +62,8 @@ pub struct UpdateUserSettingsRequest {
     pub sonarr_api_key: Option<String>,
     pub tautulli_url: Option<String>,
     pub tautulli_api_key: Option<String>,
+    pub tautulli_user: Option<String>,
+    pub tautulli_sync_enabled: Option<bool>,
     pub outbound_webhook_url: Option<String>,
     pub outbound_webhook_type: Option<String>,
     pub outbound_webhook_enabled: Option<bool>,
@@ -122,6 +126,9 @@ pub async fn get_user_settings_handler(
 
     let tautulli_url = get_user_setting(&state.pool, &auth.user_id, "tautulli_url").await;
     let tautulli_api_key = get_user_setting(&state.pool, &auth.user_id, "tautulli_api_key").await;
+    let tautulli_user = get_user_setting(&state.pool, &auth.user_id, "tautulli_user").await;
+    let tautulli_sync_enabled_str = get_user_setting(&state.pool, &auth.user_id, "tautulli_sync_enabled").await;
+    let tautulli_sync_enabled = tautulli_sync_enabled_str.as_deref().map(|s| s == "true" || s == "1").unwrap_or(false);
 
     let emby_username = get_user_setting(&state.pool, &auth.user_id, "emby_username").await;
 
@@ -157,6 +164,8 @@ pub async fn get_user_settings_handler(
         tautulli_api_key_configured: tautulli_api_key.as_ref().map(|k| !k.trim().is_empty()).unwrap_or(false),
         tautulli_api_key_masked: tautulli_api_key.as_deref().map(mask_secret),
         tautulli_api_key: None,
+        tautulli_user,
+        tautulli_sync_enabled,
 
         outbound_webhook_url,
         outbound_webhook_type,
@@ -257,6 +266,12 @@ pub async fn update_user_settings_handler(
         if !val.contains('•') {
             let _ = set_user_setting(&state.pool, &auth.user_id, "tautulli_api_key", val.trim()).await;
         }
+    }
+    if let Some(ref val) = payload.tautulli_user {
+        let _ = set_user_setting(&state.pool, &auth.user_id, "tautulli_user", val.trim()).await;
+    }
+    if let Some(enabled) = payload.tautulli_sync_enabled {
+        let _ = set_user_setting(&state.pool, &auth.user_id, "tautulli_sync_enabled", if enabled { "true" } else { "false" }).await;
     }
 
     if let Some(ref val) = payload.outbound_webhook_url {

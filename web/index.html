@@ -1131,6 +1131,26 @@
                     </div>
                   </div>
                 </div>
+                <div class="form-row" style="margin-top: 8px;">
+                  <div class="form-group col-half">
+                    <label for="user-setting-tautulli-user">Tautulli User (Sync Filter)</label>
+                    <div style="display:flex;gap:8px;">
+                      <select id="user-setting-tautulli-user" class="form-control">
+                        <option value="">-- Select a Tautulli User --</option>
+                      </select>
+                      <button type="button" class="btn btn-outline btn-sm" id="btn-fetch-tautulli-setting-users" title="Fetch registered users from Tautulli API">
+                        Fetch Users
+                      </button>
+                    </div>
+                    <small style="display:block;margin-top:4px;font-size:0.75rem;color:var(--text-dim);">Select which user's watch history to continuously sync from Tautulli.</small>
+                  </div>
+                  <div class="form-group col-half" style="display:flex;align-items:flex-end;padding-bottom:10px;">
+                    <label class="checkbox-label" style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;user-select:none;font-weight:500;">
+                      <input type="checkbox" id="user-setting-tautulli-sync-enabled" />
+                      <span>Enable Continuous 1-Way Sync</span>
+                    </label>
+                  </div>
+                </div>
 
                 <!-- Outbound Webhooks -->
                 <div class="settings-group-header" style="margin-top: 16px;">

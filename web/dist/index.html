@@ -22,7 +22,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="BingeSync" />
-  <script type="module" crossorigin src="./assets/index-DBs9pQ1C.js"></script>
+  <script type="module" crossorigin src="./assets/index-C7In1uCy.js"></script>
   <link rel="stylesheet" crossorigin href="./assets/index-BDeLrwT0.css">
 </head>
 <body>
@@ -1130,6 +1130,26 @@
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                       </button>
                     </div>
+                  </div>
+                </div>
+                <div class="form-row" style="margin-top: 8px;">
+                  <div class="form-group col-half">
+                    <label for="user-setting-tautulli-user">Tautulli User (Sync Filter)</label>
+                    <div style="display:flex;gap:8px;">
+                      <select id="user-setting-tautulli-user" class="form-control">
+                        <option value="">-- Select a Tautulli User --</option>
+                      </select>
+                      <button type="button" class="btn btn-outline btn-sm" id="btn-fetch-tautulli-setting-users" title="Fetch registered users from Tautulli API">
+                        Fetch Users
+                      </button>
+                    </div>
+                    <small style="display:block;margin-top:4px;font-size:0.75rem;color:var(--text-dim);">Select which user's watch history to continuously sync from Tautulli.</small>
+                  </div>
+                  <div class="form-group col-half" style="display:flex;align-items:flex-end;padding-bottom:10px;">
+                    <label class="checkbox-label" style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;user-select:none;font-weight:500;">
+                      <input type="checkbox" id="user-setting-tautulli-sync-enabled" />
+                      <span>Enable Continuous 1-Way Sync</span>
+                    </label>
                   </div>
                 </div>
 

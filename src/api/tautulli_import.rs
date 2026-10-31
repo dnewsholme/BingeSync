@@ -315,13 +315,59 @@ pub async fn import_tautulli_handler(
     // Sort items chronologically
     items.sort_by(|a, b| a.watched_at.cmp(&b.watched_at));
 
-    // Deduplication against existing database records
-    let mut tx = state.pool.begin().await.map_err(|e| {
+    let (imported_count, skipped_count) = insert_tautulli_watch_items(
+        &state.pool,
+        &auth.user_id,
+        &items,
+        Some(&state.log_buffer),
+    )
+    .await
+    .map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({ "error": format!("Database transaction error: {}", e) })),
         )
     })?;
+
+    // Trigger background poster caching and TheTVDB enrichment workers
+    if imported_count > 0 {
+        state.image_notify.notify_one();
+        state.metadata_notify.notify_one();
+    }
+
+    state.log_buffer.push(
+        "INFO",
+        "bingesync::tautulli",
+        &format!(
+            "Tautulli import completed for user {}: {} imported, {} duplicates skipped",
+            auth.email, imported_count, skipped_count
+        ),
+    );
+
+    Ok(Json(serde_json::json!({
+        "status": "success",
+        "imported": imported_count,
+        "skipped": skipped_count,
+        "total_processed": items.len(),
+        "message": format!(
+            "Successfully imported {} watches from Tautulli ({} duplicates skipped)",
+            imported_count, skipped_count
+        )
+    })))
+}
+
+/// Batch insert parsed Tautulli watch items into scrobbles table with deduplication
+pub async fn insert_tautulli_watch_items(
+    pool: &sqlx::SqlitePool,
+    user_id: &str,
+    items: &[TautulliWatchItem],
+    log_buffer: Option<&crate::api::logs::LogBuffer>,
+) -> Result<(usize, usize), sqlx::Error> {
+    if items.is_empty() {
+        return Ok((0, 0));
+    }
+
+    let mut tx = pool.begin().await?;
 
     #[derive(sqlx::FromRow)]
     struct ExistingScrobble {
@@ -341,7 +387,7 @@ pub async fn import_tautulli_handler(
         WHERE user_id = ?
         "#
     )
-    .bind(&auth.user_id)
+    .bind(user_id)
     .fetch_all(&mut *tx)
     .await
     .unwrap_or_default();
@@ -370,9 +416,9 @@ pub async fn import_tautulli_handler(
 
     let mut imported_count = 0;
     let mut skipped_count = 0;
-    let now = Utc::now().to_rfc3339();
+    let now = chrono::Utc::now().to_rfc3339();
 
-    for item in &items {
+    for item in items {
         let day_prefix = if item.watched_at.len() >= 10 { &item.watched_at[..10] } else { "" };
         let is_episode = item.media_type == "episode";
 
@@ -420,7 +466,7 @@ pub async fn import_tautulli_handler(
             "#,
         )
         .bind(&scrobble_id)
-        .bind(&auth.user_id)
+        .bind(user_id)
         .bind(&item.title)
         .bind(&item.media_type)
         .bind(&item.grandparent_title)
@@ -458,46 +504,20 @@ pub async fn import_tautulli_handler(
             }
             Err(e) => {
                 tracing::warn!(error = %e, title = %item.title, "Failed to insert Tautulli scrobble during import");
-                state.log_buffer.push(
-                    "ERROR",
-                    "bingesync::tautulli",
-                    &format!("Failed to insert scrobble '{}': {}", item.title, e),
-                );
+                if let Some(buf) = log_buffer {
+                    buf.push(
+                        "ERROR",
+                        "bingesync::tautulli",
+                        &format!("Failed to insert scrobble '{}': {}", item.title, e),
+                    );
+                }
                 skipped_count += 1;
             }
         }
     }
 
-    tx.commit().await.map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({ "error": format!("Failed to commit scrobbles: {}", e) })),
-        )
-    })?;
-
-    // Trigger background poster caching and TheTVDB enrichment workers
-    state.image_notify.notify_one();
-    state.metadata_notify.notify_one();
-
-    state.log_buffer.push(
-        "INFO",
-        "bingesync::tautulli",
-        &format!(
-            "Tautulli import completed for user {}: {} imported, {} duplicates skipped",
-            auth.email, imported_count, skipped_count
-        ),
-    );
-
-    Ok(Json(serde_json::json!({
-        "status": "success",
-        "imported": imported_count,
-        "skipped": skipped_count,
-        "total_processed": items.len(),
-        "message": format!(
-            "Successfully imported {} watches from Tautulli ({} duplicates skipped)",
-            imported_count, skipped_count
-        )
-    })))
+    tx.commit().await?;
+    Ok((imported_count, skipped_count))
 }
 
 /// Helper to call Tautulli endpoint and fetch users data using the exact configured path
@@ -572,6 +592,59 @@ async fn resolve_tautulli_api_endpoint(
 ) -> Result<String, (StatusCode, Json<serde_json::Value>)> {
     let (endpoint, _) = fetch_tautulli_users_data(client, raw_url, api_key).await?;
     Ok(endpoint)
+}
+
+/// Fetch recent history from Tautulli API for continuous background sync
+pub async fn fetch_recent_tautulli_history(
+    url: &str,
+    api_key: &str,
+    username: &str,
+    limit: usize,
+) -> Result<Vec<TautulliWatchItem>, String> {
+    let client = Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|e| format!("HTTP client error: {}", e))?;
+
+    let endpoint = resolve_tautulli_api_endpoint(&client, url, api_key)
+        .await
+        .map_err(|(_, json_val)| {
+            json_val.get("error").and_then(|s| s.as_str()).unwrap_or("Failed to resolve Tautulli endpoint").to_string()
+        })?;
+
+    let encoded_username: String = url::form_urlencoded::byte_serialize(username.as_bytes()).collect();
+    let target_url = format!(
+        "{}?apikey={}&cmd=get_history&user={}&length={}&start=0",
+        endpoint,
+        api_key.trim(),
+        encoded_username,
+        limit
+    );
+
+    let resp = client.get(&target_url).send().await.map_err(|e| format!("Failed to connect to Tautulli: {}", e))?;
+    if !resp.status().is_success() {
+        return Err(format!("Tautulli returned error status: {}", resp.status()));
+    }
+
+    let json_body: serde_json::Value = resp.json().await.map_err(|e| format!("Invalid JSON from Tautulli: {}", e))?;
+    let data_array = json_body
+        .get("response")
+        .and_then(|r| r.get("data"))
+        .and_then(|d| d.get("data"))
+        .and_then(|arr| arr.as_array());
+
+    let mut items = Vec::new();
+    if let Some(rows) = data_array {
+        for row in rows {
+            if let Some(item) = parse_tautulli_row_value(row, username) {
+                items.push(item);
+            }
+        }
+    }
+
+    // Sort items chronologically
+    items.sort_by(|a, b| a.watched_at.cmp(&b.watched_at));
+    Ok(items)
 }
 
 /// Fetch history pages from Tautulli API until exhausted

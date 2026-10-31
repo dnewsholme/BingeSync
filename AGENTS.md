@@ -130,7 +130,7 @@ Plex webhooks send:
 ```bash
 cargo test
 ```
-Tests in `tests/api_tests.rs` (57 integration tests) cover:
+Tests in `tests/api_tests.rs` (60 integration tests) cover:
 - Dev login and `/api/v1/auth/me`
 - Plex movie and TV episode scrobbling
 - Multi-user isolation (User A cannot see User B's data)
@@ -190,6 +190,7 @@ Tests in `tests/api_tests.rs` (57 integration tests) cover:
 - Personal user API keys: scoped generation, SHA-256 storage, prefix masking (`bs_live_...`), header & query param auth, multi-user isolation, and cascading deletion
 - Database maintenance & optimization worker: weekly default execution of VACUUM, REINDEX, ANALYZE, and SQLite PRAGMAs (WAL, NORMAL, cache size, temp store) with manual run and schedule customization
 - Security hardening & headers: automatic `Secure` cookie flag over HTTPS, Content-Security-Policy (CSP), Permissions-Policy, Cross-Origin-Opener-Policy (COOP), and conditional Strict-Transport-Security (HSTS)
+- Tautulli continuous 1-way sync: background polling worker, user filter setting, dynamic user discovery, deduplication against database scrobbles, and task tracker management
 
 ### Run Playwright E2E UI Tests
 ```bash
@@ -197,7 +198,7 @@ cd web
 npm install
 npx playwright test
 ```
-Playwright tests in `web/tests/e2e.spec.js` (44 browser E2E tests) cover:
+Playwright tests in `web/tests/e2e.spec.js` (45 browser E2E tests) cover:
 - User sign-in flow, "+ Log Watch" modal, and timeline rendering
 - Multi-user separation in the web UI
 - Trakt history and rating import flow in the web UI (pasted JSON)
@@ -243,6 +244,7 @@ Playwright tests in `web/tests/e2e.spec.js` (44 browser E2E tests) cover:
 - Personal API keys: generate scoped keys, masked prefix display, clipboard copy, and revoke modal flow
 - Settings menu sub-navigation tabs: switch between Webhooks, Connected Services, API Keys, Preferences, and Data & Export
 - Admin "About" tab: dedicated system information view displaying dynamic runtime versions (Docker base image, SQLite engine, Rust compiler, OS kernel, Axum, Tokio), GitHub release update checks, and clean status badges
+- Tautulli continuous 1-way sync: user settings configuration, dynamic user selector dropdown with "Fetch Users" trigger, sync toggle, and background task management card (schedule, Run Now, View Logs)
 
 
 ### Run the App Locally

@@ -18,6 +18,7 @@ pub mod tvdb;
 pub mod user;
 pub mod user_settings;
 pub mod user_sync;
+pub mod tautulli_sync;
 pub mod backup;
 pub mod db_maintenance;
 pub mod setup;
@@ -49,6 +50,7 @@ pub struct AppState {
     pub task_tracker: Arc<jobs::BackgroundTaskTracker>,
     pub db_backup_notify: Arc<tokio::sync::Notify>,
     pub db_maintenance_notify: Arc<tokio::sync::Notify>,
+    pub tautulli_sync_notify: Arc<tokio::sync::Notify>,
 }
 
 impl AppState {
@@ -201,6 +203,7 @@ impl AppState {
             "user_sync" | "users" | "plex_users" => ("task_user_sync_interval_hours", 4),
             "db_backup" | "backup" => ("task_db_backup_interval_hours", 24),
             "db_maintenance" | "maintenance" => ("task_db_maintenance_interval_hours", 168),
+            "tautulli_sync" | "tautulli" => ("task_tautulli_sync_interval_hours", 1),
             _ => return 4,
         };
         if let Some(val) = settings::get_db_setting(&self.pool, key).await {
@@ -220,6 +223,7 @@ impl AppState {
             "user_sync" | "users" | "plex_users" => "task_user_sync_interval_hours",
             "db_backup" | "backup" => "task_db_backup_interval_hours",
             "db_maintenance" | "maintenance" => "task_db_maintenance_interval_hours",
+            "tautulli_sync" | "tautulli" => "task_tautulli_sync_interval_hours",
             _ => return Ok(()),
         };
         let clamped = hours.clamp(1, 720);

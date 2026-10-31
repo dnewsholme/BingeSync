@@ -80,6 +80,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         task_tracker,
         db_backup_notify: Arc::new(tokio::sync::Notify::new()),
         db_maintenance_notify: Arc::new(tokio::sync::Notify::new()),
+        tautulli_sync_notify: Arc::new(tokio::sync::Notify::new()),
     };
 
     // 6. Start background workers
@@ -88,6 +89,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _user_sync_worker = bingesync::api::user_sync::start_user_cache_worker(state.clone());
     let _db_backup_worker = bingesync::api::backup::start_db_backup_worker(state.clone());
     let _db_maintenance_worker = bingesync::api::db_maintenance::start_db_maintenance_worker(state.clone());
+    let _tautulli_sync_worker = bingesync::api::tautulli_sync::start_tautulli_sync_worker(state.clone());
 
     // 7. Router assembly
     let app = create_api_router(state)

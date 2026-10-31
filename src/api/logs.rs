@@ -125,6 +125,10 @@ impl LogBuffer {
                                     || msg_lower.contains("analyze")
                                     || msg_lower.contains("optimize")
                             }
+                            "tautulli_sync" | "tautulli" => {
+                                target_lower.contains("tautulli")
+                                    || msg_lower.contains("tautulli")
+                            }
                             _ => msg_lower.contains(q) || target_lower.contains(q),
                         };
 

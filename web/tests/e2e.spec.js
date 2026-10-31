@@ -889,13 +889,14 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     await page.click('#admin-subnav-pills button[data-subview="admin-sub-tasks"]');
     await expect(page.locator('#admin-sub-tasks')).toBeVisible();
 
-    // Verify task cards exist (poster_cache, tvdb_metadata, user_sync, db_backup, and db_maintenance)
+    // Verify task cards exist (poster_cache, tvdb_metadata, user_sync, tautulli_sync, db_backup, and db_maintenance)
     const taskCards = page.locator('.task-card');
-    await expect(taskCards).toHaveCount(5);
+    await expect(taskCards).toHaveCount(6);
     const posterCard = page.locator('.task-card', { hasText: 'Media Poster & Thumbnail Caching' });
     await expect(posterCard).toBeVisible();
     await expect(page.locator('.task-card', { hasText: /Metadata Enrichment/ })).toBeVisible();
     await expect(page.locator('.task-card', { hasText: 'Plex & Media Server User Cache Sync' })).toBeVisible();
+    await expect(page.locator('.task-card', { hasText: 'Tautulli Continuous 1-Way Sync' })).toBeVisible();
     const backupCard = page.locator('.task-card', { hasText: 'Database Backup' });
     await expect(backupCard).toBeVisible();
     await expect(backupCard).toContainText('Backups Stored:');
@@ -2485,6 +2486,75 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     await expect(page.locator('#pill-settings-webhooks')).toHaveClass(/active/);
     await expect(page.locator('#settings-sub-webhooks')).toBeVisible();
     await expect(page.locator('#settings-sub-data')).toBeHidden();
+  });
+
+  test('tautulli continuous sync: user settings user filter and background jobs task card', async ({ page }) => {
+    const adminEmail = `admin_tautulli_sync_${Date.now()}@bingesync.local`;
+    await page.goto('/');
+    await page.fill('#dev-email', adminEmail);
+    await page.fill('#dev-name', 'Sync Admin');
+    await page.click('#btn-dev-submit');
+
+    // 1. Open Settings -> Connected Services
+    await page.click('#tab-settings');
+    await expect(page.locator('#view-settings')).toBeVisible();
+    await page.click('#pill-settings-services');
+    await expect(page.locator('#settings-sub-services')).toBeVisible();
+
+    // 2. Verify Tautulli section elements exist
+    await expect(page.locator('#user-setting-tautulli-url')).toBeVisible();
+    await expect(page.locator('#user-setting-tautulli-api-key')).toBeVisible();
+    await expect(page.locator('#user-setting-tautulli-user')).toBeVisible();
+    await expect(page.locator('#btn-fetch-tautulli-setting-users')).toBeVisible();
+    await expect(page.locator('#user-setting-tautulli-sync-enabled')).toBeVisible();
+
+    // 3. Fill in Tautulli settings
+    await page.fill('#user-setting-tautulli-url', 'http://127.0.0.1:8181');
+    await page.fill('#user-setting-tautulli-api-key', 'tautulli_secret_token');
+
+    // Add an option to the select to simulate selected user
+    await page.evaluate(() => {
+      const select = document.getElementById('user-setting-tautulli-user');
+      const opt = document.createElement('option');
+      opt.value = 'sync_plex_user';
+      opt.textContent = 'Sync Plex User (sync_plex_user)';
+      select.appendChild(opt);
+      select.value = 'sync_plex_user';
+    });
+
+    await page.check('#user-setting-tautulli-sync-enabled');
+
+    // 4. Save settings
+    await page.click('#btn-save-user-settings');
+    await expect(page.locator('#user-settings-status')).toContainText('Settings saved successfully');
+
+    // 5. Reload and verify settings persisted
+    await page.reload();
+    await page.click('#tab-settings');
+    await page.click('#pill-settings-services');
+    await expect(page.locator('#user-setting-tautulli-url')).toHaveValue('http://127.0.0.1:8181');
+    await expect(page.locator('#user-setting-tautulli-user')).toHaveValue('sync_plex_user');
+    await expect(page.locator('#user-setting-tautulli-sync-enabled')).toBeChecked();
+
+    // 6. Switch to Admin Tasks and verify Tautulli Sync task card
+    await page.click('#tab-admin');
+    await page.click('#admin-subnav-pills button[data-subview="admin-sub-tasks"]');
+    await expect(page.locator('#admin-sub-tasks')).toBeVisible();
+
+    const tautulliCard = page.locator('.task-card', { hasText: 'Tautulli Continuous 1-Way Sync' });
+    await expect(tautulliCard).toBeVisible();
+    await expect(tautulliCard).toContainText('Every 1 hour');
+    await expect(tautulliCard.locator('.btn-trigger-task')).toBeVisible();
+    await expect(tautulliCard.locator('.btn-task-logs')).toBeVisible();
+
+    // 7. Click Run Now on Tautulli task
+    await tautulliCard.locator('.btn-trigger-task').click();
+    await expect(tautulliCard).toBeVisible();
+
+    // 8. Click View Logs and verify navigation to Logs view with tautulli filter
+    await tautulliCard.locator('.btn-task-logs').click();
+    await expect(page.locator('#admin-sub-logs')).toBeVisible();
+    await expect(page.locator('#admin-logs-filter-search')).toHaveValue('tautulli_sync');
   });
 });
 

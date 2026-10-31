@@ -372,6 +372,9 @@ const el = {
   userSettingSonarrApiKey: document.getElementById('user-setting-sonarr-api-key'),
   userSettingTautulliUrl: document.getElementById('user-setting-tautulli-url'),
   userSettingTautulliApiKey: document.getElementById('user-setting-tautulli-api-key'),
+  userSettingTautulliUser: document.getElementById('user-setting-tautulli-user'),
+  userSettingTautulliSyncEnabled: document.getElementById('user-setting-tautulli-sync-enabled'),
+  btnFetchTautulliSettingUsers: document.getElementById('btn-fetch-tautulli-setting-users'),
   userSettingOutboundType: document.getElementById('user-setting-outbound-type'),
   userSettingOutboundUrl: document.getElementById('user-setting-outbound-url'),
   btnTestOutboundWebhook: document.getElementById('btn-test-outbound-webhook'),
@@ -2706,6 +2709,23 @@ async function loadUserSettings() {
     if (el.userSettingTautulliUrl) el.userSettingTautulliUrl.value = s.tautulli_url || '';
     applySecretField(el.userSettingTautulliApiKey, s.tautulli_api_key, s.tautulli_api_key_masked);
 
+    if (el.userSettingTautulliUser) {
+      const currentVal = s.tautulli_user || '';
+      if (currentVal && !Array.from(el.userSettingTautulliUser.options).some(o => o.value === currentVal)) {
+        const opt = document.createElement('option');
+        opt.value = currentVal;
+        opt.textContent = currentVal;
+        el.userSettingTautulliUser.appendChild(opt);
+      }
+      el.userSettingTautulliUser.value = currentVal;
+    }
+    if (el.userSettingTautulliSyncEnabled) {
+      el.userSettingTautulliSyncEnabled.checked = !!s.tautulli_sync_enabled;
+    }
+    if (s.tautulli_url) {
+      fetchAndPopulateTautulliSettingUsers(s.tautulli_user || '');
+    }
+
     if (el.userSettingOutboundType) el.userSettingOutboundType.value = s.outbound_webhook_type || '';
     if (el.userSettingOutboundUrl) el.userSettingOutboundUrl.value = s.outbound_webhook_url || '';
   } catch (err) {
@@ -2739,6 +2759,8 @@ if (el.formUserSettings) {
         sonarr_api_key: getSecretValue(el.userSettingSonarrApiKey),
         tautulli_url: el.userSettingTautulliUrl ? el.userSettingTautulliUrl.value.trim() : null,
         tautulli_api_key: getSecretValue(el.userSettingTautulliApiKey),
+        tautulli_user: el.userSettingTautulliUser ? el.userSettingTautulliUser.value.trim() : null,
+        tautulli_sync_enabled: el.userSettingTautulliSyncEnabled ? el.userSettingTautulliSyncEnabled.checked : false,
         outbound_webhook_type: el.userSettingOutboundType ? el.userSettingOutboundType.value : null,
         outbound_webhook_url: el.userSettingOutboundUrl ? el.userSettingOutboundUrl.value.trim() : null,
       };
@@ -2803,6 +2825,58 @@ if (el.btnTestOutboundWebhook) {
       }
     } finally {
       el.btnTestOutboundWebhook.disabled = false;
+    }
+  });
+}
+
+async function fetchAndPopulateTautulliSettingUsers(preferredSelected) {
+  if (!el.userSettingTautulliUser) return;
+  const currentVal = preferredSelected !== undefined ? preferredSelected : (el.userSettingTautulliUser.value || '');
+  const urlVal = el.userSettingTautulliUrl ? el.userSettingTautulliUrl.value.trim() : '';
+  const keyVal = getSecretValue(el.userSettingTautulliApiKey);
+
+  try {
+    const res = await api.getTautulliUsers(urlVal || undefined, keyVal || undefined);
+    const users = (res && res.users) ? res.users : [];
+    el.userSettingTautulliUser.innerHTML = '<option value="">-- Select a Tautulli User --</option>';
+    users.forEach(u => {
+      const opt = document.createElement('option');
+      opt.value = u.username;
+      opt.textContent = u.friendly_name ? `${u.friendly_name} (${u.username})` : u.username;
+      el.userSettingTautulliUser.appendChild(opt);
+    });
+    if (currentVal) {
+      if (!users.some(u => u.username === currentVal)) {
+        const fallbackOpt = document.createElement('option');
+        fallbackOpt.value = currentVal;
+        fallbackOpt.textContent = currentVal;
+        el.userSettingTautulliUser.appendChild(fallbackOpt);
+      }
+      el.userSettingTautulliUser.value = currentVal;
+    }
+  } catch (err) {
+    console.debug('Could not auto-fetch Tautulli setting users:', err);
+  }
+}
+
+if (el.btnFetchTautulliSettingUsers) {
+  el.btnFetchTautulliSettingUsers.addEventListener('click', async () => {
+    const origText = el.btnFetchTautulliSettingUsers.textContent;
+    el.btnFetchTautulliSettingUsers.disabled = true;
+    el.btnFetchTautulliSettingUsers.textContent = 'Fetching...';
+    try {
+      await fetchAndPopulateTautulliSettingUsers();
+      el.btnFetchTautulliSettingUsers.textContent = 'Fetched!';
+      setTimeout(() => {
+        if (el.btnFetchTautulliSettingUsers) {
+          el.btnFetchTautulliSettingUsers.disabled = false;
+          el.btnFetchTautulliSettingUsers.textContent = origText;
+        }
+      }, 1500);
+    } catch (err) {
+      alert('Failed to fetch Tautulli users: ' + (err.message || err));
+      el.btnFetchTautulliSettingUsers.disabled = false;
+      el.btnFetchTautulliSettingUsers.textContent = origText;
     }
   });
 }
@@ -4783,16 +4857,16 @@ function renderAdminTasks(tasks) {
             <strong>${escapeHtml(msg)}</strong>
           </div>
           <div class="task-meta-row">
-            <span>${t.id === 'db_backup' ? 'Backups Stored:' : (t.id === 'db_maintenance' || t.id === 'maintenance') ? 'Maintenance Runs:' : 'Processed Items:'}</span>
-            <strong>${t.id === 'db_backup' ? `${t.items_processed} backup${t.items_processed === 1 ? '' : 's'}` : (t.id === 'db_maintenance' || t.id === 'maintenance') ? `${t.items_processed} run${t.items_processed === 1 ? '' : 's'} completed` : `${t.items_processed} processed (${pending} pending)`}</strong>
+            <span>${t.id === 'db_backup' ? 'Backups Stored:' : (t.id === 'db_maintenance' || t.id === 'maintenance') ? 'Maintenance Runs:' : (t.id === 'tautulli_sync' || t.id === 'tautulli') ? 'Synced Watches:' : 'Processed Items:'}</span>
+            <strong>${t.id === 'db_backup' ? `${t.items_processed} backup${t.items_processed === 1 ? '' : 's'}` : (t.id === 'db_maintenance' || t.id === 'maintenance') ? `${t.items_processed} run${t.items_processed === 1 ? '' : 's'} completed` : (t.id === 'tautulli_sync' || t.id === 'tautulli') ? `${t.items_processed} scrobbles synced` : `${t.items_processed} processed (${pending} pending)`}</strong>
           </div>
           <div class="task-meta-row" style="align-items: center;">
             <span>Run Schedule:</span>
             <div style="display: flex; align-items: center; gap: 8px;">
               <select class="input-select task-schedule-select" data-task-id="${t.id}" style="padding: 3px 8px; font-size: 0.85rem; width: auto; background: var(--bg-card); color: var(--text-main); border: 1px solid var(--border-color); border-radius: 4px;">
-                <option value="1" ${intervalHours === 1 ? 'selected' : ''}>Every 1 hour</option>
+                <option value="1" ${intervalHours === 1 ? 'selected' : ''}>Every 1 hour${t.id === 'tautulli_sync' || t.id === 'tautulli' ? ' (Default)' : ''}</option>
                 <option value="2" ${intervalHours === 2 ? 'selected' : ''}>Every 2 hours</option>
-                <option value="4" ${intervalHours === 4 ? 'selected' : ''}>Every 4 hours${t.id !== 'db_backup' && t.id !== 'db_maintenance' ? ' (Default)' : ''}</option>
+                <option value="4" ${intervalHours === 4 ? 'selected' : ''}>Every 4 hours${t.id !== 'db_backup' && t.id !== 'db_maintenance' && t.id !== 'tautulli_sync' && t.id !== 'tautulli' ? ' (Default)' : ''}</option>
                 <option value="6" ${intervalHours === 6 ? 'selected' : ''}>Every 6 hours</option>
                 <option value="12" ${intervalHours === 12 ? 'selected' : ''}>Every 12 hours</option>
                 <option value="24" ${intervalHours === 24 ? 'selected' : ''}>Every 24 hours (Daily${t.id === 'db_backup' ? ' - Default' : ''})</option>
@@ -4819,7 +4893,7 @@ function renderAdminTasks(tasks) {
           <button class="btn btn-outline btn-sm btn-trigger-task" data-task-id="${t.id}">
             ${isRunning ? 'Running... (Run Again)' : 'Run Now'}
           </button>
-          ${t.id !== 'db_backup' && t.id !== 'backup' && t.id !== 'db_maintenance' && t.id !== 'maintenance' ? `
+          ${t.id !== 'db_backup' && t.id !== 'backup' && t.id !== 'db_maintenance' && t.id !== 'maintenance' && t.id !== 'tautulli_sync' && t.id !== 'tautulli' ? `
           <button class="btn btn-outline btn-sm btn-force-task" data-task-id="${t.id}" title="${
             t.id === 'image_cache'
               ? 'Reset poster thumbnails and re-download posters for all records'

@@ -32,6 +32,7 @@ async fn setup_test_app() -> (axum::Router, sqlx::SqlitePool, Arc<Config>) {
         task_tracker: Arc::new(bingesync::api::jobs::BackgroundTaskTracker::new()),
         db_backup_notify: Arc::new(tokio::sync::Notify::new()),
         db_maintenance_notify: Arc::new(tokio::sync::Notify::new()),
+        tautulli_sync_notify: Arc::new(tokio::sync::Notify::new()),
     };
 
     let router = create_api_router(state);
@@ -1297,6 +1298,7 @@ async fn test_subpath_routing_and_assets() {
         task_tracker: Arc::new(bingesync::api::jobs::BackgroundTaskTracker::new()),
         db_backup_notify: Arc::new(tokio::sync::Notify::new()),
         db_maintenance_notify: Arc::new(tokio::sync::Notify::new()),
+        tautulli_sync_notify: Arc::new(tokio::sync::Notify::new()),
     };
     let app = create_api_router(state).fallback(bingesync::assets::static_handler);
     let base = config.base_path.trim_end_matches('/').to_string();
@@ -1499,6 +1501,7 @@ async fn test_oidc_backchannel_logout() {
         task_tracker: Arc::new(bingesync::api::jobs::BackgroundTaskTracker::new()),
         db_backup_notify: Arc::new(tokio::sync::Notify::new()),
         db_maintenance_notify: Arc::new(tokio::sync::Notify::new()),
+        tautulli_sync_notify: Arc::new(tokio::sync::Notify::new()),
     };
 
     let app = create_api_router(state);
@@ -1680,6 +1683,7 @@ async fn test_image_cache_serving_and_background_worker() {
         task_tracker: Arc::new(bingesync::api::jobs::BackgroundTaskTracker::new()),
         db_backup_notify: Arc::new(tokio::sync::Notify::new()),
         db_maintenance_notify: Arc::new(tokio::sync::Notify::new()),
+        tautulli_sync_notify: Arc::new(tokio::sync::Notify::new()),
     };
 
     let app = create_api_router(state.clone());
@@ -1872,6 +1876,7 @@ async fn test_sonarr_delete_options() {
         task_tracker: Arc::new(bingesync::api::jobs::BackgroundTaskTracker::new()),
         db_backup_notify: Arc::new(tokio::sync::Notify::new()),
         db_maintenance_notify: Arc::new(tokio::sync::Notify::new()),
+        tautulli_sync_notify: Arc::new(tokio::sync::Notify::new()),
     };
     let app = create_api_router(state);
 
@@ -2074,6 +2079,7 @@ async fn test_tvdb_metadata_enrichment_worker() {
         task_tracker: Arc::new(bingesync::api::jobs::BackgroundTaskTracker::new()),
         db_backup_notify: Arc::new(tokio::sync::Notify::new()),
         db_maintenance_notify: Arc::new(tokio::sync::Notify::new()),
+        tautulli_sync_notify: Arc::new(tokio::sync::Notify::new()),
     };
 
     // 2. Create test user and insert a scrobble with missing overview, genres, actors, directors
@@ -2245,6 +2251,7 @@ async fn test_movie_tvdb_metadata_fallback_and_refresh() {
         task_tracker: Arc::new(bingesync::api::jobs::BackgroundTaskTracker::new()),
         db_backup_notify: Arc::new(tokio::sync::Notify::new()),
         db_maintenance_notify: Arc::new(tokio::sync::Notify::new()),
+        tautulli_sync_notify: Arc::new(tokio::sync::Notify::new()),
     };
 
     // 2. Create test user and insert movie with title "Obsession" and year 2025
@@ -2600,12 +2607,16 @@ async fn test_admin_settings_logs_and_tasks_management() {
     let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
     let tasks_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     let tasks = tasks_json["tasks"].as_array().unwrap();
-    assert_eq!(tasks.len(), 5);
+    assert_eq!(tasks.len(), 6);
     let image_task = tasks.iter().find(|t| t["id"] == "image_cache").unwrap();
     let tvdb_task = tasks.iter().find(|t| t["id"] == "tvdb_metadata").unwrap();
     let user_sync_task = tasks.iter().find(|t| t["id"] == "user_sync").unwrap();
+    let tautulli_sync_task = tasks.iter().find(|t| t["id"] == "tautulli_sync").unwrap();
     let db_backup_task = tasks.iter().find(|t| t["id"] == "db_backup").unwrap();
     let db_maintenance_task = tasks.iter().find(|t| t["id"] == "db_maintenance").unwrap();
+    assert_eq!(tautulli_sync_task["interval_hours"], 1);
+    assert_eq!(tautulli_sync_task["schedule"], "Every 1 hour");
+    assert!(tautulli_sync_task["next_run_at"].is_string());
     assert_eq!(image_task["schedule"], "Every 4 hours");
     assert_eq!(image_task["interval_hours"], 4);
     assert!(image_task["next_run_at"].is_string());
@@ -2726,6 +2737,7 @@ async fn test_admin_settings_logs_and_tasks_management() {
         task_tracker: std::sync::Arc::new(fake_tracker),
         db_backup_notify: std::sync::Arc::new(tokio::sync::Notify::new()),
         db_maintenance_notify: std::sync::Arc::new(tokio::sync::Notify::new()),
+        tautulli_sync_notify: std::sync::Arc::new(tokio::sync::Notify::new()),
     };
     let restored_tasks = state_with_fake.task_tracker.get_tasks_summary(&state_with_fake, true).await;
     let restored_tvdb = restored_tasks.iter().find(|t| t.id == "tvdb_metadata").unwrap();
@@ -4226,6 +4238,7 @@ async fn test_user_cache_background_sync_and_jellyfin_id_resolution() {
         task_tracker: std::sync::Arc::new(bingesync::api::jobs::BackgroundTaskTracker::new()),
         db_backup_notify: std::sync::Arc::new(tokio::sync::Notify::new()),
         db_maintenance_notify: std::sync::Arc::new(tokio::sync::Notify::new()),
+        tautulli_sync_notify: std::sync::Arc::new(tokio::sync::Notify::new()),
     };
 
     let processed = bingesync::api::user_sync::sync_user_cache_once(&state).await;
@@ -5146,6 +5159,7 @@ async fn test_tmdb_metadata_enrichment_worker() {
         task_tracker: Arc::new(bingesync::api::jobs::BackgroundTaskTracker::new()),
         db_backup_notify: Arc::new(tokio::sync::Notify::new()),
         db_maintenance_notify: Arc::new(tokio::sync::Notify::new()),
+        tautulli_sync_notify: Arc::new(tokio::sync::Notify::new()),
     };
 
     // 2. Insert test user and scrobble for "Stranger Things"
@@ -5232,6 +5246,7 @@ async fn test_admin_settings_metadata_source_and_tmdb() {
         task_tracker: Arc::new(bingesync::api::jobs::BackgroundTaskTracker::new()),
         db_backup_notify: Arc::new(tokio::sync::Notify::new()),
         db_maintenance_notify: Arc::new(tokio::sync::Notify::new()),
+        tautulli_sync_notify: Arc::new(tokio::sync::Notify::new()),
     };
     let app = bingesync::api::create_api_router(state.clone());
 
@@ -5312,6 +5327,7 @@ async fn test_admin_database_backup_and_restore() {
         task_tracker: Arc::new(bingesync::api::jobs::BackgroundTaskTracker::new()),
         db_backup_notify: Arc::new(tokio::sync::Notify::new()),
         db_maintenance_notify: Arc::new(tokio::sync::Notify::new()),
+        tautulli_sync_notify: Arc::new(tokio::sync::Notify::new()),
     };
     let app = bingesync::api::create_api_router(state.clone());
 
@@ -6280,6 +6296,7 @@ async fn test_tmdb_fix_match_cinematographer_filtering() {
         task_tracker: Arc::new(bingesync::api::jobs::BackgroundTaskTracker::new()),
         db_backup_notify: Arc::new(tokio::sync::Notify::new()),
         db_maintenance_notify: Arc::new(tokio::sync::Notify::new()),
+        tautulli_sync_notify: Arc::new(tokio::sync::Notify::new()),
     };
 
     let app = create_api_router(state.clone());
@@ -7704,6 +7721,176 @@ async fn test_security_headers_and_secure_cookie() {
     assert!(cookie_header.contains("SameSite=Lax"));
     assert!(cookie_header.contains("Secure"));
 }
+
+#[tokio::test]
+async fn test_tautulli_continuous_sync_and_settings() {
+    let (app, pool, _) = setup_test_app().await;
+
+    // 1. Log in admin
+    let admin_login = Request::builder()
+        .method("POST")
+        .uri("/api/v1/auth/dev-login")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(serde_json::to_string(&json!({
+            "email": "admin_tautulli@example.com",
+            "display_name": "Tautulli Admin"
+        })).unwrap()))
+        .unwrap();
+    let resp = app.clone().oneshot(admin_login).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let admin_jwt = serde_json::from_slice::<serde_json::Value>(&body).unwrap()["token"].as_str().unwrap().to_string();
+
+    // 2. Log in standard user
+    let user_login = Request::builder()
+        .method("POST")
+        .uri("/api/v1/auth/dev-login")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(serde_json::to_string(&json!({
+            "email": "sync_fan@example.com",
+            "display_name": "Sync Fan"
+        })).unwrap()))
+        .unwrap();
+    let resp = app.clone().oneshot(user_login).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let user_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let user_jwt = user_json["token"].as_str().unwrap().to_string();
+    let user_id = user_json["user"]["id"].as_str().unwrap().to_string();
+
+    // 3. Update user settings with tautulli_user and tautulli_sync_enabled
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/user/settings")
+        .header(header::AUTHORIZATION, format!("Bearer {}", user_jwt))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(serde_json::to_string(&json!({
+            "tautulli_url": "http://127.0.0.1:8181",
+            "tautulli_api_key": "sec_key_123456",
+            "tautulli_user": "plex_fan_1",
+            "tautulli_sync_enabled": true
+        })).unwrap()))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // 4. Retrieve user settings and verify values
+    let req = Request::builder()
+        .uri("/api/v1/user/settings")
+        .header(header::AUTHORIZATION, format!("Bearer {}", user_jwt))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let settings_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(settings_json["tautulli_user"], "plex_fan_1");
+    assert_eq!(settings_json["tautulli_sync_enabled"], true);
+    assert_eq!(settings_json["tautulli_url"], "http://127.0.0.1:8181");
+    assert_eq!(settings_json["tautulli_api_key_configured"], true);
+
+    // 5. Check background task summary for tautulli_sync
+    let req = Request::builder()
+        .uri("/api/v1/admin/tasks")
+        .header(header::AUTHORIZATION, format!("Bearer {}", admin_jwt))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let tasks_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let t_task = tasks_json["tasks"].as_array().unwrap().iter().find(|t| t["id"] == "tautulli_sync").unwrap();
+    assert_eq!(t_task["interval_hours"], 1);
+    assert_eq!(t_task["schedule"], "Every 1 hour");
+    assert_eq!(t_task["name"], "Tautulli Continuous 1-Way Sync");
+
+    // 6. Update schedule for tautulli_sync to 2 hours
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/admin/tasks/tautulli_sync/schedule")
+        .header(header::AUTHORIZATION, format!("Bearer {}", admin_jwt))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(serde_json::to_string(&json!({
+            "interval_hours": 2
+        })).unwrap()))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let sched_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(sched_json["interval_hours"], 2);
+    assert_eq!(sched_json["schedule"], "Every 2 hours");
+
+    // 7. Trigger tautulli_sync task run
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/admin/tasks/tautulli_sync/run")
+        .header(header::AUTHORIZATION, format!("Bearer {}", admin_jwt))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let trig_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(trig_json["status"], "triggered");
+    assert_eq!(trig_json["task_id"], "tautulli_sync");
+
+    // 8. Test insert_tautulli_watch_items deduplication directly
+    use bingesync::api::tautulli_import::{insert_tautulli_watch_items, TautulliWatchItem};
+
+    let sample_items = vec![
+        TautulliWatchItem {
+            title: "Inception".to_string(),
+            media_type: "movie".to_string(),
+            grandparent_title: None,
+            parent_title: None,
+            season_number: None,
+            episode_number: None,
+            year: Some(2010),
+            watched_at: "2026-05-10T20:00:00Z".to_string(),
+            duration_ms: Some(8880000),
+            rating_key: Some("10101".to_string()),
+            thumb_url: None,
+            progress_percent: Some(100),
+            user: Some("plex_fan_1".to_string()),
+            friendly_name: Some("Sync Fan".to_string()),
+        },
+        TautulliWatchItem {
+            title: "Pilot".to_string(),
+            media_type: "episode".to_string(),
+            grandparent_title: Some("Severance".to_string()),
+            parent_title: Some("Season 1".to_string()),
+            season_number: Some(1),
+            episode_number: Some(1),
+            year: Some(2022),
+            watched_at: "2026-05-11T21:00:00Z".to_string(),
+            duration_ms: Some(3400000),
+            rating_key: Some("20202".to_string()),
+            thumb_url: None,
+            progress_percent: Some(100),
+            user: Some("plex_fan_1".to_string()),
+            friendly_name: Some("Sync Fan".to_string()),
+        },
+    ];
+
+    let (imported, skipped) = insert_tautulli_watch_items(&pool, &user_id, &sample_items, None).await.unwrap();
+    assert_eq!(imported, 2);
+    assert_eq!(skipped, 0);
+
+    // Re-inserting the exact same items should be skipped due to deduplication
+    let (imported2, skipped2) = insert_tautulli_watch_items(&pool, &user_id, &sample_items, None).await.unwrap();
+    assert_eq!(imported2, 0);
+    assert_eq!(skipped2, 2);
+
+    // Verify scrobbles exist in database for this user
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE user_id = ?")
+        .bind(&user_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(count, 2);
+}
+
 
 
 

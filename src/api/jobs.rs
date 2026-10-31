@@ -62,6 +62,13 @@ pub struct BackgroundTaskTracker {
     pub db_maintenance_last_success: RwLock<Option<String>>,
     pub db_maintenance_next_run: RwLock<Option<String>>,
     pub db_maintenance_last_message: RwLock<Option<String>>,
+
+    pub tautulli_sync_status: RwLock<String>,
+    pub tautulli_sync_processed: AtomicUsize,
+    pub tautulli_sync_last_run: RwLock<Option<String>>,
+    pub tautulli_sync_last_success: RwLock<Option<String>>,
+    pub tautulli_sync_next_run: RwLock<Option<String>>,
+    pub tautulli_sync_last_message: RwLock<Option<String>>,
 }
 
 impl Default for BackgroundTaskTracker {
@@ -76,6 +83,7 @@ impl BackgroundTaskTracker {
         let next_str = Some(initial_next.to_rfc3339());
         let initial_backup_next = chrono::Utc::now() + chrono::Duration::hours(24);
         let initial_maintenance_next = chrono::Utc::now() + chrono::Duration::hours(168);
+        let initial_tautulli_next = chrono::Utc::now() + chrono::Duration::hours(1);
         Self {
             image_status: RwLock::new("idle".to_string()),
             image_processed: AtomicUsize::new(0),
@@ -111,6 +119,13 @@ impl BackgroundTaskTracker {
             db_maintenance_last_success: RwLock::new(None),
             db_maintenance_next_run: RwLock::new(Some(initial_maintenance_next.to_rfc3339())),
             db_maintenance_last_message: RwLock::new(Some("Worker initialized. Ready for database maintenance.".to_string())),
+
+            tautulli_sync_status: RwLock::new("idle".to_string()),
+            tautulli_sync_processed: AtomicUsize::new(0),
+            tautulli_sync_last_run: RwLock::new(None),
+            tautulli_sync_last_success: RwLock::new(None),
+            tautulli_sync_next_run: RwLock::new(Some(initial_tautulli_next.to_rfc3339())),
+            tautulli_sync_last_message: RwLock::new(Some("Worker initialized. Ready to sync Tautulli history.".to_string())),
         }
     }
 
@@ -246,6 +261,31 @@ impl BackgroundTaskTracker {
 
     pub async fn set_db_maintenance_next_run(&self, next_run: Option<String>) {
         *self.db_maintenance_next_run.write().await = next_run;
+    }
+
+    pub async fn set_tautulli_sync_running(&self, pool: Option<&sqlx::SqlitePool>, message: &str) {
+        let now = chrono::Utc::now().to_rfc3339();
+        *self.tautulli_sync_status.write().await = "running".to_string();
+        *self.tautulli_sync_last_run.write().await = Some(now.clone());
+        *self.tautulli_sync_last_message.write().await = Some(message.to_string());
+        if let Some(p) = pool {
+            let _ = crate::api::settings::set_db_setting(p, "task_last_run:tautulli_sync", &now).await;
+        }
+    }
+
+    pub async fn set_tautulli_sync_idle(&self, pool: Option<&sqlx::SqlitePool>, processed: usize, message: &str) {
+        let now = chrono::Utc::now().to_rfc3339();
+        *self.tautulli_sync_status.write().await = "idle".to_string();
+        self.tautulli_sync_processed.fetch_add(processed, Ordering::Relaxed);
+        *self.tautulli_sync_last_success.write().await = Some(now.clone());
+        *self.tautulli_sync_last_message.write().await = Some(message.to_string());
+        if let Some(p) = pool {
+            let _ = crate::api::settings::set_db_setting(p, "task_last_success:tautulli_sync", &now).await;
+        }
+    }
+
+    pub async fn set_tautulli_sync_next_run(&self, next_run: Option<String>) {
+        *self.tautulli_sync_next_run.write().await = next_run;
     }
 
     pub async fn get_tasks_summary(&self, state: &AppState, tvdb_configured: bool) -> Vec<BackgroundTaskInfo> {
@@ -492,7 +532,35 @@ impl BackgroundTaskTracker {
             last_message: self.db_maintenance_last_message.read().await.clone(),
         };
 
-        vec![image_task, tvdb_task, user_sync_task, db_backup_task, db_maintenance_task]
+        let tautulli_sync_interval = state.get_task_interval_hours("tautulli_sync").await;
+        let tautulli_sync_sched_str = format!("Every {} hour{}", tautulli_sync_interval, if tautulli_sync_interval == 1 { "" } else { "s" });
+
+        let tautulli_sync_last_run = match self.tautulli_sync_last_run.read().await.clone() {
+            Some(lr) => Some(lr),
+            None => crate::api::settings::get_db_setting(pool, "task_last_run:tautulli_sync").await,
+        };
+
+        let tautulli_sync_last_success = match self.tautulli_sync_last_success.read().await.clone() {
+            Some(ls) => Some(ls),
+            None => crate::api::settings::get_db_setting(pool, "task_last_success:tautulli_sync").await,
+        };
+
+        let tautulli_sync_task = BackgroundTaskInfo {
+            id: "tautulli_sync".to_string(),
+            name: "Tautulli Continuous 1-Way Sync".to_string(),
+            description: "Periodically polls Tautulli API for user playback history and syncs completed watches into BingeSync with automatic deduplication.".to_string(),
+            status: self.tautulli_sync_status.read().await.clone(),
+            schedule: tautulli_sync_sched_str,
+            interval_hours: tautulli_sync_interval,
+            items_processed: self.tautulli_sync_processed.load(Ordering::Relaxed),
+            items_pending: 0,
+            last_run_at: tautulli_sync_last_run,
+            last_success_at: tautulli_sync_last_success,
+            next_run_at: self.tautulli_sync_next_run.read().await.clone(),
+            last_message: self.tautulli_sync_last_message.read().await.clone(),
+        };
+
+        vec![image_task, tvdb_task, user_sync_task, tautulli_sync_task, db_backup_task, db_maintenance_task]
     }
 }
 
@@ -675,6 +743,18 @@ pub async fn trigger_admin_task_handler(
                     ))
                 }
             }
+        }
+        "tautulli_sync" | "tautulli" => {
+            state.task_tracker.set_tautulli_sync_running(Some(&state.pool), "Manual sync triggered...").await;
+            state.tautulli_sync_notify.notify_waiters();
+            state.tautulli_sync_notify.notify_one();
+            state.log_buffer.push("INFO", "bingesync::tasks", "Manual run triggered for Tautulli Sync worker");
+            Ok(Json(serde_json::json!({
+                "status": "triggered",
+                "task_id": "tautulli_sync",
+                "forced": false,
+                "message": "Tautulli continuous sync worker has been signaled to run immediately"
+            })))
         }
         _ => Err((
             StatusCode::NOT_FOUND,
@@ -860,6 +940,9 @@ pub async fn update_admin_task_schedule_handler(
         }
         "db_maintenance" | "maintenance" => {
             state.task_tracker.set_db_maintenance_next_run(Some(next_run.clone())).await;
+        }
+        "tautulli_sync" | "tautulli" => {
+            state.task_tracker.set_tautulli_sync_next_run(Some(next_run.clone())).await;
         }
         _ => {}
     }
