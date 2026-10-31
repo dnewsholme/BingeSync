@@ -328,6 +328,36 @@ async fn process_webhook(
         }
     };
 
+    // Ignore pre-play trailers, cinema intros, clips, and movie extras
+    if metadata.is_trailer_or_extra() {
+        let title = metadata.title.clone().unwrap_or_else(|| "Unknown Trailer".to_string());
+        state.log_buffer.push(
+            "INFO",
+            "bingesync::plex",
+            &format!(
+                "Ignored Plex trailer/clip for user {}: '{}' (type: {:?}, subtype: {:?})",
+                user.email, title, metadata.media_type, metadata.subtype
+            ),
+        );
+        tracing::info!(
+            user_id = %user.id,
+            title = %title,
+            media_type = ?metadata.media_type,
+            subtype = ?metadata.subtype,
+            "Ignored Plex trailer, clip, or cinema intro"
+        );
+        return Ok((
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "status": "ignored",
+                "reason": "trailer_or_extra",
+                "title": title,
+                "type": metadata.media_type,
+                "subtype": metadata.subtype,
+            })),
+        ));
+    }
+
     let title = metadata.title.unwrap_or_else(|| "Unknown Title".to_string());
     let media_type = metadata.media_type.unwrap_or_else(|| "movie".to_string());
     let grandparent_title = metadata.grandparent_title;
@@ -985,6 +1015,35 @@ async fn process_jellyfin_or_emby_webhook(
     // 4. Resolve media metadata
     let raw_type = payload.resolved_item_type().unwrap_or_else(|| "Movie".to_string());
     let is_episode = raw_type.eq_ignore_ascii_case("Episode");
+    let is_movie = raw_type.eq_ignore_ascii_case("Movie");
+    let is_trailer = raw_type.eq_ignore_ascii_case("Trailer")
+        || raw_type.eq_ignore_ascii_case("Clip")
+        || raw_type.eq_ignore_ascii_case("TrailerExtra");
+
+    if is_trailer || (!is_episode && !is_movie) {
+        let title = payload.resolved_name().unwrap_or_else(|| "Unknown Item".to_string());
+        state.log_buffer.push(
+            "INFO",
+            &format!("bingesync::{}", source),
+            &format!(
+                "Ignored {} trailer/clip for user {}: '{}' (type: {})",
+                if source == "emby" { "Emby" } else { "Jellyfin" },
+                user.email,
+                title,
+                raw_type
+            ),
+        );
+        return Ok((
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "status": "ignored",
+                "reason": "trailer_or_extra",
+                "title": title,
+                "type": raw_type,
+            })),
+        ));
+    }
+
     let media_type = if is_episode { "episode".to_string() } else { "movie".to_string() };
 
     let genres = payload.resolved_genres();

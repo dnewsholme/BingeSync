@@ -130,9 +130,10 @@ Plex webhooks send:
 ```bash
 cargo test
 ```
-Tests in `tests/api_tests.rs` (63 integration tests) cover:
+Tests in `tests/api_tests.rs` (64 integration tests) cover:
 - Dev login and `/api/v1/auth/me`
 - Plex movie and TV episode scrobbling
+- Plex and Jellyfin pre-play trailer, cinema intro, and clip filtering and exclusion
 - Multi-user isolation (User A cannot see User B's data)
 - Webhook token regeneration and invalidation
 - Active session playback state (`now-playing`)

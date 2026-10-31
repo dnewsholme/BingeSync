@@ -8378,6 +8378,194 @@ async fn test_scrobble_source_and_user_logging_and_search() {
     assert_eq!(np["now_playing"]["source_user"], "Sarah");
 }
 
+#[tokio::test]
+async fn test_plex_and_jellyfin_trailer_and_clip_exclusion() {
+    let (app, pool, config) = setup_test_app().await;
+
+    let user_id = "test-trailer-user".to_string();
+    let webhook_token = "token-trailer-test".to_string();
+
+    sqlx::query("INSERT INTO users (id, email, display_name, webhook_token, role) VALUES (?, ?, ?, ?, ?)")
+        .bind(&user_id)
+        .bind("trailer_user@bingesync.local")
+        .bind("Trailer Tester")
+        .bind(&webhook_token)
+        .bind("user")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let _token = create_jwt(&user_id, "trailer_user@bingesync.local", &config.jwt_secret).unwrap();
+
+    // 1. Plex webhook with subtype = "trailer" (theatrical pre-play trailer)
+    let trailer_payload = json!({
+        "event": "media.scrobble",
+        "user": true,
+        "Account": {
+            "title": "Trailer Tester"
+        },
+        "Metadata": {
+            "librarySectionType": "movie",
+            "type": "movie",
+            "subtype": "trailer",
+            "title": "Dune: Part Two Theatrical Trailer",
+            "duration": 150000,
+            "viewOffset": 150000,
+            "ratingKey": "1001"
+        }
+    });
+
+    let req = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/webhooks/plex/{}", webhook_token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(trailer_payload.to_string()))
+        .unwrap();
+
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(body["status"], "ignored");
+    assert_eq!(body["reason"], "trailer_or_extra");
+
+    // 2. Plex webhook with type = "clip" (Cinema intro / pre-roll)
+    let clip_payload = json!({
+        "event": "media.play",
+        "user": true,
+        "Account": {
+            "title": "Trailer Tester"
+        },
+        "Metadata": {
+            "type": "clip",
+            "title": "Dolby Atmos Countdown Intro",
+            "duration": 30000,
+            "viewOffset": 5000,
+            "ratingKey": "1002"
+        }
+    });
+
+    let req = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/webhooks/plex/{}", webhook_token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(clip_payload.to_string()))
+        .unwrap();
+
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(body["status"], "ignored");
+    assert_eq!(body["reason"], "trailer_or_extra");
+
+    // 3. Plex webhook with extraType = 1 (behind the scenes / extra)
+    let extra_payload = json!({
+        "event": "media.scrobble",
+        "user": true,
+        "Account": {
+            "title": "Trailer Tester"
+        },
+        "Metadata": {
+            "type": "movie",
+            "extraType": 1,
+            "title": "Oppenheimer: The Making Of",
+            "duration": 600000,
+            "viewOffset": 600000,
+            "ratingKey": "1003"
+        }
+    });
+
+    let req = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/webhooks/plex/{}", webhook_token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(extra_payload.to_string()))
+        .unwrap();
+
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(body["status"], "ignored");
+    assert_eq!(body["reason"], "trailer_or_extra");
+
+    // 4. Jellyfin webhook with ItemType = "Trailer"
+    let jf_trailer = json!({
+        "NotificationType": "PlaybackStop",
+        "PlayedToCompletion": true,
+        "ItemType": "Trailer",
+        "Name": "Gladiator II Trailer",
+        "NotificationUsername": "Trailer Tester",
+        "RunTimeTicks": 12000000000_i64,
+        "PlaybackPositionTicks": 12000000000_i64
+    });
+
+    let req = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/webhooks/jellyfin/{}", webhook_token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(jf_trailer.to_string()))
+        .unwrap();
+
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(body["status"], "ignored");
+    assert_eq!(body["reason"], "trailer_or_extra");
+
+    // 5. Verify NO scrobbles and NO active sessions were created for trailers
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE user_id = ?")
+        .bind(&user_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(count, 0);
+
+    let session_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM active_sessions WHERE user_id = ?")
+        .bind(&user_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(session_count, 0);
+
+    // 6. Regular movie MUST still be successfully scrobbled!
+    let movie_payload = json!({
+        "event": "media.scrobble",
+        "user": true,
+        "Account": {
+            "title": "Trailer Tester"
+        },
+        "Metadata": {
+            "librarySectionType": "movie",
+            "type": "movie",
+            "title": "Dune: Part Two",
+            "year": 2024,
+            "duration": 9960000,
+            "viewOffset": 9960000,
+            "ratingKey": "1005"
+        }
+    });
+
+    let req = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/webhooks/plex/{}", webhook_token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(movie_payload.to_string()))
+        .unwrap();
+
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE user_id = ?")
+        .bind(&user_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(count, 1);
+}
+
 
 
 

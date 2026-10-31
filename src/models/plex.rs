@@ -44,6 +44,9 @@ pub struct PlexMetadata {
     pub library_section_type: Option<String>,
     #[serde(rename = "type")]
     pub media_type: Option<String>,
+    pub subtype: Option<String>,
+    #[serde(rename = "extraType")]
+    pub extra_type: Option<serde_json::Value>,
     pub title: Option<String>,
     #[serde(rename = "grandparentTitle")]
     pub grandparent_title: Option<String>,
@@ -77,4 +80,57 @@ pub struct PlexMetadata {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlexTag {
     pub tag: Option<String>,
+}
+
+impl PlexMetadata {
+    /// Determines whether this Plex metadata represents an auxiliary trailer, clip, extra, or cinema pre-roll.
+    pub fn is_trailer_or_extra(&self) -> bool {
+        // 1. Explicit subtype check (e.g. "trailer", "behindTheScenes", "deletedScene", "clip", "preroll")
+        if let Some(ref st) = self.subtype {
+            let st_low = st.trim().to_lowercase();
+            if !st_low.is_empty() {
+                return true;
+            }
+        }
+
+        // 2. Explicit extraType check
+        if self.extra_type.is_some() {
+            return true;
+        }
+
+        // 3. Media type check: only "movie" and "episode" are valid main feature watches
+        if let Some(ref mt) = self.media_type {
+            let mt_low = mt.trim().to_lowercase();
+            if mt_low == "clip" || mt_low == "trailer" || mt_low == "extra" || mt_low == "video" {
+                return true;
+            }
+            if mt_low != "movie" && mt_low != "episode" {
+                return true;
+            }
+        }
+
+        // 4. Library section type check
+        if let Some(ref lst) = self.library_section_type {
+            let lst_low = lst.trim().to_lowercase();
+            if lst_low == "clip" || lst_low == "trailer" {
+                return true;
+            }
+        }
+
+        // 5. Pre-roll title or GUID check
+        if let Some(ref title) = self.title {
+            let t_low = title.trim().to_lowercase();
+            if t_low.contains("pre-roll") || t_low.contains("preroll") || t_low.starts_with("cinema intro") {
+                return true;
+            }
+        }
+        if let Some(ref guid) = self.guid {
+            let g_low = guid.trim().to_lowercase();
+            if g_low.starts_with("preroll") {
+                return true;
+            }
+        }
+
+        false
+    }
 }
