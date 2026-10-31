@@ -457,7 +457,7 @@ pub async fn import_tautulli_handler(
                 }
             }
             Err(e) => {
-                tracing::error!("Failed to insert Tautulli scrobble '{}': {:?}", item.title, e);
+                tracing::warn!(error = %e, title = %item.title, "Failed to insert Tautulli scrobble during import");
                 state.log_buffer.push(
                     "ERROR",
                     "bingesync::tautulli",

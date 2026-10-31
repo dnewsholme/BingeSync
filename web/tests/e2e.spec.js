@@ -954,6 +954,7 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     await page.fill('#dev-email', userEmail);
     await page.fill('#dev-name', 'Progress UI User');
     await page.click('#btn-dev-submit');
+    await expect(page.locator('#user-display-name')).toContainText('Progress UI User');
 
     // Fetch user webhook token from settings
     await page.click('#tab-settings');
@@ -986,6 +987,12 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     await card.click();
     await expect(page.locator('#modal-item-detail')).toBeVisible();
     await expect(page.locator('#detail-body')).toContainText('In Progress (45%)');
+
+    // Close detail modal and sign out
+    await page.click('#btn-close-detail-modal');
+    await expect(page.locator('#modal-item-detail')).toBeHidden();
+    await page.click('#btn-logout');
+    await expect(page.locator('.auth-header h2')).toBeVisible();
   });
 
   test('tautulli import: verify import modal, username defaulting, and deduplication', async ({ page }) => {
@@ -994,6 +1001,7 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     await page.fill('#dev-email', userEmail);
     await page.fill('#dev-name', 'Tautulli Streamer');
     await page.click('#btn-dev-submit');
+    await expect(page.locator('#user-display-name')).toContainText('Tautulli Streamer');
 
     // 1. Open unified Import modal and switch to Tautulli tab
     await expect(page.locator('#btn-open-import-modal')).toBeVisible();
@@ -1013,6 +1021,7 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
 
     // 3. Paste Tautulli JSON history for this user
     const testMovieTitle = `Tautulli Film ${Date.now()}`;
+    const watchDateSec = Math.floor(Date.now() / 1000) - 86400 * 30; // 30 days ago
     const sampleHistory = {
       response: {
         result: 'success',
@@ -1023,7 +1032,7 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
               media_type: 'movie',
               title: testMovieTitle,
               year: 2023,
-              date: 1690000000,
+              date: watchDateSec,
               duration: 10800,
               rating_key: `rk_${Date.now()}`,
               percent_complete: 100,
@@ -1060,6 +1069,12 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     await expect(statusBox).toContainText('Import Complete!');
     await expect(statusBox).toContainText('Imported: 0');
     await expect(statusBox).toContainText('Skipped duplicates: 1');
+
+    // Close modal and sign out
+    await page.click('#btn-cancel-tautulli-modal');
+    await expect(page.locator('#modal-import-history')).toBeHidden();
+    await page.click('#btn-logout');
+    await expect(page.locator('.auth-header h2')).toBeVisible();
   });
 
   test('timeline hierarchical drill-down navigation: Year -> Month -> Dates', async ({ page }) => {

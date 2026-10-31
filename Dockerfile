@@ -21,7 +21,20 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config \
     libssl-dev \
+    curl \
+    build-essential \
+    clang \
     && rm -rf /var/lib/apt/lists/*
+
+# Install latest SQLite 3.5.x (3.54.1) with full feature support
+RUN curl -sSL https://www.sqlite.org/2026/sqlite-autoconf-3540100.tar.gz | tar -xz \
+    && cd sqlite-autoconf-3540100 \
+    && CFLAGS="-DSQLITE_ENABLE_COLUMN_METADATA=1 -DSQLITE_ENABLE_UNLOCK_NOTIFY=1 -DSQLITE_ENABLE_FTS5=1 -DSQLITE_ENABLE_RTREE=1 -DSQLITE_ENABLE_DBSTAT_VTAB=1" ./configure --prefix=/usr --disable-static \
+    && make -j$(nproc) \
+    && make install \
+    && ldconfig \
+    && cd .. \
+    && rm -rf sqlite-autoconf-3540100
 
 # Copy web/dist from frontend builder
 COPY --from=frontend-builder /app/web/dist ./web/dist
@@ -45,8 +58,12 @@ FROM debian:trixie-slim AS runtime
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \
-    sqlite3 \
     && rm -rf /var/lib/apt/lists/*
+
+# Copy SQLite 3.5.x libraries and CLI from backend-builder
+COPY --from=backend-builder /usr/lib/libsqlite3.so* /usr/lib/
+COPY --from=backend-builder /usr/bin/sqlite3 /usr/bin/sqlite3
+RUN ldconfig
 
 # Create application user and data storage directory
 RUN useradd -m -u 1000 -U -s /bin/sh bingesync && \
