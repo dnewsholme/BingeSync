@@ -616,10 +616,11 @@ async fn process_webhook(
                 },
             );
 
-            crate::api::outbound_webhooks::dispatch_scrobble_notification(
+            crate::api::outbound_webhooks::dispatch_notification(
                 state.pool.clone(),
                 user.id.clone(),
-                crate::api::outbound_webhooks::ScrobbleNotificationData {
+                crate::api::outbound_webhooks::NotificationData {
+                    event: crate::api::outbound_webhooks::NotificationEvent::Scrobble,
                     title: title.clone(),
                     grandparent_title: grandparent_title.clone(),
                     media_type: media_type.clone(),
@@ -703,6 +704,28 @@ async fn process_webhook(
                 )
             })?;
 
+            let event_type = if payload.event == "media.pause" {
+                crate::api::outbound_webhooks::NotificationEvent::Stop
+            } else {
+                crate::api::outbound_webhooks::NotificationEvent::Play
+            };
+            crate::api::outbound_webhooks::dispatch_notification(
+                state.pool.clone(),
+                user.id.clone(),
+                crate::api::outbound_webhooks::NotificationData {
+                    event: event_type,
+                    title: title.clone(),
+                    grandparent_title: grandparent_title.clone(),
+                    media_type: media_type.clone(),
+                    season_number,
+                    episode_number,
+                    year,
+                    progress_percent,
+                    thumb_url: thumb_url.clone(),
+                    user_rating: None,
+                },
+            );
+
             Ok((
                 StatusCode::OK,
                 Json(serde_json::json!({
@@ -721,6 +744,23 @@ async fn process_webhook(
                 .bind(&user.id)
                 .execute(&state.pool)
                 .await;
+
+            crate::api::outbound_webhooks::dispatch_notification(
+                state.pool.clone(),
+                user.id.clone(),
+                crate::api::outbound_webhooks::NotificationData {
+                    event: crate::api::outbound_webhooks::NotificationEvent::Stop,
+                    title: title.clone(),
+                    grandparent_title: grandparent_title.clone(),
+                    media_type: media_type.clone(),
+                    season_number,
+                    episode_number,
+                    year,
+                    progress_percent,
+                    thumb_url: thumb_url.clone(),
+                    user_rating: None,
+                },
+            );
 
             Ok((
                 StatusCode::OK,
@@ -1308,10 +1348,28 @@ async fn process_jellyfin_or_emby_webhook(
             },
         );
 
-        crate::api::outbound_webhooks::dispatch_scrobble_notification(
+        crate::api::outbound_webhooks::dispatch_notification(
             state.pool.clone(),
             user.id.clone(),
-            crate::api::outbound_webhooks::ScrobbleNotificationData {
+            crate::api::outbound_webhooks::NotificationData {
+                event: crate::api::outbound_webhooks::NotificationEvent::Scrobble,
+                title: title.clone(),
+                grandparent_title: grandparent_title.clone(),
+                media_type: media_type.clone(),
+                season_number,
+                episode_number,
+                year,
+                progress_percent,
+                thumb_url: thumb_url.clone(),
+                user_rating: None,
+            },
+        );
+    } else if is_stop {
+        crate::api::outbound_webhooks::dispatch_notification(
+            state.pool.clone(),
+            user.id.clone(),
+            crate::api::outbound_webhooks::NotificationData {
+                event: crate::api::outbound_webhooks::NotificationEvent::Stop,
                 title: title.clone(),
                 grandparent_title: grandparent_title.clone(),
                 media_type: media_type.clone(),
@@ -1356,6 +1414,41 @@ async fn process_jellyfin_or_emby_webhook(
             })),
         ))
     } else if is_start || is_progress || is_pause {
+        if is_start {
+            crate::api::outbound_webhooks::dispatch_notification(
+                state.pool.clone(),
+                user.id.clone(),
+                crate::api::outbound_webhooks::NotificationData {
+                    event: crate::api::outbound_webhooks::NotificationEvent::Play,
+                    title: title.clone(),
+                    grandparent_title: grandparent_title.clone(),
+                    media_type: media_type.clone(),
+                    season_number,
+                    episode_number,
+                    year,
+                    progress_percent,
+                    thumb_url: thumb_url.clone(),
+                    user_rating: None,
+                },
+            );
+        } else if is_pause {
+            crate::api::outbound_webhooks::dispatch_notification(
+                state.pool.clone(),
+                user.id.clone(),
+                crate::api::outbound_webhooks::NotificationData {
+                    event: crate::api::outbound_webhooks::NotificationEvent::Stop,
+                    title: title.clone(),
+                    grandparent_title: grandparent_title.clone(),
+                    media_type: media_type.clone(),
+                    season_number,
+                    episode_number,
+                    year,
+                    progress_percent,
+                    thumb_url: thumb_url.clone(),
+                    user_rating: None,
+                },
+            );
+        }
         let state_str = if is_pause { "paused" } else { "playing" };
         let session_id = Uuid::new_v4().to_string();
         let player_title = payload.device_name.clone().or(payload.client.clone());

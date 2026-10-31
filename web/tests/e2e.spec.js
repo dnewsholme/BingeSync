@@ -2075,8 +2075,16 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     await page.selectOption('#user-setting-outbound-type', 'discord');
     await page.fill('#user-setting-outbound-url', 'https://discord.com/api/webhooks/123/abc');
 
+    // Configure notification categories
+    await expect(page.locator('#user-setting-outbound-notify-scrobble')).toBeVisible();
+    await expect(page.locator('#user-setting-outbound-notify-play')).toBeVisible();
+    await page.check('#user-setting-outbound-notify-play');
+    await page.uncheck('#user-setting-outbound-notify-episodes');
+
     await page.click('#btn-save-user-settings');
     await expect(page.locator('#user-settings-status')).toContainText('Settings saved successfully');
+    await expect(page.locator('#user-setting-outbound-notify-play')).toBeChecked();
+    await expect(page.locator('#user-setting-outbound-notify-episodes')).not.toBeChecked();
 
     // 3. Test One-Click Data Export button
     await page.click('[data-subview="settings-sub-data"]');

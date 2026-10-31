@@ -130,7 +130,7 @@ Plex webhooks send:
 ```bash
 cargo test
 ```
-Tests in `tests/api_tests.rs` (64 integration tests) cover:
+Tests in `tests/api_tests.rs` (65 integration tests) cover:
 - Dev login and `/api/v1/auth/me`
 - Plex movie and TV episode scrobbling
 - Plex and Jellyfin pre-play trailer, cinema intro, and clip filtering and exclusion
@@ -173,7 +173,7 @@ Tests in `tests/api_tests.rs` (64 integration tests) cover:
 - Admin settings metadata source selection (TheTVDB vs TMDB) and credential masking
 - Database backup creation, 7-day retention pruning, pre-restore safety snapshot, transactional restore, and path traversal protection
 - User data export clean ZIP archive containing scrobbles JSON, CSV, and ratings
-- Outbound webhooks (Discord, Telegram, ntfy, Gotify, generic) scrobble event notifications and test endpoints
+- Outbound webhooks (Discord, Telegram, ntfy, Gotify, generic) scrobble event notifications, granular notification categories (scrobble, play, stop, rate, movies, episodes), and test endpoints
 - Overseerr media requests and user status check
 - Day-of-week & hourly 7x24 viewing heatmap density matrix and Binge Wrapped annual review metrics
 - Missing metadata query filtering across history and timeline with keyword aliases ("missing:metadata", "missing_metadata", "missing")

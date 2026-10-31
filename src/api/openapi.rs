@@ -1147,11 +1147,11 @@ pub async fn get_swagger_ui() -> impl IntoResponse {
       <div class="bingesync-brand-title">Binge<span>Sync</span> <span style="font-size:0.85rem;color:var(--text-muted);font-weight:500;">API Docs</span></div>
     </a>
     <div class="bingesync-header-links">
-      <a href="./api/v1/openapi.json" target="_blank" class="bingesync-btn">
+      <a id="bingesync-spec-link" href="./api/v1/openapi.json" target="_blank" class="bingesync-btn">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         OpenAPI Spec (.json)
       </a>
-      <a href="./" class="bingesync-btn primary">
+      <a id="bingesync-back-link" href="./" class="bingesync-btn primary">
         &larr; Back to App
       </a>
     </div>
@@ -1168,21 +1168,38 @@ pub async fn get_swagger_ui() -> impl IntoResponse {
     <h2>BingeSync REST API Specification</h2>
     <p style="color:var(--text-muted);">Interactive Swagger UI bundle could not be loaded from CDN. You can explore the raw JSON specification below or view the endpoints.</p>
     <div style="margin:16px 0;">
-      <a href="./api/v1/openapi.json" target="_blank" class="bingesync-btn primary">View / Download openapi.json</a>
+      <a id="fallback-spec-btn" href="./api/v1/openapi.json" target="_blank" class="bingesync-btn primary">View / Download openapi.json</a>
     </div>
     <pre id="fallback-json" style="background:#080c14;padding:16px;border-radius:6px;overflow-x:auto;max-height:600px;font-family:monospace;font-size:0.85rem;color:#38bdf8;"></pre>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js" onerror="handleSwaggerLoadError()"></script>
+  <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js" onerror="handleSwaggerLoadFallback()"></script>
   <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-standalone-preset.js"></script>
   <script>
     function getApiSpecUrl() {
       var loc = window.location;
       var path = loc.pathname;
-      if (path.endsWith('/docs') || path.endsWith('/swagger')) {
-        return path.replace(/\/(docs|swagger)\/?$/, '/api/v1/openapi.json');
+      var m = path.match(/^(.*)\/(?:docs|swagger)\/?$/);
+      if (m) {
+        var base = m[1] || '';
+        return base + '/api/v1/openapi.json';
       }
       return './api/v1/openapi.json';
+    }
+
+    function updateNavLinks() {
+      var specUrl = getApiSpecUrl();
+      var specLink = document.getElementById('bingesync-spec-link');
+      if (specLink) specLink.href = specUrl;
+      var fallbackBtn = document.getElementById('fallback-spec-btn');
+      if (fallbackBtn) fallbackBtn.href = specUrl;
+
+      var backLink = document.getElementById('bingesync-back-link');
+      if (backLink) {
+        var m = window.location.pathname.match(/^(.*)\/(?:docs|swagger)\/?$/);
+        var base = m && m[1] ? m[1] : '';
+        backLink.href = base ? (base + '/') : './';
+      }
     }
 
     function initSwagger() {
@@ -1200,11 +1217,36 @@ pub async fn get_swagger_ui() -> impl IntoResponse {
           layout: "BaseLayout",
           docExpansion: "list",
           defaultModelsExpandDepth: 1,
-          persistAuthorization: true
+          persistAuthorization: true,
+          validatorUrl: null
         });
       } else {
-        handleSwaggerLoadError();
+        handleSwaggerLoadFallback();
       }
+    }
+
+    var _hasTriedCdnjs = false;
+    function handleSwaggerLoadFallback() {
+      if (!_hasTriedCdnjs) {
+        _hasTriedCdnjs = true;
+        // Try fallback CDN (cdnjs)
+        var s1 = document.createElement('script');
+        s1.src = 'https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.18.2/swagger-ui-bundle.min.js';
+        var s2 = document.createElement('script');
+        s2.src = 'https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.18.2/swagger-ui-standalone-preset.min.js';
+        s1.onload = function() {
+          if (typeof SwaggerUIBundle !== 'undefined') {
+            initSwagger();
+          } else {
+            handleSwaggerLoadError();
+          }
+        };
+        s1.onerror = handleSwaggerLoadError;
+        document.head.appendChild(s1);
+        document.head.appendChild(s2);
+        return;
+      }
+      handleSwaggerLoadError();
     }
 
     function handleSwaggerLoadError() {
@@ -1226,6 +1268,7 @@ pub async fn get_swagger_ui() -> impl IntoResponse {
       }
     }
 
+    updateNavLinks();
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', initSwagger);
     } else {

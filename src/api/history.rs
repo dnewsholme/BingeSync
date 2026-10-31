@@ -355,10 +355,11 @@ pub async fn create_scrobble(
                 rating_key: scrobble.rating_key.clone(),
             },
         );
-        crate::api::outbound_webhooks::dispatch_scrobble_notification(
+        crate::api::outbound_webhooks::dispatch_notification(
             state.pool.clone(),
             auth.user_id.clone(),
-            crate::api::outbound_webhooks::ScrobbleNotificationData {
+            crate::api::outbound_webhooks::NotificationData {
+                event: crate::api::outbound_webhooks::NotificationEvent::Scrobble,
                 title: scrobble.title.clone(),
                 grandparent_title: scrobble.grandparent_title.clone(),
                 media_type: scrobble.media_type.clone(),
@@ -440,6 +441,33 @@ pub async fn rate_scrobble(
             StatusCode::NOT_FOUND,
             Json(serde_json::json!({ "error": "Scrobble not found" })),
         ));
+    }
+
+    if let Some(rating_val) = payload.rating {
+        if let Ok(Some(row)) = sqlx::query_as::<_, (String, Option<String>, String, Option<i32>, Option<i32>, Option<i32>, Option<String>, Option<i64>)>(
+            "SELECT title, grandparent_title, media_type, season_number, episode_number, year, thumb_url, progress_percent FROM scrobbles WHERE id = ?"
+        )
+        .bind(&id)
+        .fetch_optional(&state.pool)
+        .await
+        {
+            crate::api::outbound_webhooks::dispatch_notification(
+                state.pool.clone(),
+                auth.user_id.clone(),
+                crate::api::outbound_webhooks::NotificationData {
+                    event: crate::api::outbound_webhooks::NotificationEvent::Rate,
+                    title: row.0,
+                    grandparent_title: row.1,
+                    media_type: row.2,
+                    season_number: row.3,
+                    episode_number: row.4,
+                    year: row.5,
+                    thumb_url: row.6,
+                    progress_percent: row.7.unwrap_or(100),
+                    user_rating: Some(rating_val),
+                },
+            );
+        }
     }
 
     Ok(Json(serde_json::json!({

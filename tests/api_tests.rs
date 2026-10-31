@@ -3450,12 +3450,17 @@ async fn test_openapi_spec_and_swagger_ui() {
 
     let docs_res = app.clone().oneshot(docs_req).await.unwrap();
     assert_eq!(docs_res.status(), StatusCode::OK);
+    let csp = docs_res.headers().get("content-security-policy").unwrap().to_str().unwrap();
+    assert!(csp.contains("cdn.jsdelivr.net"));
+    assert!(csp.contains("cdnjs.cloudflare.com"));
+    assert!(csp.contains("unpkg.com"));
     let docs_body = String::from_utf8(
         axum::body::to_bytes(docs_res.into_body(), usize::MAX).await.unwrap().to_vec()
     ).unwrap();
     assert!(docs_body.contains("Swagger UI"));
     assert!(docs_body.contains("BingeSync API"));
     assert!(docs_body.contains("swagger-ui"));
+    assert!(docs_body.contains("validatorUrl: null"));
 
     // 3. Fetch Swagger UI HTML at /swagger
     let swagger_req = Request::builder()
@@ -5906,11 +5911,17 @@ async fn test_outbound_webhook_test_and_user_settings() {
     .await
     .unwrap();
 
-    // 1. Update user settings with outbound webhook and emby username
+    // 1. Update user settings with outbound webhook, emby username, and notification categories
     let update_req = json!({
         "emby_username": "emby_superfan",
         "outbound_webhook_type": "generic",
         "outbound_webhook_url": "https://example.com/webhook",
+        "outbound_notify_scrobble": true,
+        "outbound_notify_play": true,
+        "outbound_notify_stop": false,
+        "outbound_notify_rate": true,
+        "outbound_notify_movies": true,
+        "outbound_notify_episodes": false,
         "overseerr_url": "http://192.168.1.50:5055"
     });
 
@@ -5939,7 +5950,72 @@ async fn test_outbound_webhook_test_and_user_settings() {
     assert_eq!(settings_json["emby_username"], "emby_superfan");
     assert_eq!(settings_json["outbound_webhook_type"], "generic");
     assert_eq!(settings_json["outbound_webhook_url"], "https://example.com/webhook");
+    assert_eq!(settings_json["outbound_notify_scrobble"], true);
+    assert_eq!(settings_json["outbound_notify_play"], true);
+    assert_eq!(settings_json["outbound_notify_stop"], false);
+    assert_eq!(settings_json["outbound_notify_rate"], true);
+    assert_eq!(settings_json["outbound_notify_movies"], true);
+    assert_eq!(settings_json["outbound_notify_episodes"], false);
     assert_eq!(settings_json["overseerr_url"], "http://192.168.1.50:5055");
+}
+
+#[tokio::test]
+async fn test_outbound_webhook_categories_and_triggers() {
+    let (app, pool, config) = setup_test_app().await;
+
+    let user_id = "test_user_triggers";
+    let token = create_jwt(user_id, "triggers@test.local", &config.jwt_secret).unwrap();
+
+    sqlx::query(
+        "INSERT INTO users (id, email, display_name, webhook_token, role) VALUES (?, ?, ?, ?, 'user')"
+    )
+    .bind(user_id)
+    .bind("triggers@test.local")
+    .bind("Triggers Tester")
+    .bind("triggers_token_123")
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    // Configure notification categories:
+    // enable play, disable stop, enable scrobble, disable episodes, enable movies
+    let update_req = json!({
+        "outbound_webhook_type": "generic",
+        "outbound_webhook_url": "https://example.com/webhook",
+        "outbound_webhook_enabled": true,
+        "outbound_notify_scrobble": true,
+        "outbound_notify_play": true,
+        "outbound_notify_stop": false,
+        "outbound_notify_rate": true,
+        "outbound_notify_movies": true,
+        "outbound_notify_episodes": false
+    });
+
+    let req = Request::builder()
+        .method("PUT")
+        .uri("/api/v1/user/settings")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(serde_json::to_vec(&update_req).unwrap()))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // Verify settings persisted
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/user/settings")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let settings_json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    assert_eq!(settings_json["outbound_notify_play"], true);
+    assert_eq!(settings_json["outbound_notify_stop"], false);
+    assert_eq!(settings_json["outbound_notify_episodes"], false);
+    assert_eq!(settings_json["outbound_notify_movies"], true);
 }
 
 #[tokio::test]

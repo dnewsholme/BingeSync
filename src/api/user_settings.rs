@@ -49,6 +49,12 @@ pub struct UserSettingsResponse {
     pub outbound_webhook_url: Option<String>,
     pub outbound_webhook_type: Option<String>,
     pub outbound_webhook_enabled: bool,
+    pub outbound_notify_scrobble: bool,
+    pub outbound_notify_play: bool,
+    pub outbound_notify_stop: bool,
+    pub outbound_notify_rate: bool,
+    pub outbound_notify_movies: bool,
+    pub outbound_notify_episodes: bool,
 
     pub overseerr_url: Option<String>,
     pub overseerr_api_key_configured: bool,
@@ -81,6 +87,12 @@ pub struct UpdateUserSettingsRequest {
     pub outbound_webhook_url: Option<String>,
     pub outbound_webhook_type: Option<String>,
     pub outbound_webhook_enabled: Option<bool>,
+    pub outbound_notify_scrobble: Option<bool>,
+    pub outbound_notify_play: Option<bool>,
+    pub outbound_notify_stop: Option<bool>,
+    pub outbound_notify_rate: Option<bool>,
+    pub outbound_notify_movies: Option<bool>,
+    pub outbound_notify_episodes: Option<bool>,
     pub overseerr_url: Option<String>,
     pub overseerr_api_key: Option<String>,
 }
@@ -169,6 +181,31 @@ pub async fn get_user_settings_handler(
     let outbound_webhook_enabled_str = get_user_setting(&state.pool, &auth.user_id, "outbound_webhook_enabled").await;
     let outbound_webhook_enabled = outbound_webhook_enabled_str.as_deref().map(|s| s == "true" || s == "1").unwrap_or(false);
 
+    let outbound_notify_scrobble = get_user_setting(&state.pool, &auth.user_id, "outbound_notify_scrobble")
+        .await
+        .map(|s| s == "true" || s == "1")
+        .unwrap_or(true);
+    let outbound_notify_play = get_user_setting(&state.pool, &auth.user_id, "outbound_notify_play")
+        .await
+        .map(|s| s == "true" || s == "1")
+        .unwrap_or(false);
+    let outbound_notify_stop = get_user_setting(&state.pool, &auth.user_id, "outbound_notify_stop")
+        .await
+        .map(|s| s == "true" || s == "1")
+        .unwrap_or(false);
+    let outbound_notify_rate = get_user_setting(&state.pool, &auth.user_id, "outbound_notify_rate")
+        .await
+        .map(|s| s == "true" || s == "1")
+        .unwrap_or(true);
+    let outbound_notify_movies = get_user_setting(&state.pool, &auth.user_id, "outbound_notify_movies")
+        .await
+        .map(|s| s == "true" || s == "1")
+        .unwrap_or(true);
+    let outbound_notify_episodes = get_user_setting(&state.pool, &auth.user_id, "outbound_notify_episodes")
+        .await
+        .map(|s| s == "true" || s == "1")
+        .unwrap_or(true);
+
     let overseerr_url = get_user_setting(&state.pool, &auth.user_id, "overseerr_url").await;
     let overseerr_api_key = get_user_setting(&state.pool, &auth.user_id, "overseerr_api_key").await;
 
@@ -211,6 +248,12 @@ pub async fn get_user_settings_handler(
         outbound_webhook_url,
         outbound_webhook_type,
         outbound_webhook_enabled,
+        outbound_notify_scrobble,
+        outbound_notify_play,
+        outbound_notify_stop,
+        outbound_notify_rate,
+        outbound_notify_movies,
+        outbound_notify_episodes,
 
         overseerr_url,
         overseerr_api_key_configured: overseerr_api_key.as_ref().map(|k| !k.trim().is_empty()).unwrap_or(false),
@@ -362,6 +405,24 @@ pub async fn update_user_settings_handler(
     }
     if let Some(enabled) = payload.outbound_webhook_enabled {
         let _ = set_user_setting(&state.pool, &auth.user_id, "outbound_webhook_enabled", if enabled { "true" } else { "false" }).await;
+    }
+    if let Some(val) = payload.outbound_notify_scrobble {
+        let _ = set_user_setting(&state.pool, &auth.user_id, "outbound_notify_scrobble", if val { "true" } else { "false" }).await;
+    }
+    if let Some(val) = payload.outbound_notify_play {
+        let _ = set_user_setting(&state.pool, &auth.user_id, "outbound_notify_play", if val { "true" } else { "false" }).await;
+    }
+    if let Some(val) = payload.outbound_notify_stop {
+        let _ = set_user_setting(&state.pool, &auth.user_id, "outbound_notify_stop", if val { "true" } else { "false" }).await;
+    }
+    if let Some(val) = payload.outbound_notify_rate {
+        let _ = set_user_setting(&state.pool, &auth.user_id, "outbound_notify_rate", if val { "true" } else { "false" }).await;
+    }
+    if let Some(val) = payload.outbound_notify_movies {
+        let _ = set_user_setting(&state.pool, &auth.user_id, "outbound_notify_movies", if val { "true" } else { "false" }).await;
+    }
+    if let Some(val) = payload.outbound_notify_episodes {
+        let _ = set_user_setting(&state.pool, &auth.user_id, "outbound_notify_episodes", if val { "true" } else { "false" }).await;
     }
 
     if let Some(ref val) = payload.overseerr_url {

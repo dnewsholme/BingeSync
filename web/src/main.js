@@ -25,8 +25,8 @@ export const SERVICE_ICONS = {
   tautulli: `<svg class="service-icon icon-tautulli" width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2c.5 3 2 4.5 3.5 6 1.8 1.8 2.5 3.5 2.5 5.5 0 4.4-3.6 8-8 8s-8-3.6-8-8c0-3.5 2.2-6.5 5.5-7.5-.5 2 0 3.5 1 4.5 1.5-2 2.5-5 3.5-8.5z"/></svg>`,
   trakt: `<svg class="service-icon icon-trakt" width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5zm6.5 3v2.2h2.2v5.6h2.6v-5.6h2.2V8H9.5z"/></svg>`,
   manual: `<svg class="service-icon icon-manual" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>`,
-  radarr: `<svg class="service-icon icon-radarr" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 9 9"/><line x1="12" y1="12" x2="18.36" y2="5.64"/><circle cx="12" cy="12" r="2.5" fill="currentColor"/></svg>`,
-  sonarr: `<svg class="service-icon icon-sonarr" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>`
+  radarr: `<svg class="service-icon icon-radarr" width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M5.274 0C3.189.039 1.19 1.547 1.19 4.705l.184 14.518c0 1.47 1.103 2.205 2.573 2.021L3.764 3.786c0-1.654.919-1.838 2.022-1.103l14.7 8.27c1.103.734 1.655 1.47 1.838 2.756.92-1.654.552-4.043-1.286-5.33L7.991.846A4.559 4.559 0 0 0 5.274.001zm1.982 6.91-.184 10.107 9.004-5.146Zm13.598 6.064-15.068 8.82c-.92.552-2.022.736-3.124.368.918 1.47 3.307 2.389 5.145 1.47l12.68-7.35c1.102-.736 1.286-2.022.367-3.308z"/></svg>`,
+  sonarr: `<svg class="service-icon icon-sonarr" width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M21.212 4.282c1.851 2.204 2.777 4.776 2.777 7.718 0 2.848-.867 5.344-2.602 7.489a934.355 934.355 0 0 1-2.101-2.095c-1.477-1.477-1.792-3.293-1.792-5.278 0-2.224.127-3.486 1.577-4.935l2.478-2.478a13.209 13.209 0 0 0-.337-.421Zm-17.7 16.193C1.708 18.678.6 16.59.188 14.213A11.84 11.84 0 0 1 .011 12c0-.28.006-.548.017-.802 0-.026.007-.052.022-.078.153-2.601 1.076-4.889 2.767-6.865-.108.127-.214.256-.316.387 0 0 1.351 1.346 2.329 2.323 1.408 1.409 1.726 3.215 1.726 5.151 0 1.985-.249 3.762-1.781 5.295-1.035 1.035-2.119 2.124-2.119 2.124.112.136.229.271.349.404.029-.027 1.297-1.348 2.123-2.175 1.638-1.637 1.928-3.528 1.928-5.648 0-2.072-.365-3.997-1.873-5.504a620.045 620.045 0 0 0-2.366-2.357c.168-.196.342-.388.523-.576l3.117 3.106-.194.195 1.903 1.898.547-.549L6.81 6.432l-.196.196L3.495 3.52c.01-.009.436-.416.643-.597.009.011 2.28 2.283 2.28 2.283 1.538 1.537 3.5 1.955 5.621 1.955 2.18 0 4.134-.442 5.731-2.038.907-.908 2.153-2.149 2.162-2.16.17.151.491.461.56.528l.013.013-3.111 3.028-.001.002-.197-.194-1.876 1.903.552.543 1.875-1.903-.197-.194 3.109-3.026c.193.203.377.41.553.619-.03.025-2.495 2.546-2.495 2.546-1.556 1.556-1.723 2.9-1.723 5.288 0 2.121.361 4.054 1.939 5.632a576.91 576.91 0 0 0 2.133 2.124c-.183.208-.599.645-.613.66l-3.066-3.174.195-.196-1.995-1.986-.546.549 1.995 1.986.195-.196 3.065 3.172c-.021.019-.385.362-.552.506-.01-.013-1.974-1.978-1.974-1.978-1.842-1.842-3.299-2.039-5.731-2.039-2.338 0-3.92.239-5.632 1.95-.944.944-2.078 2.085-2.089 2.099-.275-.23-.649-.594-.649-.594l3.019-3.024.199.192 1.854-1.925-.558-.538-1.854 1.926.199.191-3.016 3.022ZM12 8.672A3.33 3.33 0 0 0 8.672 12 3.33 3.33 0 0 0 12 15.328 3.33 3.33 0 0 0 15.328 12 3.33 3.33 0 0 0 12 8.672ZM4.52 2.6C6.665.867 9.162 0 12.011 0c2.88 0 5.394.88 7.541 2.639 0 0-1.215 1.209-2.136 2.13-1.496 1.496-3.334 1.892-5.377 1.892-1.985 0-3.829-.37-5.267-1.809L4.52 2.6Zm14.837 18.909a9.507 9.507 0 0 1-.342.256C16.994 23.255 14.659 24 12.011 24c-2.652 0-4.983-.745-6.993-2.235-.104-.074-.208-.15-.31-.227 0 0 1.096-1.101 2.053-2.058 1.602-1.602 3.09-1.804 5.278-1.804 2.28 0 3.651.166 5.377 1.892l1.941 1.941Z"/></svg>`,
 };
 
 export function getSourceBadgeInfo(source) {
@@ -420,6 +420,12 @@ const el = {
   btnFetchTautulliSettingUsers: document.getElementById('btn-fetch-tautulli-setting-users'),
   userSettingOutboundType: document.getElementById('user-setting-outbound-type'),
   userSettingOutboundUrl: document.getElementById('user-setting-outbound-url'),
+  userSettingOutboundNotifyScrobble: document.getElementById('user-setting-outbound-notify-scrobble'),
+  userSettingOutboundNotifyPlay: document.getElementById('user-setting-outbound-notify-play'),
+  userSettingOutboundNotifyStop: document.getElementById('user-setting-outbound-notify-stop'),
+  userSettingOutboundNotifyRate: document.getElementById('user-setting-outbound-notify-rate'),
+  userSettingOutboundNotifyMovies: document.getElementById('user-setting-outbound-notify-movies'),
+  userSettingOutboundNotifyEpisodes: document.getElementById('user-setting-outbound-notify-episodes'),
   btnTestOutboundWebhook: document.getElementById('btn-test-outbound-webhook'),
   outboundWebhookTestStatus: document.getElementById('outbound-webhook-test-status'),
   btnExportUserData: document.getElementById('btn-export-user-data'),
@@ -2931,6 +2937,12 @@ async function loadUserSettings() {
 
     if (el.userSettingOutboundType) el.userSettingOutboundType.value = s.outbound_webhook_type || '';
     if (el.userSettingOutboundUrl) el.userSettingOutboundUrl.value = s.outbound_webhook_url || '';
+    if (el.userSettingOutboundNotifyScrobble) el.userSettingOutboundNotifyScrobble.checked = s.outbound_notify_scrobble !== false;
+    if (el.userSettingOutboundNotifyPlay) el.userSettingOutboundNotifyPlay.checked = !!s.outbound_notify_play;
+    if (el.userSettingOutboundNotifyStop) el.userSettingOutboundNotifyStop.checked = !!s.outbound_notify_stop;
+    if (el.userSettingOutboundNotifyRate) el.userSettingOutboundNotifyRate.checked = s.outbound_notify_rate !== false;
+    if (el.userSettingOutboundNotifyMovies) el.userSettingOutboundNotifyMovies.checked = s.outbound_notify_movies !== false;
+    if (el.userSettingOutboundNotifyEpisodes) el.userSettingOutboundNotifyEpisodes.checked = s.outbound_notify_episodes !== false;
   } catch (err) {
     console.error('Failed to load user settings:', err);
     if (el.userSettingsStatus) {
@@ -2971,6 +2983,12 @@ if (el.formUserSettings) {
         tautulli_sync_enabled: el.userSettingTautulliSyncEnabled ? el.userSettingTautulliSyncEnabled.checked : false,
         outbound_webhook_type: el.userSettingOutboundType ? el.userSettingOutboundType.value : null,
         outbound_webhook_url: el.userSettingOutboundUrl ? el.userSettingOutboundUrl.value.trim() : null,
+        outbound_notify_scrobble: el.userSettingOutboundNotifyScrobble ? el.userSettingOutboundNotifyScrobble.checked : true,
+        outbound_notify_play: el.userSettingOutboundNotifyPlay ? el.userSettingOutboundNotifyPlay.checked : false,
+        outbound_notify_stop: el.userSettingOutboundNotifyStop ? el.userSettingOutboundNotifyStop.checked : false,
+        outbound_notify_rate: el.userSettingOutboundNotifyRate ? el.userSettingOutboundNotifyRate.checked : true,
+        outbound_notify_movies: el.userSettingOutboundNotifyMovies ? el.userSettingOutboundNotifyMovies.checked : true,
+        outbound_notify_episodes: el.userSettingOutboundNotifyEpisodes ? el.userSettingOutboundNotifyEpisodes.checked : true,
       };
 
       await api.updateUserSettings(payload);

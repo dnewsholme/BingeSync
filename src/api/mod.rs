@@ -269,7 +269,7 @@ async fn security_headers_middleware(
     headers.insert(
         axum::http::header::HeaderName::from_static("content-security-policy"),
         axum::http::HeaderValue::from_static(
-            "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https: http:; connect-src 'self' https://api.github.com; object-src 'none'; frame-ancestors 'self'; base-uri 'self';"
+            "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https: http:; connect-src 'self' https://api.github.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com; object-src 'none'; frame-ancestors 'self'; base-uri 'self';"
         ),
     );
 

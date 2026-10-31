@@ -9,8 +9,25 @@ use sqlx::SqlitePool;
 
 use crate::{api::AppState, auth::AuthUser};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NotificationEvent {
+    Scrobble,
+    Play,
+    Stop,
+    Rate,
+}
+
+impl Default for NotificationEvent {
+    fn default() -> Self {
+        Self::Scrobble
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ScrobbleNotificationData {
+pub struct NotificationData {
+    #[serde(default)]
+    pub event: NotificationEvent,
     pub title: String,
     pub grandparent_title: Option<String>,
     pub media_type: String,
@@ -22,17 +39,20 @@ pub struct ScrobbleNotificationData {
     pub user_rating: Option<i32>,
 }
 
+pub type ScrobbleNotificationData = NotificationData;
+
 #[derive(Debug, Deserialize)]
 pub struct TestWebhookRequest {
     pub webhook_url: Option<String>,
     pub webhook_type: Option<String>,
+    pub event: Option<String>,
 }
 
-/// Dispatches an outbound webhook notification asynchronously when a scrobble finishes
-pub fn dispatch_scrobble_notification(
+/// Dispatches an outbound webhook notification asynchronously when an event occurs
+pub fn dispatch_notification(
     pool: SqlitePool,
     user_id: String,
-    data: ScrobbleNotificationData,
+    data: NotificationData,
 ) {
     tokio::spawn(async move {
         let enabled = crate::api::user_settings::get_user_setting(&pool, &user_id, "outbound_webhook_enabled")
@@ -49,6 +69,59 @@ pub fn dispatch_scrobble_notification(
             _ => return,
         };
 
+        // Filter by Media Category ("What"):
+        let is_episode = data.media_type.eq_ignore_ascii_case("episode");
+        let is_movie = data.media_type.eq_ignore_ascii_case("movie");
+        if is_movie {
+            let notify_movies = crate::api::user_settings::get_user_setting(&pool, &user_id, "outbound_notify_movies")
+                .await
+                .map(|s| s == "true" || s == "1")
+                .unwrap_or(true);
+            if !notify_movies {
+                return;
+            }
+        } else if is_episode {
+            let notify_episodes = crate::api::user_settings::get_user_setting(&pool, &user_id, "outbound_notify_episodes")
+                .await
+                .map(|s| s == "true" || s == "1")
+                .unwrap_or(true);
+            if !notify_episodes {
+                return;
+            }
+        }
+
+        // Filter by Event Trigger ("When"):
+        let allow_event = match data.event {
+            NotificationEvent::Scrobble => {
+                crate::api::user_settings::get_user_setting(&pool, &user_id, "outbound_notify_scrobble")
+                    .await
+                    .map(|s| s == "true" || s == "1")
+                    .unwrap_or(true)
+            }
+            NotificationEvent::Play => {
+                crate::api::user_settings::get_user_setting(&pool, &user_id, "outbound_notify_play")
+                    .await
+                    .map(|s| s == "true" || s == "1")
+                    .unwrap_or(false)
+            }
+            NotificationEvent::Stop => {
+                crate::api::user_settings::get_user_setting(&pool, &user_id, "outbound_notify_stop")
+                    .await
+                    .map(|s| s == "true" || s == "1")
+                    .unwrap_or(false)
+            }
+            NotificationEvent::Rate => {
+                crate::api::user_settings::get_user_setting(&pool, &user_id, "outbound_notify_rate")
+                    .await
+                    .map(|s| s == "true" || s == "1")
+                    .unwrap_or(true)
+            }
+        };
+
+        if !allow_event {
+            return;
+        }
+
         let webhook_type = crate::api::user_settings::get_user_setting(&pool, &user_id, "outbound_webhook_type")
             .await
             .unwrap_or_else(|| "auto".to_string());
@@ -59,11 +132,19 @@ pub fn dispatch_scrobble_notification(
     });
 }
 
+pub fn dispatch_scrobble_notification(
+    pool: SqlitePool,
+    user_id: String,
+    data: NotificationData,
+) {
+    dispatch_notification(pool, user_id, data);
+}
+
 /// Sends formatted notification payload to the configured outbound webhook service
 pub async fn send_notification(
     url: &str,
     wh_type: &str,
-    data: &ScrobbleNotificationData,
+    data: &NotificationData,
 ) -> Result<(), String> {
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(10))
@@ -82,9 +163,41 @@ pub async fn send_notification(
         data.title.clone()
     };
 
-    let mut details = format!("Status: Completed ({}%)", data.progress_percent);
-    if let Some(r) = data.user_rating {
-        details.push_str(&format!("\n⭐ User Rating: {}/10", r));
+    let (action_title, status_str, hex_color, tag_str) = match data.event {
+        NotificationEvent::Scrobble => (
+            format!("🍿 Watched: {}", display_title),
+            format!("Status: Completed ({}%)", data.progress_percent),
+            0xe50914, // Trakt / BingeSync red
+            "popcorn,movie_camera,check",
+        ),
+        NotificationEvent::Play => (
+            format!("▶️ Now Playing: {}", display_title),
+            format!("Status: Playing on media server ({}%)", data.progress_percent),
+            0x38bdf8, // Sky blue
+            "arrow_forward,film_projector",
+        ),
+        NotificationEvent::Stop => (
+            format!("⏹️ Playback Stopped: {}", display_title),
+            format!("Status: Stopped / Paused at {}%", data.progress_percent),
+            0x94a3b8, // Slate gray
+            "pause,stop_sign",
+        ),
+        NotificationEvent::Rate => {
+            let rating_str = data.user_rating.map(|r| format!("⭐ Rated: {}/10", r)).unwrap_or_else(|| "Rated".to_string());
+            (
+                format!("⭐ Rated: {}", display_title),
+                rating_str,
+                0xf59e0b, // Amber / Star gold
+                "star,popcorn",
+            )
+        }
+    };
+
+    let mut details = status_str;
+    if data.event != NotificationEvent::Rate {
+        if let Some(r) = data.user_rating {
+            details.push_str(&format!("\n⭐ User Rating: {}/10", r));
+        }
     }
 
     let detected_type = if wh_type == "auto" || wh_type.is_empty() {
@@ -106,9 +219,9 @@ pub async fn send_notification(
     match detected_type.to_lowercase().as_str() {
         "discord" => {
             let mut embed = serde_json::json!({
-                "title": format!("🍿 Watched: {}", display_title),
+                "title": action_title,
                 "description": details,
-                "color": 0xe50914, // Trakt / BingeSync red
+                "color": hex_color,
                 "footer": { "text": "BingeSync Notification" },
                 "timestamp": chrono::Utc::now().to_rfc3339(),
             });
@@ -131,7 +244,7 @@ pub async fn send_notification(
             }
         }
         "telegram" => {
-            let text = format!("🍿 *Finished Watching*\n*{display_title}*\n\n{details}");
+            let text = format!("*{action_title}*\n\n{details}");
             let body = serde_json::json!({
                 "text": text,
                 "parse_mode": "Markdown"
@@ -145,8 +258,8 @@ pub async fn send_notification(
         }
         "ntfy" => {
             let mut req = client.post(url)
-                .header("Title", format!("🍿 Watched: {}", display_title))
-                .header("Tags", "popcorn,movie_camera")
+                .header("Title", action_title)
+                .header("Tags", tag_str)
                 .body(details);
 
             if let Some(ref thumb) = data.thumb_url {
@@ -164,7 +277,7 @@ pub async fn send_notification(
         }
         "gotify" => {
             let body = serde_json::json!({
-                "title": format!("🍿 Watched: {}", display_title),
+                "title": action_title,
                 "message": details,
                 "priority": 5
             });
@@ -177,8 +290,15 @@ pub async fn send_notification(
         }
         _ => {
             // Generic JSON Webhook
+            let event_name = match data.event {
+                NotificationEvent::Scrobble => "scrobble.completed",
+                NotificationEvent::Play => "playback.started",
+                NotificationEvent::Stop => "playback.stopped",
+                NotificationEvent::Rate => "item.rated",
+            };
             let body = serde_json::json!({
-                "event": "scrobble.completed",
+                "event": event_name,
+                "category": if is_episode { "episode" } else { "movie" },
                 "media_type": data.media_type,
                 "title": data.title,
                 "grandparent_title": data.grandparent_title,
@@ -232,7 +352,15 @@ pub async fn test_outbound_webhook_handler(
     let wh_type = payload.webhook_type
         .unwrap_or_else(|| "auto".to_string());
 
-    let test_data = ScrobbleNotificationData {
+    let test_event = match payload.event.as_deref() {
+        Some("play") => NotificationEvent::Play,
+        Some("stop") => NotificationEvent::Stop,
+        Some("rate") => NotificationEvent::Rate,
+        _ => NotificationEvent::Scrobble,
+    };
+
+    let test_data = NotificationData {
+        event: test_event,
         title: "Inception".to_string(),
         grandparent_title: None,
         media_type: "movie".to_string(),
