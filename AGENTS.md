@@ -86,7 +86,7 @@ BingeSync/
 
 | Layer | Technology | Details |
 |---|---|---|
-| **Backend** | Rust 1.99+ | `axum` 0.8, `tokio` 1.40, `tower-http` 0.6 |
+| **Backend** | Rust 1.99+ | `axum` 0.8, `tokio` 1.54, `tower-http` 0.7 |
 | **Database** | SQLite 3.5.x | `sqlx` 0.9 with unbundled SQLite 3.54+, WAL mode (`journal_mode=WAL`), embedded migrations |
 | **Auth** | JWT & OIDC | `jsonwebtoken`, `reqwest`, `base64`, `sha2`, PKCE S256 |
 | **Frontend** | Vanilla JS & CSS | Built with Vite 8, Google Fonts Inter, embedded via `rust-embed` |
