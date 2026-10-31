@@ -7643,6 +7643,60 @@ async fn test_admin_version_and_oidc_user_group_configuration() {
     assert!(!forbidden_user.has_group(required_user_group));
 }
 
+#[tokio::test]
+async fn test_security_headers_and_secure_cookie() {
+    let (app, _pool, _config) = setup_test_app().await;
+
+    // 1. Test standard HTTP response has CSP, COOP, Permissions-Policy, Nosniff, Sameorigin
+    let req = Request::builder()
+        .uri("/api/v1/auth/status")
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let headers = resp.headers();
+    assert_eq!(headers.get("x-content-type-options").unwrap(), "nosniff");
+    assert_eq!(headers.get("x-frame-options").unwrap(), "SAMEORIGIN");
+    assert_eq!(headers.get("referrer-policy").unwrap(), "strict-origin-when-cross-origin");
+    assert_eq!(headers.get("cross-origin-opener-policy").unwrap(), "same-origin");
+    assert!(headers.get("permissions-policy").unwrap().to_str().unwrap().contains("camera=()"));
+    assert!(headers.get("content-security-policy").unwrap().to_str().unwrap().contains("default-src 'self'"));
+    // HSTS should not be sent on plain HTTP without x-forwarded-proto: https
+    assert!(headers.get("strict-transport-security").is_none());
+
+    // 2. Test HTTPS response (via x-forwarded-proto: https) sends HSTS
+    let req_https = Request::builder()
+        .uri("/api/v1/auth/status")
+        .header("x-forwarded-proto", "https")
+        .body(Body::empty())
+        .unwrap();
+    let resp_https = app.clone().oneshot(req_https).await.unwrap();
+    assert_eq!(resp_https.status(), StatusCode::OK);
+    assert!(resp_https.headers().get("strict-transport-security").is_some());
+    assert!(resp_https.headers().get("strict-transport-security").unwrap().to_str().unwrap().contains("max-age="));
+
+    // 3. Test dev login under HTTPS marks cookie with Secure;
+    let login_req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/auth/dev-login")
+        .header("x-forwarded-proto", "https")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(serde_json::to_string(&json!({
+            "email": "secure_user@example.com",
+            "display_name": "Secure User"
+        })).unwrap()))
+        .unwrap();
+    let login_resp = app.clone().oneshot(login_req).await.unwrap();
+    assert_eq!(login_resp.status(), StatusCode::OK);
+    let cookie_header = login_resp.headers().get("set-cookie").unwrap().to_str().unwrap();
+    assert!(cookie_header.contains("bingesync_token="));
+    assert!(cookie_header.contains("HttpOnly"));
+    assert!(cookie_header.contains("SameSite=Lax"));
+    assert!(cookie_header.contains("Secure"));
+}
+
+
 
 
 

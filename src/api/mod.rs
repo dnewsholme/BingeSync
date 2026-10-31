@@ -231,6 +231,13 @@ async fn security_headers_middleware(
     req: axum::extract::Request,
     next: axum::middleware::Next,
 ) -> axum::response::Response {
+    let is_https = req
+        .headers()
+        .get("x-forwarded-proto")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.eq_ignore_ascii_case("https"))
+        .unwrap_or(false);
+
     let mut resp = next.run(req).await;
     let headers = resp.headers_mut();
     headers.insert(
@@ -245,6 +252,28 @@ async fn security_headers_middleware(
         axum::http::header::HeaderName::from_static("referrer-policy"),
         axum::http::HeaderValue::from_static("strict-origin-when-cross-origin"),
     );
+    headers.insert(
+        axum::http::header::HeaderName::from_static("permissions-policy"),
+        axum::http::HeaderValue::from_static("camera=(), microphone=(), geolocation=(), payment=(), usb=()"),
+    );
+    headers.insert(
+        axum::http::header::HeaderName::from_static("cross-origin-opener-policy"),
+        axum::http::HeaderValue::from_static("same-origin"),
+    );
+    headers.insert(
+        axum::http::header::HeaderName::from_static("content-security-policy"),
+        axum::http::HeaderValue::from_static(
+            "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https: http:; connect-src 'self' https://api.github.com; object-src 'none'; frame-ancestors 'self'; base-uri 'self';"
+        ),
+    );
+
+    if is_https {
+        headers.insert(
+            axum::http::header::HeaderName::from_static("strict-transport-security"),
+            axum::http::HeaderValue::from_static("max-age=31536000; includeSubDomains"),
+        );
+    }
+
     resp
 }
 

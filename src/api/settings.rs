@@ -1,9 +1,4 @@
-use axum::{
-    extract::State,
-    http::StatusCode,
-    response::IntoResponse,
-    Json,
-};
+use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 
@@ -111,7 +106,9 @@ pub struct VersionCheckResponse {
     pub components: Vec<SystemComponentInfo>,
 }
 
-pub async fn build_system_components(pool: Option<&sqlx::SqlitePool>) -> (String, String, String, String, Vec<SystemComponentInfo>) {
+pub async fn build_system_components(
+    pool: Option<&sqlx::SqlitePool>,
+) -> (String, String, String, String, Vec<SystemComponentInfo>) {
     let sqlite_ver = if let Some(p) = pool {
         sqlx::query_scalar("SELECT sqlite_version()")
             .fetch_one(p)
@@ -139,7 +136,10 @@ pub async fn build_system_components(pool: Option<&sqlx::SqlitePool>) -> (String
         SystemComponentInfo {
             name: "Operating System".to_string(),
             version: os_name.clone(),
-            description: format!("Host/container runtime environment ({})", std::env::consts::ARCH),
+            description: format!(
+                "Host/container runtime environment ({})",
+                std::env::consts::ARCH
+            ),
         },
         SystemComponentInfo {
             name: "SQLite Engine".to_string(),
@@ -164,7 +164,7 @@ pub async fn build_system_components(pool: Option<&sqlx::SqlitePool>) -> (String
         SystemComponentInfo {
             name: "Web Interface".to_string(),
             version: "Vite 5 / SPA".to_string(),
-            description: "Embedded reactive Trakt-inspired single-page frontend".to_string(),
+            description: "Embedded reactive single-page frontend".to_string(),
         },
     ];
 
@@ -191,7 +191,8 @@ pub fn is_version_newer(latest: &str, current: &str) -> bool {
 
 pub async fn check_latest_github_release(pool: Option<&sqlx::SqlitePool>) -> VersionCheckResponse {
     let current = APP_VERSION.to_string();
-    let (docker_base_image, os_name, sqlite_version, rust_version, components) = build_system_components(pool).await;
+    let (docker_base_image, os_name, sqlite_version, rust_version, components) =
+        build_system_components(pool).await;
 
     let client = reqwest::Client::builder()
         .user_agent("BingeSync-Server")
@@ -209,9 +210,18 @@ pub async fn check_latest_github_release(pool: Option<&sqlx::SqlitePool>) -> Ver
             if let Ok(json) = resp.json::<serde_json::Value>().await {
                 if let Some(tag) = json.get("tag_name").and_then(|v| v.as_str()) {
                     let latest = tag.trim_start_matches('v').to_string();
-                    let release_url = json.get("html_url").and_then(|v| v.as_str()).map(|s| s.to_string());
-                    let release_notes = json.get("body").and_then(|v| v.as_str()).map(|s| s.to_string());
-                    let published_at = json.get("published_at").and_then(|v| v.as_str()).map(|s| s.to_string());
+                    let release_url = json
+                        .get("html_url")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string());
+                    let release_notes = json
+                        .get("body")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string());
+                    let published_at = json
+                        .get("published_at")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string());
                     let update_available = is_version_newer(&latest, &current);
 
                     return VersionCheckResponse {
@@ -317,13 +327,19 @@ pub async fn get_admin_settings_handler(
     if auth.role != "admin" {
         return Err((
             StatusCode::FORBIDDEN,
-            Json(serde_json::json!({ "error": "Admin privileges required to view system settings" })),
+            Json(
+                serde_json::json!({ "error": "Admin privileges required to view system settings" }),
+            ),
         ));
     }
 
     let metadata_source = match get_db_setting(&state.pool, "metadata_source").await {
-        Some(v) if v.to_lowercase() == "tmdb" || v.to_lowercase() == "themoviedb" => "tmdb".to_string(),
-        Some(v) if v.to_lowercase() == "tvdb" || v.to_lowercase() == "thetvdb" => "tvdb".to_string(),
+        Some(v) if v.to_lowercase() == "tmdb" || v.to_lowercase() == "themoviedb" => {
+            "tmdb".to_string()
+        }
+        Some(v) if v.to_lowercase() == "tvdb" || v.to_lowercase() == "thetvdb" => {
+            "tvdb".to_string()
+        }
         _ => state.config.metadata_source.clone(),
     };
 
@@ -382,13 +398,15 @@ pub async fn get_admin_settings_handler(
 
     let view = SystemSettingsView {
         metadata_source,
-        tvdb_api_key_configured: tvdb_api_key.is_some() && !tvdb_api_key.as_deref().unwrap_or("").is_empty(),
+        tvdb_api_key_configured: tvdb_api_key.is_some()
+            && !tvdb_api_key.as_deref().unwrap_or("").is_empty(),
         tvdb_api_key_masked: tvdb_api_key.as_deref().map(mask_api_key),
         tvdb_api_key: None,
         tvdb_pin,
         tvdb_base_url,
 
-        tmdb_api_key_configured: tmdb_api_key.is_some() && !tmdb_api_key.as_deref().unwrap_or("").is_empty(),
+        tmdb_api_key_configured: tmdb_api_key.is_some()
+            && !tmdb_api_key.as_deref().unwrap_or("").is_empty(),
         tmdb_api_key_masked: tmdb_api_key.as_deref().map(mask_api_key),
         tmdb_api_key: None,
         tmdb_base_url,
@@ -396,7 +414,8 @@ pub async fn get_admin_settings_handler(
         oidc_enabled,
         oidc_issuer_url,
         oidc_client_id,
-        oidc_client_secret_configured: oidc_client_secret.is_some() && !oidc_client_secret.as_deref().unwrap_or("").is_empty(),
+        oidc_client_secret_configured: oidc_client_secret.is_some()
+            && !oidc_client_secret.as_deref().unwrap_or("").is_empty(),
         oidc_client_secret_masked: oidc_client_secret.as_deref().map(mask_api_key),
         oidc_client_secret: None,
         oidc_redirect_url,
@@ -442,7 +461,9 @@ pub async fn update_admin_settings_handler(
     if auth.role != "admin" {
         return Err((
             StatusCode::FORBIDDEN,
-            Json(serde_json::json!({ "error": "Admin privileges required to update system settings" })),
+            Json(
+                serde_json::json!({ "error": "Admin privileges required to update system settings" }),
+            ),
         ));
     }
 
@@ -486,7 +507,12 @@ pub async fn update_admin_settings_handler(
     }
 
     if let Some(enabled) = payload.oidc_enabled {
-        let _ = set_db_setting(&state.pool, "oidc_enabled", if enabled { "true" } else { "false" }).await;
+        let _ = set_db_setting(
+            &state.pool,
+            "oidc_enabled",
+            if enabled { "true" } else { "false" },
+        )
+        .await;
     }
     if let Some(ref val) = payload.oidc_issuer_url {
         let _ = set_db_setting(&state.pool, "oidc_issuer_url", val.trim()).await;
@@ -511,7 +537,12 @@ pub async fn update_admin_settings_handler(
 
     if let Some(pct) = payload.scrobble_threshold_percent {
         let clamped = pct.clamp(1, 100);
-        let _ = set_db_setting(&state.pool, "scrobble_threshold_percent", &clamped.to_string()).await;
+        let _ = set_db_setting(
+            &state.pool,
+            "scrobble_threshold_percent",
+            &clamped.to_string(),
+        )
+        .await;
     }
 
     if let Some(hours) = payload.task_image_interval_hours {

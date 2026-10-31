@@ -189,6 +189,7 @@ Tests in `tests/api_tests.rs` (57 integration tests) cover:
 - First-run setup flow: guided 3-step OIDC setup wizard, live discovery test endpoint, immediate runtime activation, initial user automatic admin promotion, and 403 lockout when users exist
 - Personal user API keys: scoped generation, SHA-256 storage, prefix masking (`bs_live_...`), header & query param auth, multi-user isolation, and cascading deletion
 - Database maintenance & optimization worker: weekly default execution of VACUUM, REINDEX, ANALYZE, and SQLite PRAGMAs (WAL, NORMAL, cache size, temp store) with manual run and schedule customization
+- Security hardening & headers: automatic `Secure` cookie flag over HTTPS, Content-Security-Policy (CSP), Permissions-Policy, Cross-Origin-Opener-Policy (COOP), and conditional Strict-Transport-Security (HSTS)
 
 ### Run Playwright E2E UI Tests
 ```bash

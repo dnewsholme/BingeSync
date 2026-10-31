@@ -83,10 +83,25 @@ pub async fn login_handler(State(state): State<AppState>) -> Result<Redirect, (S
     Ok(Redirect::temporary(&auth_url))
 }
 
+fn is_https_request(app_url: &str, headers: Option<&axum::http::HeaderMap>) -> bool {
+    if app_url.trim().to_lowercase().starts_with("https://") {
+        return true;
+    }
+    if let Some(h) = headers {
+        if let Some(proto) = h.get("x-forwarded-proto").and_then(|v| v.to_str().ok()) {
+            if proto.trim().eq_ignore_ascii_case("https") {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 pub async fn callback_handler(
     State(state): State<AppState>,
     Query(query): Query<CallbackQuery>,
     jar: CookieJar,
+    headers: axum::http::HeaderMap,
 ) -> Result<(CookieJar, Redirect), (StatusCode, Json<serde_json::Value>)> {
     if let Some(err) = query.error {
         let desc = query.error_description.unwrap_or_default();
@@ -180,12 +195,16 @@ pub async fn callback_handler(
         )
     })?;
 
-    let cookie = Cookie::build(("bingesync_token", token))
+    let is_https = is_https_request(&state.config.app_url, Some(&headers));
+    let mut cookie_builder = Cookie::build(("bingesync_token", token))
         .path("/")
         .http_only(true)
         .same_site(SameSite::Lax)
-        .max_age(time::Duration::days(30))
-        .build();
+        .max_age(time::Duration::days(30));
+    if is_https {
+        cookie_builder = cookie_builder.secure(true);
+    }
+    let cookie = cookie_builder.build();
 
     let redirect_url = if !state.config.base_path.is_empty() {
         format!("{}/", state.config.base_path.trim_end_matches('/'))
@@ -199,6 +218,7 @@ pub async fn callback_handler(
 pub async fn dev_login_handler(
     State(state): State<AppState>,
     jar: CookieJar,
+    headers: axum::http::HeaderMap,
     body: Option<Json<DevLoginRequest>>,
 ) -> Result<(CookieJar, Json<serde_json::Value>), (StatusCode, Json<serde_json::Value>)> {
     if !state.config.dev_login_enabled {
@@ -250,12 +270,16 @@ pub async fn dev_login_handler(
         )
     })?;
 
-    let cookie = Cookie::build(("bingesync_token", token.clone()))
+    let is_https = is_https_request(&state.config.app_url, Some(&headers));
+    let mut cookie_builder = Cookie::build(("bingesync_token", token.clone()))
         .path("/")
         .http_only(true)
         .same_site(SameSite::Lax)
-        .max_age(time::Duration::days(30))
-        .build();
+        .max_age(time::Duration::days(30));
+    if is_https {
+        cookie_builder = cookie_builder.secure(true);
+    }
+    let cookie = cookie_builder.build();
 
     let user_resp = user.to_response(&state.config.app_url);
 
@@ -292,13 +316,21 @@ pub async fn get_me_handler(
     Ok(Json(user.to_response(&state.config.app_url)))
 }
 
-pub async fn logout_handler(jar: CookieJar) -> (CookieJar, Json<serde_json::Value>) {
-    let removal_cookie = Cookie::build(("bingesync_token", ""))
+pub async fn logout_handler(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    headers: axum::http::HeaderMap,
+) -> (CookieJar, Json<serde_json::Value>) {
+    let is_https = is_https_request(&state.config.app_url, Some(&headers));
+    let mut removal_builder = Cookie::build(("bingesync_token", ""))
         .path("/")
         .http_only(true)
         .same_site(SameSite::Lax)
-        .max_age(time::Duration::seconds(0))
-        .build();
+        .max_age(time::Duration::seconds(0));
+    if is_https {
+        removal_builder = removal_builder.secure(true);
+    }
+    let removal_cookie = removal_builder.build();
 
     (jar.add(removal_cookie), Json(serde_json::json!({ "status": "logged_out" })))
 }
