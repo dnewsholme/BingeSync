@@ -305,10 +305,31 @@ pub async fn delete_from_radarr(
         )
     })?;
 
+    let client = Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .danger_accept_invalid_certs(true)
+        .build()
+        .unwrap_or_default();
+
+    let mut base_url = safe_url.as_str().trim_end_matches('/').to_string();
+    if safe_url.scheme() == "https" {
+        let probe = client.get(format!("{}/api/v3/system/status", base_url)).header("X-Api-Key", api_key).send().await;
+        if probe.is_err() {
+            let mut fallback = safe_url.clone();
+            if fallback.set_scheme("http").is_ok() {
+                if let Ok(f_res) = client.get(format!("{}/api/v3/system/status", fallback.as_str().trim_end_matches('/'))).header("X-Api-Key", api_key).send().await {
+                    if f_res.status().is_success() || f_res.status() == StatusCode::UNAUTHORIZED {
+                        base_url = fallback.as_str().trim_end_matches('/').to_string();
+                    }
+                }
+            }
+        }
+    }
+
     let delete_files = payload.delete_files.unwrap_or(true);
     let target_url = format!(
         "{}/api/v3/movie/{}?deleteFiles={}&addImportExclusion=false",
-        safe_url.as_str().trim_end_matches('/'),
+        base_url,
         payload.movie_id,
         delete_files
     );
@@ -321,11 +342,6 @@ pub async fn delete_from_radarr(
         "Deleting movie from Radarr"
     );
 
-    let client = Client::builder()
-        .timeout(std::time::Duration::from_secs(10))
-        .danger_accept_invalid_certs(true)
-        .build()
-        .unwrap_or_default();
     let res = client
         .delete(&target_url)
         .header("X-Api-Key", api_key)
@@ -333,9 +349,14 @@ pub async fn delete_from_radarr(
         .await
         .map_err(|e| {
             tracing::warn!(service = "radarr", error = %e, movie_id = payload.movie_id, "Failed to communicate with Radarr during delete");
+            let hint = if safe_url.scheme() == "https" {
+                " (Tip: If Radarr is running on plain HTTP on port 7878, change your Radarr URL scheme from https:// to http:// in Settings)"
+            } else {
+                ""
+            };
             (
                 StatusCode::BAD_GATEWAY,
-                Json(serde_json::json!({ "error": format!("Failed to communicate with Radarr: {}", e) })),
+                Json(serde_json::json!({ "error": format!("Failed to communicate with Radarr: {}{}", e, hint) })),
             )
         })?;
 
@@ -385,7 +406,22 @@ pub async fn delete_from_sonarr(
         .danger_accept_invalid_certs(true)
         .build()
         .unwrap_or_default();
-    let base_url = safe_url.as_str().trim_end_matches('/');
+
+    let mut base_url = safe_url.as_str().trim_end_matches('/').to_string();
+    if safe_url.scheme() == "https" {
+        let probe = client.get(format!("{}/api/v3/system/status", base_url)).header("X-Api-Key", api_key).send().await;
+        if probe.is_err() {
+            let mut fallback = safe_url.clone();
+            if fallback.set_scheme("http").is_ok() {
+                if let Ok(f_res) = client.get(format!("{}/api/v3/system/status", fallback.as_str().trim_end_matches('/'))).header("X-Api-Key", api_key).send().await {
+                    if f_res.status().is_success() || f_res.status() == StatusCode::UNAUTHORIZED {
+                        base_url = fallback.as_str().trim_end_matches('/').to_string();
+                    }
+                }
+            }
+        }
+    }
+    let base_url = base_url.as_str();
     let action = payload.action.as_deref().unwrap_or("delete_series");
 
     match action {
@@ -450,9 +486,14 @@ pub async fn delete_from_sonarr(
                 .await
                 .map_err(|e| {
                     tracing::warn!(service = "sonarr", error = %e, series_id = payload.series_id, "Failed to fetch series from Sonarr");
+                    let hint = if safe_url.scheme() == "https" {
+                        " (Tip: If Sonarr is running on plain HTTP on port 8989, change your Sonarr URL scheme from https:// to http:// in Settings)"
+                    } else {
+                        ""
+                    };
                     (
                         StatusCode::BAD_GATEWAY,
-                        Json(serde_json::json!({ "error": format!("Failed to fetch series from Sonarr: {}", e) })),
+                        Json(serde_json::json!({ "error": format!("Failed to fetch series from Sonarr: {}{}", e, hint) })),
                     )
                 })?;
 
@@ -588,9 +629,14 @@ pub async fn delete_from_sonarr(
                 .await
                 .map_err(|e| {
                     tracing::warn!(service = "sonarr", error = %e, series_id = payload.series_id, "Failed to fetch series from Sonarr");
+                    let hint = if safe_url.scheme() == "https" {
+                        " (Tip: If Sonarr is running on plain HTTP on port 8989, change your Sonarr URL scheme from https:// to http:// in Settings)"
+                    } else {
+                        ""
+                    };
                     (
                         StatusCode::BAD_GATEWAY,
-                        Json(serde_json::json!({ "error": format!("Failed to fetch series from Sonarr: {}", e) })),
+                        Json(serde_json::json!({ "error": format!("Failed to fetch series from Sonarr: {}{}", e, hint) })),
                     )
                 })?;
 
@@ -699,9 +745,14 @@ pub async fn delete_from_sonarr(
                 .await
                 .map_err(|e| {
                     tracing::warn!(service = "sonarr", error = %e, series_id = payload.series_id, "Failed to communicate with Sonarr during series delete");
+                    let hint = if safe_url.scheme() == "https" {
+                        " (Tip: If Sonarr is running on plain HTTP on port 8989, change your Sonarr URL scheme from https:// to http:// in Settings)"
+                    } else {
+                        ""
+                    };
                     (
                         StatusCode::BAD_GATEWAY,
-                        Json(serde_json::json!({ "error": format!("Failed to communicate with Sonarr: {}", e) })),
+                        Json(serde_json::json!({ "error": format!("Failed to communicate with Sonarr: {}{}", e, hint) })),
                     )
                 })?;
 

@@ -27,7 +27,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=frontend-builder /app/web/dist ./web/dist
 
 # Copy Cargo configuration and sources
-COPY Cargo.toml Cargo.lock ./
+COPY Cargo.toml Cargo.lock build.rs ./
 COPY src/ ./src/
 
 ARG APP_VERSION=0.1.0

@@ -53,7 +53,7 @@ pub const APP_VERSION: &str = match option_env!("BINGESYNC_VERSION") {
 
 pub const RUSTC_VERSION: &str = match option_env!("RUSTC_VERSION") {
     Some(v) => v,
-    None => "rustc 1.85+",
+    None => "rustc 1.99+",
 };
 
 pub fn get_os_pretty_name() -> String {
