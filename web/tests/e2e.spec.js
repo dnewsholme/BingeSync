@@ -168,6 +168,10 @@ test.describe('BingeSync Web UI & Webhooks', () => {
     await page.click('#tab-settings');
     const webhookB = await page.locator('#webhook-url-input').inputValue();
     expect(webhookB).not.toEqual(webhookA);
+
+    // Sign out to clean up session
+    await page.click('#btn-logout');
+    await expect(page.locator('.auth-header h2')).toBeVisible();
   });
 
   test('Trakt history and rating import flow in Web UI', async ({ page }) => {
@@ -177,18 +181,20 @@ test.describe('BingeSync Web UI & Webhooks', () => {
     await page.fill('#dev-email', user);
     await page.fill('#dev-name', 'Trakt Importer');
     await page.click('#btn-dev-submit');
+    await expect(page.locator('#user-display-name')).toContainText('Trakt Importer');
 
     // 1. Open Import Trakt modal
     await page.click('#btn-open-import-modal');
     await expect(page.locator('#modal-import-history')).toBeVisible();
 
     // 2. Paste Trakt JSON sample with exact past timestamp and 10/10 rating
+    const movieTitle = `Interstellar_${Date.now()}`;
     const traktData = JSON.stringify([
       {
         "watched_at": "2021-12-25T20:15:00.000Z",
         "type": "movie",
         "movie": {
-          "title": "Interstellar (Trakt Import)",
+          "title": movieTitle,
           "year": 2014
         },
         "rating": 10
@@ -207,13 +213,13 @@ test.describe('BingeSync Web UI & Webhooks', () => {
     await expect(page.locator('#modal-import-history')).toBeHidden();
 
     // 4. Verify item and star rating appear on timeline
-    await expect(page.locator('.timeline-container')).toContainText('Interstellar (Trakt Import)');
+    await expect(page.locator('.timeline-container')).toContainText(movieTitle);
     await expect(page.locator('.timeline-container')).toContainText('★ 10/10');
     // Date should be formatted Dec 25, 2021
     await expect(page.locator('.timeline-container')).toContainText('2021');
 
     // 5. Open detail modal and verify rating and watched timestamp
-    await page.locator('#timeline-container .scrobble-card', { hasText: 'Interstellar (Trakt Import)' }).click();
+    await page.locator('#timeline-container .scrobble-card', { hasText: movieTitle }).click();
     await expect(page.locator('#modal-item-detail')).toBeVisible();
     await expect(page.locator('#detail-body')).toContainText('★ 10/10');
     await expect(page.locator('#detail-body')).toContainText('2021');
@@ -226,15 +232,19 @@ test.describe('BingeSync Web UI & Webhooks', () => {
     await page.fill('#dev-email', user);
     await page.fill('#dev-name', 'ZIP Importer');
     await page.click('#btn-dev-submit');
+    await expect(page.locator('#user-display-name')).toContainText('ZIP Importer');
+
+    const duneTitle = `Dune_${Date.now()}`;
+    const avatarTitle = `Avatar_${Date.now()}`;
 
     // Create a temporary zip with multi-file history and ratings
     const tempZipPath = path.resolve('test-trakt-temp.zip');
     execSync(`python3 -c "
 import zipfile, json
 with zipfile.ZipFile('${tempZipPath}', 'w') as z:
-    z.writestr('ratings-movies-1.json', json.dumps([{'rated_at':'2024-01-01T00:00:00Z','rating':9,'type':'movie','movie':{'title':'Dune: Part Two','year':2024,'ids':{'imdb':'tt15239678'}}}]))
-    z.writestr('watched-history-1.json', json.dumps([{'id':1,'watched_at':'2024-03-01T20:00:00Z','type':'movie','movie':{'title':'Dune: Part Two','year':2024,'ids':{'imdb':'tt15239678'}}}]))
-    z.writestr('watched-history-2.json', json.dumps([{'id':2,'watched_at':'2023-01-01T15:00:00Z','type':'movie','movie':{'title':'Avatar 2','year':2022}}]))
+    z.writestr('ratings-movies-1.json', json.dumps([{'rated_at':'2024-01-01T00:00:00Z','rating':9,'type':'movie','movie':{'title':'${duneTitle}','year':2024,'ids':{'imdb':'tt15239678'}}}]))
+    z.writestr('watched-history-1.json', json.dumps([{'id':1,'watched_at':'2024-03-01T20:00:00Z','type':'movie','movie':{'title':'${duneTitle}','year':2024,'ids':{'imdb':'tt15239678'}}}]))
+    z.writestr('watched-history-2.json', json.dumps([{'id':2,'watched_at':'2023-01-01T15:00:00Z','type':'movie','movie':{'title':'${avatarTitle}','year':2022}}]))
 "`);
 
     try {
@@ -254,8 +264,8 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
       await page.click('#btn-cancel-import-modal');
       await expect(page.locator('#modal-import-history')).toBeHidden();
 
-      // 4. Verify latest month (March 2024) displays Dune: Part Two with rating
-      await expect(page.locator('.timeline-container')).toContainText('Dune: Part Two');
+      // 4. Verify latest month (March 2024) displays Dune with rating
+      await expect(page.locator('.timeline-container')).toContainText(duneTitle);
       await expect(page.locator('.timeline-container')).toContainText('★ 9/10');
 
       // 5. Test drill-down: Drill up to Year view, then All Years, then down into 2023 January for Avatar 2
@@ -269,7 +279,7 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
       await expect(page.locator('.timeline-container')).toContainText('2023 — Months Overview');
 
       await page.locator('.timeline-month-card', { hasText: 'January' }).click();
-      await expect(page.locator('.timeline-container')).toContainText('Avatar 2');
+      await expect(page.locator('.timeline-container')).toContainText(avatarTitle);
     } finally {
       if (fs.existsSync(tempZipPath)) {
         fs.unlinkSync(tempZipPath);

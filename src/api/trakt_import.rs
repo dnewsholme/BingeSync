@@ -243,11 +243,15 @@ pub async fn import_trakt_handler(
             .execute(&mut *tx)
             .await;
 
-        if insert_res.is_ok() {
-            imported_count += 1;
-            existing_map.insert(key, (scrobble_id, item.user_rating));
-        } else {
-            skipped_count += 1;
+        match insert_res {
+            Ok(_) => {
+                imported_count += 1;
+                existing_map.insert(key, (scrobble_id, item.user_rating));
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, title = %item.title, "Failed to insert Trakt scrobble during import");
+                skipped_count += 1;
+            }
         }
     }
 
