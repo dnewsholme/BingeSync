@@ -56,6 +56,21 @@ pub const RUSTC_VERSION: &str = match option_env!("RUSTC_VERSION") {
     None => "rustc 1.99+",
 };
 
+pub const AXUM_VERSION: &str = match option_env!("AXUM_VERSION") {
+    Some(v) => v,
+    None => "0.8",
+};
+
+pub const TOKIO_VERSION: &str = match option_env!("TOKIO_VERSION") {
+    Some(v) => v,
+    None => "1.40",
+};
+
+pub const VITE_VERSION: &str = match option_env!("VITE_VERSION") {
+    Some(v) => v,
+    None => "8.3.5",
+};
+
 pub fn get_os_pretty_name() -> String {
     if let Ok(content) = std::fs::read_to_string("/etc/os-release") {
         for line in content.lines() {
@@ -153,17 +168,17 @@ pub async fn build_system_components(
         },
         SystemComponentInfo {
             name: "Axum Web Framework".to_string(),
-            version: "0.8".to_string(),
+            version: format!("v{}", AXUM_VERSION.trim_start_matches('v')),
             description: "Asynchronous HTTP routing and middleware framework".to_string(),
         },
         SystemComponentInfo {
             name: "Tokio Async Runtime".to_string(),
-            version: "1.40".to_string(),
+            version: format!("v{}", TOKIO_VERSION.trim_start_matches('v')),
             description: "Multi-threaded asynchronous task runtime".to_string(),
         },
         SystemComponentInfo {
             name: "Web Interface".to_string(),
-            version: "Vite 5 / SPA".to_string(),
+            version: format!("Vite {} / SPA", VITE_VERSION.trim_start_matches('v')),
             description: "Embedded reactive single-page frontend".to_string(),
         },
     ];

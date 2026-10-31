@@ -7577,6 +7577,13 @@ async fn test_admin_version_and_oidc_user_group_configuration() {
     assert!(comps.iter().any(|c| c["name"] == "SQLite Engine"));
     assert!(comps.iter().any(|c| c["name"] == "Rust Toolchain"));
 
+    let axum_comp = comps.iter().find(|c| c["name"] == "Axum Web Framework").expect("Axum component");
+    assert!(axum_comp["version"].as_str().unwrap().starts_with("v0.8"));
+    let tokio_comp = comps.iter().find(|c| c["name"] == "Tokio Async Runtime").expect("Tokio component");
+    assert!(tokio_comp["version"].as_str().unwrap().starts_with("v1."));
+    let web_comp = comps.iter().find(|c| c["name"] == "Web Interface").expect("Web Interface component");
+    assert!(web_comp["version"].as_str().unwrap().contains("Vite 8"));
+
     let req = Request::builder()
         .uri("/api/v1/admin/system-info")
         .header(header::AUTHORIZATION, format!("Bearer {}", admin_jwt))

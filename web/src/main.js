@@ -4633,9 +4633,9 @@ function renderVersionInfo(info) {
       { name: 'Operating System', version: info.os_name || 'Linux', description: 'Host/container runtime environment' },
       { name: 'SQLite Engine', version: info.sqlite_version || '3.54+', description: 'Embedded SQL database engine (WAL journal mode)' },
       { name: 'Rust Toolchain', version: info.rust_version || 'rustc 1.99+', description: 'Binary compiler and build environment' },
-      { name: 'Axum Web Framework', version: '0.8', description: 'Asynchronous HTTP routing and middleware framework' },
-      { name: 'Tokio Async Runtime', version: '1.40', description: 'Multi-threaded asynchronous task runtime' },
-      { name: 'Web Interface', version: 'Vite 8 / SPA', description: 'Embedded reactive Trakt-inspired single-page frontend' },
+      { name: 'Axum Web Framework', version: 'v0.8+', description: 'Asynchronous HTTP routing and middleware framework' },
+      { name: 'Tokio Async Runtime', version: 'v1.40+', description: 'Multi-threaded asynchronous task runtime' },
+      { name: 'Web Interface', version: 'Vite 8.x / SPA', description: 'Embedded reactive Trakt-inspired single-page frontend' },
     ];
 
     el.adminSystemComponentsTbody.innerHTML = components.map(c => `
