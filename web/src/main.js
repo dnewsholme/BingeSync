@@ -4430,6 +4430,7 @@ function switchAdminSubview(subviewId) {
     stopLogsAutoRefresh();
     loadAdminTasks();
   } else if (subviewId === 'admin-sub-logs') {
+    initialLogsLoaded = false;
     updateAdminLogsFilterBadge();
     loadAdminLogs();
     startLogsAutoRefresh();
@@ -4554,8 +4555,8 @@ async function loadAdminSettings() {
     if (el.settingOidcClientId) el.settingOidcClientId.value = s.oidc_client_id || '';
     applySecretField(el.settingOidcClientSecret, s.oidc_client_secret, s.oidc_client_secret_masked);
     if (el.settingOidcRedirectUrl) el.settingOidcRedirectUrl.value = s.oidc_redirect_url || '';
-    if (el.settingOidcAdminGroup) el.settingOidcAdminGroup.value = s.oidc_admin_group || '';
-    if (el.settingOidcUserGroup) el.settingOidcUserGroup.value = s.oidc_user_group || '';
+    if (el.settingOidcAdminGroup && document.activeElement !== el.settingOidcAdminGroup) el.settingOidcAdminGroup.value = s.oidc_admin_group || '';
+    if (el.settingOidcUserGroup && document.activeElement !== el.settingOidcUserGroup) el.settingOidcUserGroup.value = s.oidc_user_group || '';
     if (el.settingScrobbleThreshold) el.settingScrobbleThreshold.value = s.scrobble_threshold_percent != null ? s.scrobble_threshold_percent : 80;
 
     renderVersionInfo(s);
@@ -4585,6 +4586,11 @@ function renderVersionInfo(info) {
   }
 
   if (info.update_available) {
+    if (el.adminVersionTag) {
+      el.adminVersionTag.style.background = 'rgba(251, 191, 36, 0.15)';
+      el.adminVersionTag.style.borderColor = '#fbbf24';
+      el.adminVersionTag.style.color = '#fbbf24';
+    }
     if (el.adminVersionStatusDesc) {
       el.adminVersionStatusDesc.innerHTML = `<span style="color:#fbbf24;font-weight:600;">🚀 Update available: v${escapeHtml(info.latest_version)}</span>`;
     }
@@ -4600,29 +4606,36 @@ function renderVersionInfo(info) {
     if (el.adminVersionReleaseLink && info.release_url) {
       el.adminVersionReleaseLink.href = info.release_url;
     }
-  } else if (info.latest_version) {
-    if (el.adminVersionStatusDesc) {
-      el.adminVersionStatusDesc.innerHTML = `<span style="color:#34d399;font-weight:600;">✓ Up to date (v${escapeHtml(current)})</span>`;
-    }
-    if (el.adminVersionUpdateBanner) el.adminVersionUpdateBanner.style.display = 'none';
   } else {
-    if (el.adminVersionStatusDesc) {
-      el.adminVersionStatusDesc.textContent = `BingeSync v${current} (GitHub releases check completed)`;
+    if (el.adminVersionTag) {
+      el.adminVersionTag.style.background = 'rgba(52, 211, 153, 0.15)';
+      el.adminVersionTag.style.borderColor = '#34d399';
+      el.adminVersionTag.style.color = '#34d399';
     }
-    if (el.adminVersionUpdateBanner) el.adminVersionUpdateBanner.style.display = 'none';
+    if (info.latest_version) {
+      if (el.adminVersionStatusDesc) {
+        el.adminVersionStatusDesc.innerHTML = `<span style="color:#34d399;font-weight:600;">✓ Up to date (v${escapeHtml(current)})</span>`;
+      }
+      if (el.adminVersionUpdateBanner) el.adminVersionUpdateBanner.style.display = 'none';
+    } else {
+      if (el.adminVersionStatusDesc) {
+        el.adminVersionStatusDesc.textContent = `BingeSync v${current} (GitHub releases check completed)`;
+      }
+      if (el.adminVersionUpdateBanner) el.adminVersionUpdateBanner.style.display = 'none';
+    }
   }
 
   // Render components table in About tab
   if (el.adminSystemComponentsTbody) {
     const components = info.components || [
       { name: 'BingeSync', version: `v${current}`, description: 'Self-hosted media tracker and scrobbler service' },
-      { name: 'Docker Base Image', version: info.docker_base_image || 'debian:bookworm-slim', description: 'Official minimal Debian slim container runtime' },
+      { name: 'Docker Base Image', version: info.docker_base_image || 'debian:trixie-slim', description: 'Official minimal Debian slim container runtime' },
       { name: 'Operating System', version: info.os_name || 'Linux', description: 'Host/container runtime environment' },
-      { name: 'SQLite Engine', version: info.sqlite_version || '3.45+', description: 'Embedded SQL database engine (WAL journal mode)' },
-      { name: 'Rust Toolchain', version: info.rust_version || 'rustc 1.85+', description: 'Binary compiler and build environment' },
+      { name: 'SQLite Engine', version: info.sqlite_version || '3.54+', description: 'Embedded SQL database engine (WAL journal mode)' },
+      { name: 'Rust Toolchain', version: info.rust_version || 'rustc 1.99+', description: 'Binary compiler and build environment' },
       { name: 'Axum Web Framework', version: '0.8', description: 'Asynchronous HTTP routing and middleware framework' },
       { name: 'Tokio Async Runtime', version: '1.40', description: 'Multi-threaded asynchronous task runtime' },
-      { name: 'Web Interface', version: 'Vite 5 / SPA', description: 'Embedded reactive Trakt-inspired single-page frontend' },
+      { name: 'Web Interface', version: 'Vite 8 / SPA', description: 'Embedded reactive Trakt-inspired single-page frontend' },
     ];
 
     el.adminSystemComponentsTbody.innerHTML = components.map(c => `
@@ -4979,6 +4992,8 @@ async function loadAdminLogs() {
   }
 }
 
+let initialLogsLoaded = false;
+
 function renderAdminLogs(logs) {
   if (!el.adminLogsViewer) return;
   if (!logs || logs.length === 0) {
@@ -4986,7 +5001,7 @@ function renderAdminLogs(logs) {
     return;
   }
 
-  const wasAtBottom = el.adminLogsViewer.scrollHeight - el.adminLogsViewer.scrollTop <= el.adminLogsViewer.clientHeight + 40;
+  const wasAtBottom = !initialLogsLoaded || (el.adminLogsViewer.scrollHeight - el.adminLogsViewer.scrollTop <= el.adminLogsViewer.clientHeight + 60);
 
   el.adminLogsViewer.innerHTML = logs.map(l => {
     const time = new Date(l.timestamp).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -5004,6 +5019,7 @@ function renderAdminLogs(logs) {
   if (wasAtBottom) {
     el.adminLogsViewer.scrollTop = el.adminLogsViewer.scrollHeight;
   }
+  initialLogsLoaded = true;
 }
 
 function startLogsAutoRefresh() {

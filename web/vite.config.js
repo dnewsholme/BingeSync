@@ -2,6 +2,10 @@ import { defineConfig } from 'vite';
 
 export default defineConfig({
   base: './',
+  build: {
+    target: 'es2022',
+    cssTarget: 'chrome100',
+  },
   server: {
     port: 5173,
     proxy: {

@@ -39,7 +39,7 @@ RUN cargo build --release
 # ==========================================
 # Stage 3: Minimal Runtime Image
 # ==========================================
-FROM debian:bookworm-slim AS runtime
+FROM debian:trixie-slim AS runtime
 
 # Install minimal runtime dependencies (SSL certificates, curl for healthcheck)
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -69,7 +69,7 @@ ENV HOST=0.0.0.0 \
     APP_URL=http://localhost:8080 \
     OIDC_ENABLED=false \
     DEV_LOGIN_ENABLED=true \
-    DOCKER_BASE_IMAGE="debian:bookworm-slim"
+    DOCKER_BASE_IMAGE="debian:trixie-slim"
 
 # Storage volumes for SQLite database and database backups
 VOLUME ["/data", "/backup"]

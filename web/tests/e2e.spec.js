@@ -1839,6 +1839,7 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     // Switch back to settings subtab for standard user group testing
     await page.click('#admin-subnav-pills button[data-subview="admin-sub-settings"]');
     await expect(page.locator('#admin-sub-settings')).toBeVisible();
+    await expect(page.locator('#setting-tmdb-base-url')).toHaveValue('https://api.themoviedb.org/3');
 
     // 10. Verify standard user group setting
     await expect(page.locator('#setting-oidc-user-group')).toBeVisible();

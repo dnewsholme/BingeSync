@@ -91,7 +91,7 @@ BingeSync/
 | **Auth** | JWT & OIDC | `jsonwebtoken`, `reqwest`, `base64`, `sha2`, PKCE S256 |
 | **Frontend** | Vanilla JS & CSS | Built with Vite 5, Google Fonts Inter, embedded via `rust-embed` |
 | **Testing** | Cargo & Playwright | `cargo test` for backend, `@playwright/test` for browser E2E |
-| **Packaging** | Docker | Multi-stage build (`node:22-alpine` -> `rust:slim` -> `debian:bookworm-slim`) |
+| **Packaging** | Docker | Multi-stage build (`node:22-alpine` -> `rust:slim` -> `debian:trixie-slim`) |
 
 ---
 

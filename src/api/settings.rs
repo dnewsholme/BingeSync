@@ -77,7 +77,7 @@ pub fn get_docker_base_image() -> String {
             return clean.to_string();
         }
     }
-    "debian:bookworm-slim".to_string()
+    "debian:trixie-slim".to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

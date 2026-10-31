@@ -68,7 +68,7 @@ impl LogBuffer {
                 .map(|s| s.trim().to_lowercase())
                 .filter(|s| !s.is_empty());
 
-            let filtered: Vec<LogEntry> = iter
+            let mut filtered: Vec<LogEntry> = iter
                 .filter(|e| {
                     if let Some(ref lvl) = min_level.map(|s| s.to_uppercase()) {
                         match lvl.as_str() {
@@ -135,10 +135,13 @@ impl LogBuffer {
 
                     true
                 })
+                .take(limit)
                 .cloned()
                 .collect();
 
-            filtered.into_iter().take(limit).collect()
+            // Return in top-to-bottom chronological order (oldest at top, newest at bottom)
+            filtered.reverse();
+            filtered
         } else {
             Vec::new()
         }
