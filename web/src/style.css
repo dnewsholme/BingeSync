@@ -2038,7 +2038,9 @@ select.filter-ctrl {
   padding: 2px 6px;
   border-radius: 3px;
   width: fit-content;
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   margin-bottom: 4px;
 }
 
@@ -4935,9 +4937,16 @@ body[data-theme="rose"] .heatmap-cell[data-level="4"] { background: rgba(244, 63
   margin-top: 4px;
 }
 
+.service-icon {
+  display: inline-block;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
 .source-tag-card {
   display: inline-flex;
   align-items: center;
+  gap: 4px;
   font-size: 0.65rem;
   font-weight: 700;
   letter-spacing: 0.03em;
@@ -4949,6 +4958,13 @@ body[data-theme="rose"] .heatmap-cell[data-level="4"] { background: rgba(244, 63
   transition: all 0.15s ease;
   background: rgba(255, 255, 255, 0.08);
   color: #cbd5e1;
+}
+
+.source-tag-card svg,
+.detail-source-badge svg {
+  flex-shrink: 0;
+  display: inline-block;
+  vertical-align: middle;
 }
 
 .source-tag-card:hover {
@@ -4986,6 +5002,57 @@ body[data-theme="rose"] .heatmap-cell[data-level="4"] { background: rgba(244, 63
 }
 
 .source-tag-card.source-manual {
+  background: rgba(56, 189, 248, 0.15);
+  border-color: rgba(56, 189, 248, 0.4);
+  color: #38bdf8;
+}
+
+.detail-source-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  text-transform: capitalize;
+  vertical-align: middle;
+  background: rgba(255, 255, 255, 0.08);
+  color: #cbd5e1;
+}
+
+.detail-source-badge.source-plex {
+  background: rgba(229, 160, 13, 0.15);
+  border-color: rgba(229, 160, 13, 0.4);
+  color: #fbbf24;
+}
+
+.detail-source-badge.source-jellyfin {
+  background: rgba(170, 92, 195, 0.15);
+  border-color: rgba(170, 92, 195, 0.4);
+  color: #c084fc;
+}
+
+.detail-source-badge.source-emby {
+  background: rgba(82, 181, 75, 0.15);
+  border-color: rgba(82, 181, 75, 0.4);
+  color: #4ade80;
+}
+
+.detail-source-badge.source-tautulli {
+  background: rgba(235, 115, 30, 0.15);
+  border-color: rgba(235, 115, 30, 0.4);
+  color: #fb923c;
+}
+
+.detail-source-badge.source-trakt {
+  background: rgba(237, 28, 36, 0.15);
+  border-color: rgba(237, 28, 36, 0.4);
+  color: #f87171;
+}
+
+.detail-source-badge.source-manual {
   background: rgba(56, 189, 248, 0.15);
   border-color: rgba(56, 189, 248, 0.4);
   color: #38bdf8;

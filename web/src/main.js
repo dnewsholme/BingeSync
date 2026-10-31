@@ -17,6 +17,29 @@ export function updateMonthNames() {
   }
 }
 
+// Service SVG Logos & Badges
+export const SERVICE_ICONS = {
+  plex: `<svg class="service-icon icon-plex" width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M11.64 0H4.68l7.68 12-7.68 12h6.96l7.68-12L11.64 0z"/></svg>`,
+  jellyfin: `<svg class="service-icon icon-jellyfin" width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2.5a1 1 0 0 0-.5.14L3.2 8.16A1 1 0 0 0 2.7 9v6a1 1 0 0 0 .5.84l8.3 5.52a1 1 0 0 0 1 0l8.3-5.52a1 1 0 0 0 .5-.84V9a1 1 0 0 0-.5-.84L12.5 2.64A1 1 0 0 0 12 2.5zm0 3.2 6.8 4.2v4.2L12 18.3 5.2 14.1V9.9L12 5.7zm0 2.9-4 2.5v1.8l4 2.5 4-2.5v-1.8l-4-2.5z"/></svg>`,
+  emby: `<svg class="service-icon icon-emby" width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M11.2 1.5a2.5 2.5 0 0 1 3.6 0l7.7 7.7a2.5 2.5 0 0 1 0 3.6l-7.7 7.7a2.5 2.5 0 0 1-3.6 0l-7.7-7.7a2.5 2.5 0 0 1 0-3.6l7.7-7.7zm-1.2 6v9l6.5-4.5-6.5-4.5z"/></svg>`,
+  tautulli: `<svg class="service-icon icon-tautulli" width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2c.5 3 2 4.5 3.5 6 1.8 1.8 2.5 3.5 2.5 5.5 0 4.4-3.6 8-8 8s-8-3.6-8-8c0-3.5 2.2-6.5 5.5-7.5-.5 2 0 3.5 1 4.5 1.5-2 2.5-5 3.5-8.5z"/></svg>`,
+  trakt: `<svg class="service-icon icon-trakt" width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5zm6.5 3v2.2h2.2v5.6h2.6v-5.6h2.2V8H9.5z"/></svg>`,
+  manual: `<svg class="service-icon icon-manual" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>`,
+  radarr: `<svg class="service-icon icon-radarr" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 9 9"/><line x1="12" y1="12" x2="18.36" y2="5.64"/><circle cx="12" cy="12" r="2.5" fill="currentColor"/></svg>`,
+  sonarr: `<svg class="service-icon icon-sonarr" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>`
+};
+
+export function getSourceBadgeInfo(source) {
+  const s = (source || '').toLowerCase().trim();
+  const iconSvg = SERVICE_ICONS[s] || '';
+  return {
+    source: s,
+    name: source,
+    iconSvg,
+    cssClass: `source-${s}`
+  };
+}
+
 // Application State
 const state = {
   user: null,
@@ -1752,9 +1775,9 @@ function renderScrobbleCard(item, isHistory = false) {
     ? `<div class="scrobble-progress-bar"><div class="scrobble-progress-fill" style="width: ${Math.min(100, Math.max(0, item.progress_percent))}%;"></div></div>`
     : '';
 
-  const sourceName = item.source ? item.source.toLowerCase() : '';
-  const sourceHtml = item.source
-    ? `<button type="button" class="source-tag-card source-${escapeHtml(sourceName)}" data-source="${escapeHtml(item.source)}" title="Filter by source: ${escapeHtml(item.source)}">${escapeHtml(item.source.toUpperCase())}</button>`
+  const sourceInfo = item.source ? getSourceBadgeInfo(item.source) : null;
+  const sourceHtml = sourceInfo
+    ? `<button type="button" class="source-tag-card ${sourceInfo.cssClass}" data-source="${escapeHtml(item.source)}" title="Filter by source: ${escapeHtml(item.source)}">${sourceInfo.iconSvg}<span>${escapeHtml(item.source.toUpperCase())}</span></button>`
     : '';
   const importHtml = item.imported_from
     ? `<span class="import-tag-card" title="Imported from ${escapeHtml(item.imported_from)}">📥 ${escapeHtml(item.imported_from)}</span>`
@@ -3872,7 +3895,10 @@ async function openDetailModal(item) {
           <div style="font-size:0.85rem;color:var(--text-dim);">Release: <strong style="color:#fff;">${yearStr}</strong></div>
           <div style="font-size:0.85rem;color:var(--text-dim);">Duration: <strong style="color:#fff;">${durationStr}</strong></div>
           <div style="font-size:0.85rem;color:var(--text-dim);">Watched: <strong style="color:#fff;">${watchedStr}</strong></div>
-          ${item.source ? `<div style="font-size:0.85rem;color:var(--text-dim);" id="detail-source-display">Watched From: <strong style="color:var(--accent-primary, #6366f1);text-transform:capitalize;">${escapeHtml(item.source)}</strong></div>` : ''}
+          ${item.source ? (() => {
+            const si = getSourceBadgeInfo(item.source);
+            return `<div style="font-size:0.85rem;color:var(--text-dim);display:inline-flex;align-items:center;gap:6px;" id="detail-source-display">Watched From: <span class="detail-source-badge ${si.cssClass}">${si.iconSvg}<strong>${escapeHtml(item.source)}</strong></span></div>`;
+          })() : ''}
           ${item.imported_from ? `<div style="font-size:0.85rem;color:var(--text-dim);" id="detail-import-display">Imported From: <strong style="color:#38bdf8;text-transform:capitalize;">📥 ${escapeHtml(item.imported_from)}</strong></div>` : ''}
           ${item.source_user ? `<div style="font-size:0.85rem;color:var(--text-dim);" id="detail-user-display">Watched By: <strong style="color:#c084fc;">👤 ${escapeHtml(item.source_user)}</strong></div>` : ''}
           ${statusBadge}
@@ -4320,7 +4346,7 @@ async function checkLibraryIntegrations(item) {
         container.innerHTML = `
           <div class="arr-cleanup-card">
             <div class="arr-info">
-              <span class="arr-badge arr-badge-radarr">Found in Radarr</span>
+              <span class="arr-badge arr-badge-radarr">${SERVICE_ICONS.radarr} Found in Radarr</span>
               <span class="arr-title">${escapeHtml(res.title || item.title)}</span>
               <span class="arr-sub">${res.has_file ? 'Media files on disk & monitored' : 'Monitored in library'}</span>
             </div>
@@ -4355,7 +4381,7 @@ async function checkLibraryIntegrations(item) {
           <div class="arr-cleanup-card arr-cleanup-card-sonarr">
             <div class="arr-info">
               <div style="display:flex;align-items:center;gap:8px;">
-                <span class="arr-badge arr-badge-sonarr">Found in Sonarr</span>
+                <span class="arr-badge arr-badge-sonarr">${SERVICE_ICONS.sonarr} Found in Sonarr</span>
                 <span class="arr-title">${escapeHtml(showTitle)}</span>
               </div>
               <span class="arr-sub">Sonarr cleanup options:</span>
