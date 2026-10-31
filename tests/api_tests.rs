@@ -3250,6 +3250,19 @@ async fn test_tautulli_import_and_deduplication() {
     assert_eq!(sev_scrobble.1, "Good News About Hell");
     assert_eq!(sev_scrobble.2, 1);
     assert_eq!(sev_scrobble.3, 1);
+
+    // Verify source is "plex" and imported_from is "tautulli"
+    let (source, imported_from, source_user): (Option<String>, Option<String>, Option<String>) = sqlx::query_as(
+        "SELECT source, imported_from, source_user FROM scrobbles WHERE user_id = ? AND title = 'Good News About Hell'"
+    )
+    .bind(user_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+
+    assert_eq!(source.as_deref(), Some("plex"));
+    assert_eq!(imported_from.as_deref(), Some("tautulli"));
+    assert_eq!(source_user.as_deref(), Some("daryl_tautulli"));
 }
 
 #[tokio::test]
@@ -8067,6 +8080,304 @@ async fn test_media_writeback_endpoints_and_trigger() {
     assert_eq!(result["status"], "success");
     assert_eq!(result["scrobbles_processed"], 1);
 }
+
+#[tokio::test]
+async fn test_scrobble_source_and_user_logging_and_search() {
+    let (app, pool, config) = setup_test_app().await;
+
+    // 1. Create a user
+    let user_id = "user-source-test-1".to_string();
+    let webhook_token = "token-source-test-1".to_string();
+    sqlx::query(
+        "INSERT INTO users (id, email, display_name, webhook_token) VALUES (?, ?, ?, ?)",
+    )
+    .bind(&user_id)
+    .bind("multisync@example.com")
+    .bind("Family Sync")
+    .bind(&webhook_token)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    // Configure multiple allowed usernames for sync: "daryl, sarah, kids"
+    bingesync::api::user_settings::set_user_setting(&pool, &user_id, "plex_username", "daryl, sarah, kids").await.unwrap();
+    bingesync::api::user_settings::set_user_setting(&pool, &user_id, "jellyfin_username", "daryl, sarah, kids").await.unwrap();
+
+    let token = create_jwt(&user_id, "multisync@example.com", &config.jwt_secret).unwrap();
+
+    // 2. Plex webhook for "sarah" watching "Moana"
+    let plex_payload = json!({
+        "event": "media.scrobble",
+        "user": true,
+        "owner": true,
+        "Account": {
+            "id": 101,
+            "title": "Sarah"
+        },
+        "Metadata": {
+            "type": "movie",
+            "title": "Moana",
+            "year": 2016,
+            "duration": 6420000,
+            "viewOffset": 6420000,
+            "ratingKey": "1001"
+        }
+    });
+
+    let req = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/webhooks/plex/{}", webhook_token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(plex_payload.to_string()))
+        .unwrap();
+
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+
+    // 3. Jellyfin webhook for "daryl" watching "Severance"
+    let jellyfin_payload = json!({
+        "NotificationType": "PlaybackStop",
+        "NotificationUsername": "daryl",
+        "UserId": "jf-user-daryl-1",
+        "ItemType": "Episode",
+        "Name": "Good News About Hell",
+        "SeriesName": "Severance",
+        "SeasonNumber": 1,
+        "EpisodeNumber": 1,
+        "Year": 2022,
+        "PlayedToCompletion": true,
+        "PlaybackPositionTicks": 36000000000_i64,
+        "RunTimeTicks": 36000000000_i64,
+        "ItemId": "jf-item-sev-1"
+    });
+
+    let req = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/webhooks/jellyfin/{}", webhook_token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(jellyfin_payload.to_string()))
+        .unwrap();
+
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+
+    // 4. Manual scrobble for "kids" watching "Toy Story"
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/history")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(json!({
+            "title": "Toy Story",
+            "media_type": "movie",
+            "year": 1995,
+            "source": "manual",
+            "source_user": "kids"
+        }).to_string()))
+        .unwrap();
+
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+
+    // 4b. Tautulli import for "daryl" watching "Inception"
+    let tautulli_json = json!({
+        "response": {
+            "result": "success",
+            "data": {
+                "data": [
+                    {
+                        "user": "daryl",
+                        "media_type": "movie",
+                        "title": "Inception",
+                        "year": 2010,
+                        "date": 1672531199,
+                        "duration": 8880,
+                        "rating_key": "rk_inc_999",
+                        "percent_complete": 100
+                    }
+                ]
+            }
+        }
+    });
+
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/import/tautulli")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(json!({
+            "username": "daryl",
+            "content": tautulli_json.to_string()
+        }).to_string()))
+        .unwrap();
+
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // 5. Verify records stored source, source_user, and imported_from
+    let scrobbles: Vec<bingesync::models::Scrobble> = sqlx::query_as(
+        "SELECT * FROM scrobbles WHERE user_id = ? ORDER BY title ASC"
+    )
+    .bind(&user_id)
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+
+    assert_eq!(scrobbles.len(), 4);
+    
+    // Moana (Plex, Sarah, direct webhook)
+    let moana = scrobbles.iter().find(|s| s.title == "Moana").unwrap();
+    assert_eq!(moana.source.as_deref(), Some("plex"));
+    assert_eq!(moana.source_user.as_deref(), Some("Sarah"));
+    assert_eq!(moana.imported_from.as_deref(), None);
+
+    // Inception (Tautulli import -> source is "plex" because Tautulli monitors Plex, imported_from is "tautulli")
+    let inc = scrobbles.iter().find(|s| s.title == "Inception").unwrap();
+    assert_eq!(inc.source.as_deref(), Some("plex"));
+    assert_eq!(inc.source_user.as_deref(), Some("daryl"));
+    assert_eq!(inc.imported_from.as_deref(), Some("tautulli"));
+
+    // Severance (Jellyfin, daryl)
+    let sev = scrobbles.iter().find(|s| s.title == "Good News About Hell").unwrap();
+    assert_eq!(sev.source.as_deref(), Some("jellyfin"));
+    assert_eq!(sev.source_user.as_deref(), Some("daryl"));
+
+    // Toy Story (Manual, kids)
+    let ts = scrobbles.iter().find(|s| s.title == "Toy Story").unwrap();
+    assert_eq!(ts.source.as_deref(), Some("manual"));
+    assert_eq!(ts.source_user.as_deref(), Some("kids"));
+
+    // 6. Test search by user who watched it: search=Sarah
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/history?search=Sarah")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .body(Body::empty())
+        .unwrap();
+
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let history: bingesync::models::HistoryResponse = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(history.total, 1);
+    assert_eq!(history.items[0].title, "Moana");
+
+    // 7. Test filter by source: source=jellyfin
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/history?source=jellyfin")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .body(Body::empty())
+        .unwrap();
+
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let history: bingesync::models::HistoryResponse = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(history.total, 1);
+    assert_eq!(history.items[0].title, "Good News About Hell");
+
+    // 8. Test filter by source_user / watched_by: source_user=kids
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/history?source_user=kids")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .body(Body::empty())
+        .unwrap();
+
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let history: bingesync::models::HistoryResponse = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(history.total, 1);
+    assert_eq!(history.items[0].title, "Toy Story");
+
+    // 9. Test history filter by imported_from: imported_from=tautulli
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/history?imported_from=tautulli")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .body(Body::empty())
+        .unwrap();
+
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let history: bingesync::models::HistoryResponse = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(history.total, 1);
+    assert_eq!(history.items[0].title, "Inception");
+    assert_eq!(history.items[0].source.as_deref(), Some("plex"));
+    assert_eq!(history.items[0].imported_from.as_deref(), Some("tautulli"));
+
+    // 10. Test timeline search by source: search=plex&all=true (matches both live Plex Moana and Tautulli Plex Inception)
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/timeline?search=plex&all=true")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .body(Body::empty())
+        .unwrap();
+
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let timeline: Vec<bingesync::models::TimelineDay> = serde_json::from_slice(&bytes).unwrap();
+    let titles: Vec<&str> = timeline.iter().flat_map(|d| d.items.iter().map(|it| it.title.as_str())).collect();
+    assert!(titles.contains(&"Moana"));
+    assert!(titles.contains(&"Inception"));
+
+    // 11. Test timeline filter by source: source=jellyfin&all=true
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/timeline?source=jellyfin&all=true")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .body(Body::empty())
+        .unwrap();
+
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let timeline: Vec<bingesync::models::TimelineDay> = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(timeline.len(), 1);
+    assert_eq!(timeline[0].items[0].title, "Good News About Hell");
+
+    // 12. Test active session logs source and source_user
+    let jf_play = json!({
+        "NotificationType": "PlaybackStart",
+        "NotificationUsername": "Sarah",
+        "UserId": "jf-user-sarah",
+        "ItemType": "Movie",
+        "Name": "Frozen",
+        "Year": 2013,
+        "PlaybackPositionTicks": 10000000000_i64,
+        "RunTimeTicks": 60000000000_i64,
+        "DeviceName": "Living Room TV"
+    });
+
+    let req = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/webhooks/jellyfin/{}", webhook_token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(jf_play.to_string()))
+        .unwrap();
+
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/now-playing")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .body(Body::empty())
+        .unwrap();
+
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let np: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(np["now_playing"]["source"], "jellyfin");
+    assert_eq!(np["now_playing"]["source_user"], "Sarah");
+}
+
 
 
 

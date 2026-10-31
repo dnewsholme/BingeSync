@@ -1057,9 +1057,20 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     await page.click('#btn-cancel-tautulli-modal');
     await expect(page.locator('#modal-import-history')).toBeHidden();
 
-    // 5. Verify item appeared on timeline
+    // 5. Verify item appeared on timeline with source=PLEX and import tag=tautulli
     await page.click('#tab-timeline');
-    await expect(page.locator('#timeline-container .scrobble-card', { hasText: testMovieTitle })).toBeVisible();
+    const importedCard = page.locator('#timeline-container .scrobble-card', { hasText: testMovieTitle });
+    await expect(importedCard).toBeVisible();
+    await expect(importedCard.locator('.source-tag-card')).toContainText('PLEX');
+    await expect(importedCard.locator('.import-tag-card')).toContainText('tautulli');
+
+    // Inspect detail modal
+    await importedCard.click();
+    await expect(page.locator('#modal-item-detail')).toBeVisible();
+    await expect(page.locator('#detail-source-display')).toContainText('plex');
+    await expect(page.locator('#detail-import-display')).toContainText('tautulli');
+    await page.click('#btn-close-detail-modal');
+    await expect(page.locator('#modal-item-detail')).toBeHidden();
 
     // 6. Test deduplication: re-open modal, submit same data again
     await page.click('#btn-open-import-modal');
@@ -2607,6 +2618,136 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     // 8. Test triggering manual writeback button
     await page.click('#btn-trigger-writeback-now');
     await expect(page.locator('#writeback-status')).toBeVisible();
+  });
+
+  test('scrobble source and watched-by user: badges, filtering in history & timeline, and detail modal', async ({ page, request }) => {
+    const userEmail = `multisync_${Date.now()}@bingesync.local`;
+
+    // 1. Sign in
+    await page.goto('/');
+    await page.fill('#dev-email', userEmail);
+    await page.fill('#dev-name', 'MultiSync User');
+    await page.click('#btn-dev-submit');
+    await expect(page.locator('#user-display-name')).toHaveText('MultiSync User');
+
+    // 2. Retrieve webhook URL and token from settings
+    await page.click('#tab-settings');
+    const webhookUrl = await page.locator('#webhook-url-input').inputValue();
+    const webhookPath = new URL(webhookUrl).pathname;
+
+    // Configure allowed usernames for multi-user sync: "sarah, daryl"
+    await page.click('#pill-settings-services');
+    await page.fill('#user-setting-plex-username', 'sarah, daryl');
+    await page.fill('#user-setting-jellyfin-username', 'sarah, daryl');
+    await page.click('#btn-save-user-settings');
+    await expect(page.locator('#user-settings-status')).toContainText('Settings saved successfully');
+
+    // 3. Post a Plex webhook for user "sarah" (Interstellar)
+    const plexPayload = {
+      event: 'media.scrobble',
+      user: true,
+      owner: false,
+      Account: {
+        id: 1234,
+        title: 'sarah',
+      },
+      Metadata: {
+        librarySectionType: 'movie',
+        type: 'movie',
+        title: 'Interstellar',
+        year: 2014,
+        duration: 10140000,
+        viewOffset: 10140000,
+      },
+    };
+
+    const plexResp = await request.post(webhookPath, {
+      data: plexPayload,
+      headers: { 'Content-Type': 'application/json' },
+    });
+    expect(plexResp.status()).toBe(201);
+
+    // 4. Post a Jellyfin webhook for user "daryl" (Arrival)
+    const jellyfinPath = webhookPath.replace('/plex/', '/jellyfin/');
+    const jellyfinPayload = {
+      NotificationType: 'PlaybackStop',
+      PlayedToCompletion: true,
+      ItemType: 'Movie',
+      Name: 'Arrival',
+      Year: 2016,
+      RunTimeTicks: 69600000000,
+      PlaybackPositionTicks: 69600000000,
+      NotificationUsername: 'daryl',
+    };
+
+    const jellyfinResp = await request.post(jellyfinPath, {
+      data: jellyfinPayload,
+      headers: { 'Content-Type': 'application/json' },
+    });
+    expect(jellyfinResp.status()).toBe(201);
+
+    // 5. Navigate to Timeline and verify badges
+    await page.click('#tab-timeline');
+    await page.click('#btn-refresh-timeline');
+
+    // Verify Interstellar has Plex source tag and @sarah user tag
+    const interstellarCard = page.locator('#timeline-container .scrobble-card', { hasText: 'Interstellar' });
+    await expect(interstellarCard).toBeVisible();
+    await expect(interstellarCard.locator('.source-tag-card')).toContainText('PLEX');
+    await expect(interstellarCard.locator('.user-tag-card')).toContainText('sarah');
+
+    // Verify Arrival has Jellyfin source tag and @daryl user tag
+    const arrivalCard = page.locator('#timeline-container .scrobble-card', { hasText: 'Arrival' });
+    await expect(arrivalCard).toBeVisible();
+    await expect(arrivalCard.locator('.source-tag-card')).toContainText('JELLYFIN');
+    await expect(arrivalCard.locator('.user-tag-card')).toContainText('daryl');
+
+    // 6. Click Interstellar to inspect Detail Modal
+    await interstellarCard.click();
+    await expect(page.locator('#modal-item-detail')).toBeVisible();
+    await expect(page.locator('#detail-source-display')).toContainText('plex');
+    await expect(page.locator('#detail-user-display')).toContainText('sarah');
+    await page.click('#btn-close-detail-modal');
+    await expect(page.locator('#modal-item-detail')).toBeHidden();
+
+    // 7. Navigate to History View and test filters
+    await page.click('#tab-history');
+    await expect(page.locator('#history-list')).toContainText('Interstellar');
+    await expect(page.locator('#history-list')).toContainText('Arrival');
+
+    // Filter by Source = Plex
+    await page.selectOption('#history-source-filter', 'plex');
+    await expect(page.locator('#history-list')).toContainText('Interstellar');
+    await expect(page.locator('#history-list')).not.toContainText('Arrival');
+
+    // Filter by Source = Jellyfin
+    await page.selectOption('#history-source-filter', 'jellyfin');
+    await expect(page.locator('#history-list')).not.toContainText('Interstellar');
+    await expect(page.locator('#history-list')).toContainText('Arrival');
+
+    // Reset Source to All
+    await page.selectOption('#history-source-filter', 'all');
+    await expect(page.locator('#history-list')).toContainText('Interstellar');
+    await expect(page.locator('#history-list')).toContainText('Arrival');
+
+    // Filter by Watched By user input = sarah
+    await page.fill('#history-user-filter', 'sarah');
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#history-list')).toContainText('Interstellar');
+    await expect(page.locator('#history-list')).not.toContainText('Arrival');
+
+    // Clear user filter
+    await page.click('#btn-clear-history-user');
+    await expect(page.locator('#history-list')).toContainText('Interstellar');
+    await expect(page.locator('#history-list')).toContainText('Arrival');
+
+    // 8. Click the user tag on Arrival card directly to filter
+    const arrivalHistoryCard = page.locator('#history-list .scrobble-card', { hasText: 'Arrival' });
+    await arrivalHistoryCard.locator('.user-tag-card').click();
+    await expect(page.locator('#history-list')).toContainText('Arrival');
+    await expect(page.locator('#history-list')).not.toContainText('Interstellar');
+    await expect(page.locator('#history-user-badge')).toBeVisible();
+    await expect(page.locator('#history-user-badge')).toContainText('daryl');
   });
 });
 

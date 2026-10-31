@@ -37,6 +37,8 @@ const state = {
     person: '',
     rating: 'all',
     watch_status: 'all',
+    source: 'all',
+    sourceUser: '',
     days: [],
     hasMore: false,
     missingMetadata: false,
@@ -53,6 +55,8 @@ const state = {
     limit: 12,
     mediaType: 'all',
     rating: 'all',
+    source: 'all',
+    sourceUser: '',
     search: '',
     person: '',
     tag: '',
@@ -239,6 +243,8 @@ const el = {
   timelinePersonFilter: document.getElementById('timeline-person-filter'),
   timelineRatingFilter: document.getElementById('timeline-rating-filter'),
   timelineStatusFilter: document.getElementById('timeline-status-filter'),
+  timelineSourceFilter: document.getElementById('timeline-source-filter'),
+  timelineUserFilter: document.getElementById('timeline-user-filter'),
   btnTimelineMissingMetadata: document.getElementById('btn-timeline-missing-metadata'),
   btnResetTimelineFilters: document.getElementById('btn-reset-timeline-filters'),
   timelineScrubber: document.getElementById('timeline-scrubber'),
@@ -250,7 +256,10 @@ const el = {
   // History View
   historySearch: document.getElementById('history-search'),
   historyRatingFilter: document.getElementById('history-rating-filter'),
+  historySourceFilter: document.getElementById('history-source-filter'),
+  historyUserFilter: document.getElementById('history-user-filter'),
   historyPersonBadge: document.getElementById('history-person-badge'),
+  historyUserBadge: document.getElementById('history-user-badge'),
   historySearchAllLabel: document.getElementById('history-search-all-label'),
   historySearchAllResults: document.getElementById('history-search-all-results'),
   historyList: document.getElementById('history-list'),
@@ -902,6 +911,8 @@ async function loadTimeline(append = false) {
       person: state.timeline.person,
       rating: state.timeline.rating,
       watch_status: state.timeline.watch_status,
+      source: state.timeline.source,
+      source_user: state.timeline.sourceUser,
       missing_metadata: state.timeline.missingMetadata,
     });
 
@@ -1621,6 +1632,24 @@ if (el.timelineStatusFilter) {
   });
 }
 
+if (el.timelineSourceFilter) {
+  el.timelineSourceFilter.addEventListener('change', (e) => {
+    state.timeline.source = e.target.value;
+    loadTimeline();
+  });
+}
+
+if (el.timelineUserFilter) {
+  let userTimer = null;
+  el.timelineUserFilter.addEventListener('input', (e) => {
+    clearTimeout(userTimer);
+    userTimer = setTimeout(() => {
+      state.timeline.sourceUser = e.target.value.trim();
+      loadTimeline();
+    }, 300);
+  });
+}
+
 if (el.timelineSearchAllDates) {
   el.timelineSearchAllDates.addEventListener('change', (e) => {
     state.timeline.searchAllDates = e.target.checked;
@@ -1640,6 +1669,8 @@ if (el.btnResetTimelineFilters) {
     state.timeline.person = '';
     state.timeline.rating = 'all';
     state.timeline.watch_status = 'all';
+    state.timeline.source = 'all';
+    state.timeline.sourceUser = '';
     state.timeline.level = 'month';
     state.timeline.userManuallySelected = false;
 
@@ -1655,6 +1686,8 @@ if (el.btnResetTimelineFilters) {
     if (el.timelinePersonFilter) el.timelinePersonFilter.value = '';
     if (el.timelineRatingFilter) el.timelineRatingFilter.value = 'all';
     if (el.timelineStatusFilter) el.timelineStatusFilter.value = 'all';
+    if (el.timelineSourceFilter) el.timelineSourceFilter.value = 'all';
+    if (el.timelineUserFilter) el.timelineUserFilter.value = '';
     state.timeline.missingMetadata = false;
     if (el.btnTimelineMissingMetadata) el.btnTimelineMissingMetadata.classList.remove('active');
 
@@ -1719,6 +1752,20 @@ function renderScrobbleCard(item, isHistory = false) {
     ? `<div class="scrobble-progress-bar"><div class="scrobble-progress-fill" style="width: ${Math.min(100, Math.max(0, item.progress_percent))}%;"></div></div>`
     : '';
 
+  const sourceName = item.source ? item.source.toLowerCase() : '';
+  const sourceHtml = item.source
+    ? `<button type="button" class="source-tag-card source-${escapeHtml(sourceName)}" data-source="${escapeHtml(item.source)}" title="Filter by source: ${escapeHtml(item.source)}">${escapeHtml(item.source.toUpperCase())}</button>`
+    : '';
+  const importHtml = item.imported_from
+    ? `<span class="import-tag-card" title="Imported from ${escapeHtml(item.imported_from)}">📥 ${escapeHtml(item.imported_from)}</span>`
+    : '';
+  const userHtml = item.source_user
+    ? `<button type="button" class="user-tag-card" data-user="${escapeHtml(item.source_user)}" title="Watched by ${escapeHtml(item.source_user)} (click to filter)">👤 ${escapeHtml(item.source_user)}</button>`
+    : '';
+  const sourceBarHtml = (item.source || item.source_user || item.imported_from)
+    ? `<div class="scrobble-card-source-bar" onclick="event.stopPropagation()">${sourceHtml}${importHtml}${userHtml}</div>`
+    : '';
+
   return `
     <div class="${cardClasses.join(' ')}" data-id="${item.id}">
       ${checkboxHtml}
@@ -1741,6 +1788,7 @@ function renderScrobbleCard(item, isHistory = false) {
         <span>${formatTime(item.watched_at)}</span>
         <span>${durationMin}</span>
       </div>
+      ${sourceBarHtml}
       ${item.tags ? `
         <div class="scrobble-card-tags" onclick="event.stopPropagation()">
           ${item.tags.split(',').map(t => t.trim()).filter(Boolean).map(t => `
@@ -1776,6 +1824,24 @@ function attachScrobbleCardListeners(container, items, isHistory = false) {
         e.stopPropagation();
         const tag = tc.dataset.tag;
         if (tag) filterHistoryByTag(tag);
+      });
+    });
+
+    // Click on source tag on card
+    card.querySelectorAll('.source-tag-card').forEach(st => {
+      st.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const s = st.dataset.source;
+        if (s) filterHistoryBySource(s);
+      });
+    });
+
+    // Click on user tag on card
+    card.querySelectorAll('.user-tag-card').forEach(ut => {
+      ut.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const u = ut.dataset.user;
+        if (u) filterHistoryByUser(u);
       });
     });
 
@@ -1889,10 +1955,63 @@ function filterHistoryByTag(tag) {
   loadHistory();
 }
 
+function updateHistoryUserBadge() {
+  if (el.historyUserFilter && el.historyUserFilter.value !== (state.history.sourceUser || '')) {
+    el.historyUserFilter.value = state.history.sourceUser || '';
+  }
+  if (!el.historyUserBadge) return;
+  if (state.history.sourceUser) {
+    el.historyUserBadge.style.display = 'inline-flex';
+    el.historyUserBadge.innerHTML = `
+      <span>Watched By: <strong>${escapeHtml(state.history.sourceUser)}</strong></span>
+      <button type="button" id="btn-clear-history-user" title="Clear user filter">✕</button>
+    `;
+    const btn = el.historyUserBadge.querySelector('#btn-clear-history-user');
+    if (btn) {
+      btn.onclick = () => {
+        state.history.sourceUser = '';
+        if (el.historyUserFilter) el.historyUserFilter.value = '';
+        updateHistoryUserBadge();
+        state.history.page = 1;
+        loadHistory();
+      };
+    }
+  } else {
+    el.historyUserBadge.style.display = 'none';
+    el.historyUserBadge.innerHTML = '';
+  }
+}
+
+function filterHistoryByUser(userName) {
+  if (el.modalItemDetail) el.modalItemDetail.style.display = 'none';
+  state.history.sourceUser = userName;
+  if (el.historyUserFilter) el.historyUserFilter.value = userName;
+  state.history.page = 1;
+
+  const tabHistory = document.getElementById('tab-history');
+  if (tabHistory) tabHistory.click();
+
+  updateHistoryUserBadge();
+  loadHistory();
+}
+
+function filterHistoryBySource(sourceName) {
+  if (el.modalItemDetail) el.modalItemDetail.style.display = 'none';
+  state.history.source = sourceName;
+  if (el.historySourceFilter) el.historySourceFilter.value = sourceName;
+  state.history.page = 1;
+
+  const tabHistory = document.getElementById('tab-history');
+  if (tabHistory) tabHistory.click();
+
+  loadHistory();
+}
+
 // View 2: History
 async function loadHistory() {
   try {
     updateHistoryPersonBadge();
+    updateHistoryUserBadge();
     const res = await api.getHistory({
       page: state.history.page,
       limit: state.history.limit,
@@ -1901,6 +2020,8 @@ async function loadHistory() {
       search: state.history.search,
       person: state.history.person,
       tag: state.history.tag,
+      source: state.history.source,
+      source_user: state.history.sourceUser,
       all: state.history.allResults,
       all_dates: state.history.allResults,
       missing_metadata: state.history.missingMetadata,
@@ -2071,6 +2192,41 @@ if (el.historyRatingFilter) {
     }
     state.history.page = 1;
     loadHistory();
+  });
+}
+
+if (el.historySourceFilter) {
+  el.historySourceFilter.addEventListener('change', (e) => {
+    state.history.source = e.target.value;
+    if (e.target.value !== 'all') {
+      el.historySourceFilter.classList.add('active');
+    } else {
+      el.historySourceFilter.classList.remove('active');
+    }
+    state.history.page = 1;
+    loadHistory();
+  });
+}
+
+if (el.historyUserFilter) {
+  let histUserTimer = null;
+  el.historyUserFilter.addEventListener('input', (e) => {
+    clearTimeout(histUserTimer);
+    histUserTimer = setTimeout(() => {
+      state.history.sourceUser = e.target.value.trim();
+      updateHistoryUserBadge();
+      state.history.page = 1;
+      loadHistory();
+    }, 250);
+  });
+  el.historyUserFilter.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      clearTimeout(histUserTimer);
+      state.history.sourceUser = e.target.value.trim();
+      updateHistoryUserBadge();
+      state.history.page = 1;
+      loadHistory();
+    }
   });
 }
 
@@ -3716,6 +3872,9 @@ async function openDetailModal(item) {
           <div style="font-size:0.85rem;color:var(--text-dim);">Release: <strong style="color:#fff;">${yearStr}</strong></div>
           <div style="font-size:0.85rem;color:var(--text-dim);">Duration: <strong style="color:#fff;">${durationStr}</strong></div>
           <div style="font-size:0.85rem;color:var(--text-dim);">Watched: <strong style="color:#fff;">${watchedStr}</strong></div>
+          ${item.source ? `<div style="font-size:0.85rem;color:var(--text-dim);" id="detail-source-display">Watched From: <strong style="color:var(--accent-primary, #6366f1);text-transform:capitalize;">${escapeHtml(item.source)}</strong></div>` : ''}
+          ${item.imported_from ? `<div style="font-size:0.85rem;color:var(--text-dim);" id="detail-import-display">Imported From: <strong style="color:#38bdf8;text-transform:capitalize;">📥 ${escapeHtml(item.imported_from)}</strong></div>` : ''}
+          ${item.source_user ? `<div style="font-size:0.85rem;color:var(--text-dim);" id="detail-user-display">Watched By: <strong style="color:#c084fc;">👤 ${escapeHtml(item.source_user)}</strong></div>` : ''}
           ${statusBadge}
           ${ratingBadge}
           ${genresBadge}

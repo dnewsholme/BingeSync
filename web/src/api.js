@@ -72,6 +72,9 @@ export const api = {
     if (params.watch_status && params.watch_status !== 'all') url += `&watch_status=${encodeURIComponent(params.watch_status)}`;
     if (params.media_type && params.media_type !== 'all') url += `&media_type=${encodeURIComponent(params.media_type)}`;
     if (params.tag) url += `&tag=${encodeURIComponent(params.tag)}`;
+    if (params.source && params.source !== 'all') url += `&source=${encodeURIComponent(params.source)}`;
+    if (params.source_user || params.watched_by) url += `&source_user=${encodeURIComponent(params.source_user || params.watched_by)}`;
+    if (params.imported_from) url += `&imported_from=${encodeURIComponent(params.imported_from)}`;
     if (params.missing_metadata) url += `&missing_metadata=true`;
     return request(url);
   },
@@ -89,6 +92,9 @@ export const api = {
     if (params.genre) url += `&genre=${encodeURIComponent(params.genre)}`;
     if (params.person) url += `&person=${encodeURIComponent(params.person)}`;
     if (params.tag) url += `&tag=${encodeURIComponent(params.tag)}`;
+    if (params.source && params.source !== 'all') url += `&source=${encodeURIComponent(params.source)}`;
+    if (params.source_user || params.watched_by) url += `&source_user=${encodeURIComponent(params.source_user || params.watched_by)}`;
+    if (params.imported_from) url += `&imported_from=${encodeURIComponent(params.imported_from)}`;
     if (params.rating && params.rating !== 'all') url += `&rating=${encodeURIComponent(params.rating)}`;
     if (params.watch_status && params.watch_status !== 'all') url += `&watch_status=${encodeURIComponent(params.watch_status)}`;
     if (params.missing_metadata) url += `&missing_metadata=true`;

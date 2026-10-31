@@ -50,6 +50,9 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
             metadata_updated_at TEXT DEFAULT NULL,
             tags TEXT,
             notes TEXT,
+            source TEXT,
+            source_user TEXT,
+            imported_from TEXT,
             watched_at TEXT NOT NULL DEFAULT (datetime('now')),
             created_at TEXT NOT NULL DEFAULT (datetime('now'))
         );
@@ -71,6 +74,8 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
             year INTEGER,
             thumb_url TEXT,
             state TEXT NOT NULL,
+            source TEXT,
+            source_user TEXT,
             view_offset_ms INTEGER NOT NULL DEFAULT 0,
             duration_ms INTEGER NOT NULL DEFAULT 0,
             updated_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -168,6 +173,38 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
         .execute(pool)
         .await;
     let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_scrobbles_tags ON scrobbles(tags)")
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("ALTER TABLE scrobbles ADD COLUMN source TEXT")
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("ALTER TABLE scrobbles ADD COLUMN source_user TEXT")
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("ALTER TABLE scrobbles ADD COLUMN imported_from TEXT")
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_scrobbles_user_source ON scrobbles(user_id, source)")
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_scrobbles_user_source_user ON scrobbles(user_id, source_user)")
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_scrobbles_user_imported_from ON scrobbles(user_id, imported_from)")
+        .execute(pool)
+        .await;
+
+    // Migrate any previous tautulli scrobbles to source = 'plex' and imported_from = 'tautulli'
+    let _ = sqlx::query("UPDATE scrobbles SET source = 'plex', imported_from = 'tautulli' WHERE source = 'tautulli'")
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("UPDATE scrobbles SET imported_from = 'trakt' WHERE source = 'trakt' AND (imported_from IS NULL OR imported_from = '')")
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("ALTER TABLE active_sessions ADD COLUMN source TEXT")
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("ALTER TABLE active_sessions ADD COLUMN source_user TEXT")
         .execute(pool)
         .await;
 

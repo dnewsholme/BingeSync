@@ -130,7 +130,7 @@ Plex webhooks send:
 ```bash
 cargo test
 ```
-Tests in `tests/api_tests.rs` (62 integration tests) cover:
+Tests in `tests/api_tests.rs` (63 integration tests) cover:
 - Dev login and `/api/v1/auth/me`
 - Plex movie and TV episode scrobbling
 - Multi-user isolation (User A cannot see User B's data)
@@ -192,6 +192,7 @@ Tests in `tests/api_tests.rs` (62 integration tests) cover:
 - Security hardening & headers: automatic `Secure` cookie flag over HTTPS, Content-Security-Policy (CSP), Permissions-Policy, Cross-Origin-Opener-Policy (COOP), and conditional Strict-Transport-Security (HSTS)
 - Tautulli continuous 1-way sync: background polling worker, user filter setting, dynamic user discovery, deduplication against database scrobbles, and task tracker management
 - Bidirectional media sync: user settings configuration (`plex_url`, `plex_api_key`, `bidirectional_sync_enabled`), connection testing endpoints (`/test-plex`, `/test-jellyfin`), and on-demand writeback (`/api/v1/user/sync/writeback`)
+- Media source (`source`: `"plex"`, `"jellyfin"`, `"emby"`, `"trakt"`, `"manual"`), import origin (`imported_from`: `"tautulli"`, `"trakt"`), and watched-by user (`source_user` / `watched_by`) logging on scrobbles and active sessions, card source/import/user badges, and history/timeline search and filtering
 
 ### Run Playwright E2E UI Tests
 ```bash
@@ -199,7 +200,7 @@ cd web
 npm install
 npx playwright test
 ```
-Playwright tests in `web/tests/e2e.spec.js` (46 browser E2E tests) cover:
+Playwright tests in `web/tests/e2e.spec.js` (47 browser E2E tests) cover:
 - User sign-in flow, "+ Log Watch" modal, and timeline rendering
 - Multi-user separation in the web UI
 - Trakt history and rating import flow in the web UI (pasted JSON)
@@ -247,6 +248,7 @@ Playwright tests in `web/tests/e2e.spec.js` (46 browser E2E tests) cover:
 - Admin "About" tab: dedicated system information view displaying dynamic runtime versions (Docker base image, SQLite engine, Rust compiler, OS kernel, Axum, Tokio), GitHub release update checks, and clean status badges
 - Tautulli continuous 1-way sync: user settings configuration, dynamic user selector dropdown with "Fetch Users" trigger, sync toggle, and background task management card (schedule, Run Now, View Logs)
 - Bidirectional media sync: user settings configuration (Plex & Jellyfin), test connection buttons, per-service sync checkboxes (Plex & Jellyfin), collapsible token extraction guides, scheduled and on-demand writeback, and dedicated admin background task management card (schedule, Run Now, View Logs)
+- Scrobble source and watched-by user: source tags (Plex, Jellyfin, Emby, Tautulli, Trakt, Manual), user chips with click-to-filter, detail modal display, and source/user filtering in History and Timeline
 
 
 ### Run the App Locally

@@ -372,6 +372,16 @@
                 <option value="completed" data-i18n="timeline.status_completed">Completed</option>
                 <option value="in_progress" data-i18n="timeline.status_in_progress">In Progress</option>
               </select>
+              <select id="timeline-source-filter" class="form-control filter-ctrl" title="Filter by source">
+                <option value="all">All Sources</option>
+                <option value="plex">Plex</option>
+                <option value="jellyfin">Jellyfin</option>
+                <option value="emby">Emby</option>
+                <option value="tautulli">Tautulli</option>
+                <option value="trakt">Trakt</option>
+                <option value="manual">Manual</option>
+              </select>
+              <input type="text" id="timeline-user-filter" class="form-control filter-ctrl" placeholder="Watched by user..." />
               <button type="button" class="btn btn-outline btn-sm filter-ctrl" id="btn-timeline-missing-metadata" title="Filter watches missing metadata or posters">
                 <span>⚠️ Missing Metadata</span>
               </button>
@@ -454,6 +464,16 @@
                 <option value="1+">★ 1+ Star</option>
                 <option value="unrated" data-i18n="timeline.filter_unrated">Unrated</option>
               </select>
+              <select id="history-source-filter" class="form-control filter-ctrl history-rating-select" title="Filter by source">
+                <option value="all">All Sources</option>
+                <option value="plex">Plex</option>
+                <option value="jellyfin">Jellyfin</option>
+                <option value="emby">Emby</option>
+                <option value="tautulli">Tautulli</option>
+                <option value="trakt">Trakt</option>
+                <option value="manual">Manual</option>
+              </select>
+              <input type="text" id="history-user-filter" class="form-control filter-ctrl" placeholder="Watched by user..." style="max-width: 150px;" />
               <button class="pill" id="pill-missing-metadata" title="Filter items missing poster, plot overview, or genres">
                 <span>⚠️ Missing Metadata</span>
               </button>
@@ -470,6 +490,9 @@
 
           <!-- Active Person Filter Badge for History -->
           <div id="history-person-badge" class="history-person-filter-chip" style="display: none;"></div>
+
+          <!-- Active User Filter Badge for History -->
+          <div id="history-user-badge" class="history-person-filter-chip" style="display: none;"></div>
 
           <!-- Floating Bulk Action Bar for History Multi-Select -->
           <div id="history-bulk-bar" class="history-bulk-bar" style="display: none;">

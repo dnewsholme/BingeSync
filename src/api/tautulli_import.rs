@@ -464,6 +464,9 @@ pub async fn insert_tautulli_watch_items(
         }
 
         let scrobble_id = Uuid::new_v4().to_string();
+        let source_name = Some("plex".to_string());
+        let imported_from = Some("tautulli".to_string());
+        let watched_user = item.user.clone().or_else(|| item.friendly_name.clone());
         let insert_res = sqlx::query(
             r#"
             INSERT INTO scrobbles (
@@ -471,8 +474,9 @@ pub async fn insert_tautulli_watch_items(
                 season_number, episode_number, year, overview, thumb_url,
                 rating_key, guid, duration_ms, user_rating,
                 genres, directors, director, cinematographer, actors, watch_status, progress_percent, view_offset_ms,
+                source, source_user, imported_from,
                 watched_at, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             "#,
         )
         .bind(&scrobble_id)
@@ -498,6 +502,9 @@ pub async fn insert_tautulli_watch_items(
         .bind("completed")
         .bind(item.progress_percent.unwrap_or(100))
         .bind(item.duration_ms.unwrap_or(0))
+        .bind(&source_name)
+        .bind(&watched_user)
+        .bind(&imported_from)
         .bind(&item.watched_at)
         .bind(&now)
         .execute(&mut *tx)

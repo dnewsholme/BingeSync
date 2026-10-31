@@ -31,6 +31,11 @@ pub struct HistoryQuery {
     pub rating: Option<String>,
     pub watch_status: Option<String>,
     pub tag: Option<String>,
+    pub source: Option<String>,
+    #[serde(alias = "watched_by", alias = "user")]
+    pub source_user: Option<String>,
+    #[serde(alias = "import_from")]
+    pub imported_from: Option<String>,
     #[serde(default, alias = "all_results")]
     pub all: Option<bool>,
     #[serde(default)]
@@ -70,6 +75,9 @@ pub async fn list_history(
     let rating_filter = query.rating.as_deref().unwrap_or("all").trim();
     let watch_status_filter = query.watch_status.as_deref().unwrap_or("all").trim();
     let tag_filter = query.tag.as_deref().unwrap_or("").trim();
+    let source_filter = query.source.as_deref().unwrap_or("").trim();
+    let source_user_filter = query.source_user.as_deref().unwrap_or("").trim();
+    let imported_from_filter = query.imported_from.as_deref().unwrap_or("").trim();
 
     let mut count_sql = "SELECT COUNT(*) FROM scrobbles WHERE user_id = ?".to_string();
     let mut data_sql = "SELECT * FROM scrobbles WHERE user_id = ?".to_string();
@@ -89,8 +97,11 @@ pub async fn list_history(
 
     if !search_filter.is_empty() && !is_missing_metadata_keyword {
         let pattern = format!("%{}%", search_filter);
-        count_sql.push_str(" AND (title LIKE ? OR grandparent_title LIKE ? OR overview LIKE ? OR tags LIKE ? OR notes LIKE ?)");
-        data_sql.push_str(" AND (title LIKE ? OR grandparent_title LIKE ? OR overview LIKE ? OR tags LIKE ? OR notes LIKE ?)");
+        count_sql.push_str(" AND (title LIKE ? OR grandparent_title LIKE ? OR overview LIKE ? OR tags LIKE ? OR notes LIKE ? OR source LIKE ? OR source_user LIKE ? OR imported_from LIKE ?)");
+        data_sql.push_str(" AND (title LIKE ? OR grandparent_title LIKE ? OR overview LIKE ? OR tags LIKE ? OR notes LIKE ? OR source LIKE ? OR source_user LIKE ? OR imported_from LIKE ?)");
+        bind_params.push(pattern.clone());
+        bind_params.push(pattern.clone());
+        bind_params.push(pattern.clone());
         bind_params.push(pattern.clone());
         bind_params.push(pattern.clone());
         bind_params.push(pattern.clone());
@@ -143,6 +154,24 @@ pub async fn list_history(
         count_sql.push_str(" AND tags LIKE ?");
         data_sql.push_str(" AND tags LIKE ?");
         bind_params.push(pattern);
+    }
+
+    if !source_filter.is_empty() && source_filter != "all" {
+        count_sql.push_str(" AND LOWER(source) = LOWER(?)");
+        data_sql.push_str(" AND LOWER(source) = LOWER(?)");
+        bind_params.push(source_filter.to_string());
+    }
+
+    if !source_user_filter.is_empty() && source_user_filter != "all" {
+        count_sql.push_str(" AND LOWER(source_user) = LOWER(?)");
+        data_sql.push_str(" AND LOWER(source_user) = LOWER(?)");
+        bind_params.push(source_user_filter.to_string());
+    }
+
+    if !imported_from_filter.is_empty() && imported_from_filter != "all" {
+        count_sql.push_str(" AND LOWER(imported_from) = LOWER(?)");
+        data_sql.push_str(" AND LOWER(imported_from) = LOWER(?)");
+        bind_params.push(imported_from_filter.to_string());
     }
 
     if rating_filter == "rated" {
@@ -240,6 +269,9 @@ pub async fn create_scrobble(
     let cinematographer = payload.cinematographer;
     let tags = payload.tags;
     let notes = payload.notes;
+    let source = payload.source.unwrap_or_else(|| "manual".to_string());
+    let source_user = payload.source_user.or_else(|| Some(auth.email.clone()));
+    let imported_from = payload.imported_from;
 
     sqlx::query(
         r#"
@@ -248,8 +280,8 @@ pub async fn create_scrobble(
             season_number, episode_number, year, overview, thumb_url,
             rating_key, guid, duration_ms, user_rating,
             genres, directors, director, cinematographer, actors, watch_status, progress_percent, view_offset_ms,
-            tags, notes, watched_at, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            tags, notes, source, source_user, imported_from, watched_at, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
     )
     .bind(&scrobble_id)
@@ -277,6 +309,9 @@ pub async fn create_scrobble(
     .bind(payload.view_offset_ms)
     .bind(&tags)
     .bind(&notes)
+    .bind(&source)
+    .bind(&source_user)
+    .bind(&imported_from)
     .bind(&watched_at)
     .bind(&now)
     .execute(&state.pool)

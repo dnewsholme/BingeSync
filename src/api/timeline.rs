@@ -23,6 +23,11 @@ pub struct TimelineQuery {
     pub watch_status: Option<String>,
     pub media_type: Option<String>,
     pub search: Option<String>,
+    pub source: Option<String>,
+    #[serde(alias = "watched_by", alias = "user")]
+    pub source_user: Option<String>,
+    #[serde(alias = "import_from")]
+    pub imported_from: Option<String>,
     #[serde(default, alias = "all_results")]
     pub all: Option<bool>,
     #[serde(default)]
@@ -58,6 +63,9 @@ pub async fn get_timeline(
     let person_filter = query.person.as_deref().unwrap_or("").trim();
     let rating_filter = query.rating.as_deref().unwrap_or("all").trim();
     let watch_status_filter = query.watch_status.as_deref().unwrap_or("all").trim();
+    let source_filter = query.source.as_deref().unwrap_or("").trim();
+    let source_user_filter = query.source_user.as_deref().unwrap_or("").trim();
+    let imported_from_filter = query.imported_from.as_deref().unwrap_or("").trim();
 
     let mut sql = "SELECT * FROM scrobbles WHERE user_id = ?".to_string();
     let mut bind_params: Vec<String> = vec![auth.user_id.clone()];
@@ -73,7 +81,10 @@ pub async fn get_timeline(
 
     if !search_filter.is_empty() && !is_missing_metadata_keyword {
         let pattern = format!("%{}%", search_filter);
-        sql.push_str(" AND (title LIKE ? OR grandparent_title LIKE ? OR overview LIKE ?)");
+        sql.push_str(" AND (title LIKE ? OR grandparent_title LIKE ? OR overview LIKE ? OR source LIKE ? OR source_user LIKE ? OR imported_from LIKE ?)");
+        bind_params.push(pattern.clone());
+        bind_params.push(pattern.clone());
+        bind_params.push(pattern.clone());
         bind_params.push(pattern.clone());
         bind_params.push(pattern.clone());
         bind_params.push(pattern);
@@ -118,6 +129,21 @@ pub async fn get_timeline(
     if watch_status_filter != "all" && !watch_status_filter.is_empty() {
         sql.push_str(" AND watch_status = ?");
         bind_params.push(watch_status_filter.to_string());
+    }
+
+    if !source_filter.is_empty() && source_filter != "all" {
+        sql.push_str(" AND LOWER(source) = LOWER(?)");
+        bind_params.push(source_filter.to_string());
+    }
+
+    if !source_user_filter.is_empty() && source_user_filter != "all" {
+        sql.push_str(" AND LOWER(source_user) = LOWER(?)");
+        bind_params.push(source_user_filter.to_string());
+    }
+
+    if !imported_from_filter.is_empty() && imported_from_filter != "all" {
+        sql.push_str(" AND LOWER(imported_from) = LOWER(?)");
+        bind_params.push(imported_from_filter.to_string());
     }
 
     if all_results {

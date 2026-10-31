@@ -38,6 +38,14 @@ pub struct Scrobble {
     pub tags: Option<String>,
     #[sqlx(default)]
     pub notes: Option<String>,
+    #[sqlx(default)]
+    pub source: Option<String>,
+    #[sqlx(default)]
+    #[serde(alias = "watched_by")]
+    pub source_user: Option<String>,
+    #[sqlx(default)]
+    #[serde(alias = "import_from")]
+    pub imported_from: Option<String>,
     pub watched_at: String,
     pub created_at: String,
 }
@@ -67,6 +75,11 @@ pub struct NewScrobbleRequest {
     pub view_offset_ms: Option<i64>,
     pub tags: Option<String>,
     pub notes: Option<String>,
+    pub source: Option<String>,
+    #[serde(alias = "watched_by")]
+    pub source_user: Option<String>,
+    #[serde(default, alias = "import_from")]
+    pub imported_from: Option<String>,
     pub watched_at: Option<String>,
 }
 
@@ -240,6 +253,11 @@ pub struct ActiveSession {
     pub year: Option<i32>,
     pub thumb_url: Option<String>,
     pub state: String,
+    #[sqlx(default)]
+    pub source: Option<String>,
+    #[sqlx(default)]
+    #[serde(alias = "watched_by")]
+    pub source_user: Option<String>,
     pub view_offset_ms: i64,
     pub duration_ms: i64,
     pub updated_at: String,

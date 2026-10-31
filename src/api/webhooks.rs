@@ -300,6 +300,24 @@ async fn process_webhook(
         }
     }
 
+    let source_name = Some("plex".to_string());
+    let resolved_source_user: Option<String> = if let Some(ref title) = account_title {
+        Some(title.clone())
+    } else if let Some(ref aid) = account_id {
+        if let Ok(Some(un)) = sqlx::query_scalar::<_, String>(
+            "SELECT username FROM plex_user_cache WHERE LOWER(plex_id) = LOWER(?) LIMIT 1"
+        )
+        .bind(aid)
+        .fetch_optional(&state.pool)
+        .await {
+            Some(un)
+        } else {
+            Some(aid.clone())
+        }
+    } else {
+        user.preferred_username.clone().or_else(|| Some(user.display_name.clone()))
+    };
+
     let metadata = match payload.metadata {
         Some(m) => m,
         None => {
@@ -452,7 +470,9 @@ async fn process_webhook(
                 genres = COALESCE(genres, ?),
                 directors = COALESCE(directors, ?),
                 director = COALESCE(director, ?),
-                actors = COALESCE(actors, ?)
+                actors = COALESCE(actors, ?),
+                source = COALESCE(source, ?),
+                source_user = COALESCE(source_user, ?)
             WHERE id = ?
             "#
         )
@@ -465,6 +485,8 @@ async fn process_webhook(
         .bind(&directors)
         .bind(&director)
         .bind(&actors)
+        .bind(&source_name)
+        .bind(&resolved_source_user)
         .bind(&existing.id)
         .execute(&state.pool)
         .await
@@ -489,8 +511,8 @@ async fn process_webhook(
                 season_number, episode_number, year, overview, thumb_url,
                 rating_key, guid, duration_ms, user_rating,
                 genres, directors, director, cinematographer, actors, watch_status, progress_percent, view_offset_ms,
-                metadata_updated_at, watched_at, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                metadata_updated_at, source, source_user, watched_at, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             "#,
         )
         .bind(&new_id)
@@ -517,6 +539,8 @@ async fn process_webhook(
         .bind(progress_percent)
         .bind(view_offset_val)
         .bind(meta_updated)
+        .bind(&source_name)
+        .bind(&resolved_source_user)
         .bind(&now_str)
         .bind(&now_str)
         .execute(&state.pool)
@@ -619,8 +643,9 @@ async fn process_webhook(
                 INSERT INTO active_sessions (
                     id, user_id, player_title, title, media_type, grandparent_title,
                     season_number, episode_number, year, thumb_url, state,
+                    source, source_user,
                     view_offset_ms, duration_ms, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 "#,
             )
             .bind(&session_id)
@@ -634,6 +659,8 @@ async fn process_webhook(
             .bind(year)
             .bind(&thumb_url)
             .bind(state_str)
+            .bind(&source_name)
+            .bind(&resolved_source_user)
             .bind(view_offset_val)
             .bind(duration_val)
             .bind(&now_str)
@@ -836,7 +863,7 @@ async fn process_jellyfin_or_emby_webhook(
         } else {
             crate::api::user_settings::get_user_setting(&state.pool, &user.id, "jellyfin_username").await
         };
-        let configured_user = if let Some(s_user) = configured_source_user {
+        let configured_user = if let Some(s_user) = configured_source_user.filter(|s| !s.trim().is_empty()) {
             Some(s_user)
         } else {
             crate::api::user_settings::get_user_setting(&state.pool, &user.id, "plex_username").await
@@ -936,6 +963,24 @@ async fn process_jellyfin_or_emby_webhook(
             ));
         }
     }
+
+    let source_name = Some(source.to_string());
+    let resolved_source_user: Option<String> = if let Some(ref un) = notif_user {
+        Some(un.clone())
+    } else if let Some(ref uid) = notif_id {
+        if let Ok(Some(un)) = sqlx::query_scalar::<_, String>(
+            "SELECT username FROM plex_user_cache WHERE LOWER(plex_id) = LOWER(?) LIMIT 1"
+        )
+        .bind(uid)
+        .fetch_optional(&state.pool)
+        .await {
+            Some(un)
+        } else {
+            Some(uid.clone())
+        }
+    } else {
+        user.preferred_username.clone().or_else(|| Some(user.display_name.clone()))
+    };
 
     // 4. Resolve media metadata
     let raw_type = payload.resolved_item_type().unwrap_or_else(|| "Movie".to_string());
@@ -1100,7 +1145,9 @@ async fn process_jellyfin_or_emby_webhook(
                 view_offset_ms = ?,
                 watched_at = ?,
                 thumb_url = COALESCE(thumb_url, ?),
-                genres = COALESCE(genres, ?)
+                genres = COALESCE(genres, ?),
+                source = COALESCE(source, ?),
+                source_user = COALESCE(source_user, ?)
             WHERE id = ?
             "#
         )
@@ -1110,6 +1157,8 @@ async fn process_jellyfin_or_emby_webhook(
         .bind(&now_str)
         .bind(&thumb_url)
         .bind(&genres)
+        .bind(&source_name)
+        .bind(&resolved_source_user)
         .bind(&existing.id)
         .execute(&state.pool)
         .await
@@ -1134,8 +1183,8 @@ async fn process_jellyfin_or_emby_webhook(
                 season_number, episode_number, year, overview, thumb_url,
                 rating_key, guid, duration_ms, user_rating,
                 genres, directors, director, cinematographer, actors, watch_status, progress_percent, view_offset_ms,
-                metadata_updated_at, watched_at, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                metadata_updated_at, source, source_user, watched_at, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             "#,
         )
         .bind(&new_id)
@@ -1162,6 +1211,8 @@ async fn process_jellyfin_or_emby_webhook(
         .bind(progress_percent)
         .bind(view_offset_val)
         .bind(meta_updated)
+        .bind(&source_name)
+        .bind(&resolved_source_user)
         .bind(&now_str)
         .bind(&now_str)
         .execute(&state.pool)
@@ -1260,8 +1311,9 @@ async fn process_jellyfin_or_emby_webhook(
             INSERT INTO active_sessions (
                 id, user_id, player_title, title, media_type, grandparent_title,
                 season_number, episode_number, year, thumb_url, state,
+                source, source_user,
                 view_offset_ms, duration_ms, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             "#,
         )
         .bind(&session_id)
@@ -1275,6 +1327,8 @@ async fn process_jellyfin_or_emby_webhook(
         .bind(year)
         .bind(&thumb_url)
         .bind(state_str)
+        .bind(&source_name)
+        .bind(&resolved_source_user)
         .bind(view_offset_val)
         .bind(duration_val)
         .bind(&now_str)
