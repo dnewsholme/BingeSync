@@ -126,7 +126,7 @@ pub async fn get_timeline(
         sql.push_str(" ORDER BY watched_at DESC LIMIT ? OFFSET ?");
     }
 
-    let mut fetch_query = sqlx::query_as::<_, Scrobble>(&sql);
+    let mut fetch_query = sqlx::query_as::<_, Scrobble>(sqlx::AssertSqlSafe(&*sql));
     for p in &bind_params {
         fetch_query = fetch_query.bind(p);
     }

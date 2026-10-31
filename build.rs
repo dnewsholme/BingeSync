@@ -18,9 +18,12 @@ fn main() {
         .unwrap_or_else(|| "0.8".to_string());
     let tokio_version = get_crate_version(&cargo_lock, &cargo_toml, "tokio")
         .unwrap_or_else(|| "1.40".to_string());
+    let sqlx_version = get_crate_version(&cargo_lock, &cargo_toml, "sqlx")
+        .unwrap_or_else(|| "0.9".to_string());
 
     println!("cargo:rustc-env=AXUM_VERSION={}", axum_version);
     println!("cargo:rustc-env=TOKIO_VERSION={}", tokio_version);
+    println!("cargo:rustc-env=SQLX_VERSION={}", sqlx_version);
 
     // Extract Vite version dynamically from web/package-lock.json or web/package.json
     let vite_version = get_vite_version();

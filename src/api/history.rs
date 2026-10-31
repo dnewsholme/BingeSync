@@ -170,7 +170,7 @@ pub async fn list_history(
     }
 
     // Count query
-    let mut count_query = sqlx::query_scalar::<_, i64>(&count_sql);
+    let mut count_query = sqlx::query_scalar::<_, i64>(sqlx::AssertSqlSafe(&*count_sql));
     for p in &bind_params {
         count_query = count_query.bind(p);
     }
@@ -191,7 +191,7 @@ pub async fn list_history(
         data_sql.push_str(" ORDER BY watched_at DESC LIMIT ? OFFSET ?");
     }
 
-    let mut fetch_query = sqlx::query_as::<_, Scrobble>(&data_sql);
+    let mut fetch_query = sqlx::query_as::<_, Scrobble>(sqlx::AssertSqlSafe(&*data_sql));
     for p in &bind_params {
         fetch_query = fetch_query.bind(p);
     }
@@ -680,7 +680,7 @@ pub async fn delete_by_media(
         let mut sql = "DELETE FROM scrobbles WHERE user_id = ? AND media_type = 'movie' AND LOWER(TRIM(title)) = LOWER(TRIM(?))".to_string();
         if query.year.is_some() {
             sql.push_str(" AND (year = ? OR year IS NULL)");
-            let res = sqlx::query(&sql)
+            let res = sqlx::query(sqlx::AssertSqlSafe(&*sql))
                 .bind(&auth.user_id)
                 .bind(&query.title)
                 .bind(query.year.unwrap())
@@ -694,7 +694,7 @@ pub async fn delete_by_media(
                 })?;
             res.rows_affected()
         } else {
-            let res = sqlx::query(&sql)
+            let res = sqlx::query(sqlx::AssertSqlSafe(&*sql))
                 .bind(&auth.user_id)
                 .bind(&query.title)
                 .execute(&state.pool)

@@ -66,6 +66,11 @@ pub const TOKIO_VERSION: &str = match option_env!("TOKIO_VERSION") {
     None => "1.40",
 };
 
+pub const SQLX_VERSION: &str = match option_env!("SQLX_VERSION") {
+    Some(v) => v,
+    None => "0.9",
+};
+
 pub const VITE_VERSION: &str = match option_env!("VITE_VERSION") {
     Some(v) => v,
     None => "8.3.5",
@@ -175,6 +180,11 @@ pub async fn build_system_components(
             name: "Tokio Async Runtime".to_string(),
             version: format!("v{}", TOKIO_VERSION.trim_start_matches('v')),
             description: "Multi-threaded asynchronous task runtime".to_string(),
+        },
+        SystemComponentInfo {
+            name: "SQLx Database Toolkit".to_string(),
+            version: format!("v{}", SQLX_VERSION.trim_start_matches('v')),
+            description: "Async SQL toolkit and connection pool".to_string(),
         },
         SystemComponentInfo {
             name: "Web Interface".to_string(),

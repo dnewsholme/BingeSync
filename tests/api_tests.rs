@@ -7581,6 +7581,8 @@ async fn test_admin_version_and_oidc_user_group_configuration() {
     assert!(axum_comp["version"].as_str().unwrap().starts_with("v0.8"));
     let tokio_comp = comps.iter().find(|c| c["name"] == "Tokio Async Runtime").expect("Tokio component");
     assert!(tokio_comp["version"].as_str().unwrap().starts_with("v1."));
+    let sqlx_comp = comps.iter().find(|c| c["name"] == "SQLx Database Toolkit").expect("SQLx component");
+    assert!(sqlx_comp["version"].as_str().unwrap().starts_with("v0.9"));
     let web_comp = comps.iter().find(|c| c["name"] == "Web Interface").expect("Web Interface component");
     assert!(web_comp["version"].as_str().unwrap().contains("Vite 8"));
 

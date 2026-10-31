@@ -73,7 +73,7 @@ pub async fn get_user_stats(
             "SELECT COUNT(*) FROM scrobbles WHERE user_id = ? AND media_type = 'movie'{}",
             time_clause_str
         );
-        let mut q = sqlx::query_scalar::<_, i64>(&movies_sql).bind(&auth.user_id);
+        let mut q = sqlx::query_scalar::<_, i64>(sqlx::AssertSqlSafe(&*movies_sql)).bind(&auth.user_id);
         if let Some(ref s) = time_start { q = q.bind(s); }
         if let Some(ref e) = time_end { q = q.bind(e); }
         let mw = q.fetch_one(&state.pool).await.unwrap_or(0);
@@ -82,7 +82,7 @@ pub async fn get_user_stats(
             "SELECT COUNT(DISTINCT title) FROM scrobbles WHERE user_id = ? AND media_type = 'movie'{}",
             time_clause_str
         );
-        let mut q = sqlx::query_scalar::<_, i64>(&unique_movies_sql).bind(&auth.user_id);
+        let mut q = sqlx::query_scalar::<_, i64>(sqlx::AssertSqlSafe(&*unique_movies_sql)).bind(&auth.user_id);
         if let Some(ref s) = time_start { q = q.bind(s); }
         if let Some(ref e) = time_end { q = q.bind(e); }
         let um = q.fetch_one(&state.pool).await.unwrap_or(0);
@@ -91,7 +91,7 @@ pub async fn get_user_stats(
             "SELECT SUM(duration_ms) FROM scrobbles WHERE user_id = ? AND media_type = 'movie'{}",
             time_clause_str
         );
-        let mut q = sqlx::query_scalar::<_, Option<i64>>(&movie_dur_sql).bind(&auth.user_id);
+        let mut q = sqlx::query_scalar::<_, Option<i64>>(sqlx::AssertSqlSafe(&*movie_dur_sql)).bind(&auth.user_id);
         if let Some(ref s) = time_start { q = q.bind(s); }
         if let Some(ref e) = time_end { q = q.bind(e); }
         let mm = q.fetch_one(&state.pool).await.unwrap_or(None).unwrap_or(0) / 60_000;
@@ -107,7 +107,7 @@ pub async fn get_user_stats(
             "SELECT COUNT(*) FROM scrobbles WHERE user_id = ? AND media_type = 'episode'{}",
             time_clause_str
         );
-        let mut q = sqlx::query_scalar::<_, i64>(&episodes_sql).bind(&auth.user_id);
+        let mut q = sqlx::query_scalar::<_, i64>(sqlx::AssertSqlSafe(&*episodes_sql)).bind(&auth.user_id);
         if let Some(ref s) = time_start { q = q.bind(s); }
         if let Some(ref e) = time_end { q = q.bind(e); }
         let ew = q.fetch_one(&state.pool).await.unwrap_or(0);
@@ -116,7 +116,7 @@ pub async fn get_user_stats(
             "SELECT COUNT(DISTINCT grandparent_title) FROM scrobbles WHERE user_id = ? AND media_type = 'episode' AND grandparent_title IS NOT NULL{}",
             time_clause_str
         );
-        let mut q = sqlx::query_scalar::<_, i64>(&unique_shows_sql).bind(&auth.user_id);
+        let mut q = sqlx::query_scalar::<_, i64>(sqlx::AssertSqlSafe(&*unique_shows_sql)).bind(&auth.user_id);
         if let Some(ref s) = time_start { q = q.bind(s); }
         if let Some(ref e) = time_end { q = q.bind(e); }
         let us = q.fetch_one(&state.pool).await.unwrap_or(0);
@@ -125,7 +125,7 @@ pub async fn get_user_stats(
             "SELECT SUM(duration_ms) FROM scrobbles WHERE user_id = ? AND media_type = 'episode'{}",
             time_clause_str
         );
-        let mut q = sqlx::query_scalar::<_, Option<i64>>(&ep_dur_sql).bind(&auth.user_id);
+        let mut q = sqlx::query_scalar::<_, Option<i64>>(sqlx::AssertSqlSafe(&*ep_dur_sql)).bind(&auth.user_id);
         if let Some(ref s) = time_start { q = q.bind(s); }
         if let Some(ref e) = time_end { q = q.bind(e); }
         let em = q.fetch_one(&state.pool).await.unwrap_or(None).unwrap_or(0) / 60_000;
@@ -148,7 +148,7 @@ pub async fn get_user_stats(
         media_clause,
         time_clause_str
     );
-    let mut q = sqlx::query_as::<_, (Option<f64>, i64, i64, i64)>(&rating_sql).bind(&auth.user_id);
+    let mut q = sqlx::query_as::<_, (Option<f64>, i64, i64, i64)>(sqlx::AssertSqlSafe(&*rating_sql)).bind(&auth.user_id);
     if let Some(ref s) = time_start { q = q.bind(s); }
     if let Some(ref e) = time_end { q = q.bind(e); }
     let (avg_rating, total_rated, completed_cnt, total_matching) = q.fetch_one(&state.pool).await.unwrap_or((None, 0, 0, 0));
@@ -165,7 +165,7 @@ pub async fn get_user_stats(
         media_clause,
         time_clause_str
     );
-    let mut q = sqlx::query_as::<_, (String, i64)>(&peak_sql).bind(&auth.user_id);
+    let mut q = sqlx::query_as::<_, (String, i64)>(sqlx::AssertSqlSafe(&*peak_sql)).bind(&auth.user_id);
     if let Some(ref s) = time_start { q = q.bind(s); }
     if let Some(ref e) = time_end { q = q.bind(e); }
     let (peak_day, peak_day_count) = match q.fetch_optional(&state.pool).await.unwrap_or(None) {
@@ -179,7 +179,7 @@ pub async fn get_user_stats(
         media_clause,
         time_clause_str
     );
-    let mut q = sqlx::query_as::<_, (String, i64)>(&dow_sql).bind(&auth.user_id);
+    let mut q = sqlx::query_as::<_, (String, i64)>(sqlx::AssertSqlSafe(&*dow_sql)).bind(&auth.user_id);
     if let Some(ref s) = time_start { q = q.bind(s); }
     if let Some(ref e) = time_end { q = q.bind(e); }
     let dow_rows: Vec<(String, i64)> = q.fetch_all(&state.pool).await.unwrap_or_default();
@@ -207,7 +207,7 @@ pub async fn get_user_stats(
         media_clause,
         time_clause_str
     );
-    let mut q = sqlx::query_as::<_, (String, i64)>(&tod_sql).bind(&auth.user_id);
+    let mut q = sqlx::query_as::<_, (String, i64)>(sqlx::AssertSqlSafe(&*tod_sql)).bind(&auth.user_id);
     if let Some(ref s) = time_start { q = q.bind(s); }
     if let Some(ref e) = time_end { q = q.bind(e); }
     let hr_rows: Vec<(String, i64)> = q.fetch_all(&state.pool).await.unwrap_or_default();
@@ -238,7 +238,7 @@ pub async fn get_user_stats(
         "SELECT DISTINCT substr(watched_at, 1, 10) as dt FROM scrobbles WHERE user_id = ?{} ORDER BY dt ASC",
         media_clause
     );
-    let watch_dates_raw: Vec<String> = sqlx::query_scalar(&dates_sql)
+    let watch_dates_raw: Vec<String> = sqlx::query_scalar(sqlx::AssertSqlSafe(&*dates_sql))
         .bind(&auth.user_id)
         .fetch_all(&state.pool)
         .await
@@ -303,7 +303,7 @@ pub async fn get_user_stats(
             "#,
             time_clause_str
         );
-        let mut q = sqlx::query_as::<_, (String, i64, Option<String>)>(&top_shows_sql).bind(&auth.user_id);
+        let mut q = sqlx::query_as::<_, (String, i64, Option<String>)>(sqlx::AssertSqlSafe(&*top_shows_sql)).bind(&auth.user_id);
         if let Some(ref s) = time_start { q = q.bind(s); }
         if let Some(ref e) = time_end { q = q.bind(e); }
         let rows: Vec<(String, i64, Option<String>)> = q.fetch_all(&state.pool).await.unwrap_or_default();
@@ -325,7 +325,7 @@ pub async fn get_user_stats(
             "#,
             time_clause_str
         );
-        let mut q = sqlx::query_as::<_, (String, i64, Option<String>, Option<i32>)>(&top_movies_sql).bind(&auth.user_id);
+        let mut q = sqlx::query_as::<_, (String, i64, Option<String>, Option<i32>)>(sqlx::AssertSqlSafe(&*top_movies_sql)).bind(&auth.user_id);
         if let Some(ref s) = time_start { q = q.bind(s); }
         if let Some(ref e) = time_end { q = q.bind(e); }
         let rows: Vec<(String, i64, Option<String>, Option<i32>)> = q.fetch_all(&state.pool).await.unwrap_or_default();
@@ -340,7 +340,7 @@ pub async fn get_user_stats(
         media_clause,
         time_clause_str
     );
-    let mut q = sqlx::query_scalar::<_, String>(&genres_sql).bind(&auth.user_id);
+    let mut q = sqlx::query_scalar::<_, String>(sqlx::AssertSqlSafe(&*genres_sql)).bind(&auth.user_id);
     if let Some(ref s) = time_start { q = q.bind(s); }
     if let Some(ref e) = time_end { q = q.bind(e); }
     let genre_rows: Vec<String> = q.fetch_all(&state.pool).await.unwrap_or_default();
@@ -366,7 +366,7 @@ pub async fn get_user_stats(
         media_clause,
         time_clause_str
     );
-    let mut q = sqlx::query_as::<_, (Option<String>, Option<String>)>(&people_sql).bind(&auth.user_id);
+    let mut q = sqlx::query_as::<_, (Option<String>, Option<String>)>(sqlx::AssertSqlSafe(&*people_sql)).bind(&auth.user_id);
     if let Some(ref s) = time_start { q = q.bind(s); }
     if let Some(ref e) = time_end { q = q.bind(e); }
     let people_rows: Vec<(Option<String>, Option<String>)> = q.fetch_all(&state.pool).await.unwrap_or_default();
@@ -418,7 +418,7 @@ pub async fn get_user_stats(
         "SELECT substr(watched_at, 1, 10) as dt, media_type FROM scrobbles WHERE user_id = ? AND watched_at >= date('now', '-{} days') ORDER BY dt ASC",
         days_back
     );
-    let daily_rows: Vec<(String, String)> = sqlx::query_as(&daily_sql)
+    let daily_rows: Vec<(String, String)> = sqlx::query_as(sqlx::AssertSqlSafe(&*daily_sql))
         .bind(&auth.user_id)
         .fetch_all(&state.pool)
         .await
@@ -474,7 +474,7 @@ pub async fn get_user_stats(
         time_clause_str,
         media_clause
     );
-    let mut q = sqlx::query_as::<_, (i32, i32, i64)>(&heatmap_sql).bind(&auth.user_id);
+    let mut q = sqlx::query_as::<_, (i32, i32, i64)>(sqlx::AssertSqlSafe(&*heatmap_sql)).bind(&auth.user_id);
     if let Some(ref s) = time_start { q = q.bind(s); }
     if let Some(ref e) = time_end { q = q.bind(e); }
     let heatmap_rows = q.fetch_all(&state.pool).await.unwrap_or_default();

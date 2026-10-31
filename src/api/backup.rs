@@ -144,7 +144,7 @@ pub async fn create_database_backup(state: &AppState, prefix: Option<&str>) -> R
     let escaped_path = target_str.replace('\'', "''");
     let query_str = format!("VACUUM INTO '{}'", escaped_path);
 
-    sqlx::query(&query_str).execute(&state.pool).await.map_err(|e| {
+    sqlx::query(sqlx::AssertSqlSafe(&*query_str)).execute(&state.pool).await.map_err(|e| {
         tracing::warn!(error = %e, target_path = %target_str, "Failed to execute VACUUM INTO database backup");
         format!("Failed to create database backup: {}", e)
     })?;
@@ -275,7 +275,8 @@ pub async fn restore_database_backup(state: &AppState, filename: &str) -> Result
         .await
         .map_err(|e| format!("Failed to acquire database connection: {}", e))?;
 
-    sqlx::query(&format!("ATTACH DATABASE '{}' AS backup_db", escaped_path))
+    let attach_sql = format!("ATTACH DATABASE '{}' AS backup_db", escaped_path);
+    sqlx::query(sqlx::AssertSqlSafe(&*attach_sql))
         .execute(&mut *conn)
         .await
         .map_err(|e| format!("Failed to attach backup database: {}", e))?;
@@ -297,7 +298,8 @@ pub async fn restore_database_backup(state: &AppState, filename: &str) -> Result
 
         // Clear existing tables in main database in dependent order
         for table in ["active_sessions", "scrobbles", "user_settings", "oidc_states", "plex_user_cache", "system_settings", "users"] {
-            let _ = sqlx::query(&format!("DELETE FROM main.{}", table)).execute(&mut *conn).await;
+            let delete_sql = format!("DELETE FROM main.{}", table);
+            let _ = sqlx::query(sqlx::AssertSqlSafe(&*delete_sql)).execute(&mut *conn).await;
         }
 
         // Copy records for each table that exists in the backup
@@ -309,7 +311,8 @@ pub async fn restore_database_backup(state: &AppState, filename: &str) -> Result
                 name: String,
             }
 
-            let main_cols: Vec<String> = sqlx::query_as::<_, ColInfo>(&format!("PRAGMA main.table_info({})", table))
+            let main_info_sql = format!("PRAGMA main.table_info({})", table);
+            let main_cols: Vec<String> = sqlx::query_as::<_, ColInfo>(sqlx::AssertSqlSafe(&*main_info_sql))
                 .fetch_all(&mut *conn)
                 .await
                 .unwrap_or_default()
@@ -317,7 +320,8 @@ pub async fn restore_database_backup(state: &AppState, filename: &str) -> Result
                 .map(|c| c.name)
                 .collect();
 
-            let bkp_cols: Vec<String> = sqlx::query_as::<_, ColInfo>(&format!("PRAGMA backup_db.table_info({})", table))
+            let bkp_info_sql = format!("PRAGMA backup_db.table_info({})", table);
+            let bkp_cols: Vec<String> = sqlx::query_as::<_, ColInfo>(sqlx::AssertSqlSafe(&*bkp_info_sql))
                 .fetch_all(&mut *conn)
                 .await
                 .unwrap_or_default()
@@ -340,7 +344,7 @@ pub async fn restore_database_backup(state: &AppState, filename: &str) -> Result
                     "INSERT INTO main.\"{}\" ({}) SELECT {} FROM backup_db.\"{}\"",
                     table, col_names, col_names, table
                 );
-                sqlx::query(&insert_sql).execute(&mut *conn).await?;
+                sqlx::query(sqlx::AssertSqlSafe(&*insert_sql)).execute(&mut *conn).await?;
             }
         }
 
