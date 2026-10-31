@@ -367,8 +367,6 @@ pub async fn insert_tautulli_watch_items(
         return Ok((0, 0));
     }
 
-    let mut tx = pool.begin().await?;
-
     #[derive(sqlx::FromRow)]
     struct ExistingScrobble {
         title: String,
@@ -388,7 +386,7 @@ pub async fn insert_tautulli_watch_items(
         "#
     )
     .bind(user_id)
-    .fetch_all(&mut *tx)
+    .fetch_all(pool)
     .await
     .unwrap_or_default();
 
@@ -403,20 +401,28 @@ pub async fn insert_tautulli_watch_items(
             let s = rec.season_number.unwrap_or(0);
             let ep = rec.episode_number.unwrap_or(0);
             exact_set.insert(format!("ep:{}:{}:{}:{}", show, s, ep, rec.watched_at));
-            day_set.insert(format!("ep_day:{}:{}:{}:{}", show, s, ep, day_prefix));
+            if !day_prefix.is_empty() {
+                day_set.insert(format!("ep_day:{}:{}:{}:{}", show, s, ep, day_prefix));
+            }
         } else {
             let t = rec.title.to_lowercase().trim().to_string();
             exact_set.insert(format!("mv:{}:{}", t, rec.watched_at));
-            day_set.insert(format!("mv_day:{}:{}", t, day_prefix));
+            if !day_prefix.is_empty() {
+                day_set.insert(format!("mv_day:{}:{}", t, day_prefix));
+            }
         }
         if let Some(ref rk) = rec.rating_key {
-            rating_key_day_set.insert(format!("rk_day:{}:{}", rk, day_prefix));
+            if !day_prefix.is_empty() {
+                rating_key_day_set.insert(format!("rk_day:{}:{}", rk, day_prefix));
+            }
         }
     }
 
     let mut imported_count = 0;
     let mut skipped_count = 0;
     let now = chrono::Utc::now().to_rfc3339();
+
+    let mut tx = pool.begin().await?;
 
     for item in items {
         let day_prefix = if item.watched_at.len() >= 10 { &item.watched_at[..10] } else { "" };
@@ -438,14 +444,18 @@ pub async fn insert_tautulli_watch_items(
             )
         };
 
-        let rk_key = item.rating_key.as_ref().map(|rk| format!("rk_day:{}:{}", rk, day_prefix));
+        let rk_key = if !day_prefix.is_empty() {
+            item.rating_key.as_ref().map(|rk| format!("rk_day:{}:{}", rk, day_prefix))
+        } else {
+            None
+        };
 
         // Deduplication check:
         // 1. Exact match on title/show, season, episode, watched_at
         // 2. Same-day match on title/show, season, episode
         // 3. Same-day match on Plex rating_key
         let is_dup = exact_set.contains(&exact_key)
-            || day_set.contains(&day_key)
+            || (!day_prefix.is_empty() && day_set.contains(&day_key))
             || (rk_key.as_ref().map(|k| rating_key_day_set.contains(k)).unwrap_or(false));
 
         if is_dup {
@@ -497,13 +507,15 @@ pub async fn insert_tautulli_watch_items(
             Ok(_) => {
                 imported_count += 1;
                 exact_set.insert(exact_key);
-                day_set.insert(day_key);
+                if !day_prefix.is_empty() {
+                    day_set.insert(day_key);
+                }
                 if let Some(rk) = rk_key {
                     rating_key_day_set.insert(rk);
                 }
             }
             Err(e) => {
-                tracing::warn!(error = %e, title = %item.title, "Failed to insert Tautulli scrobble during import");
+                tracing::error!(error = %e, title = %item.title, "Database error inserting Tautulli scrobble during import");
                 if let Some(buf) = log_buffer {
                     buf.push(
                         "ERROR",
@@ -511,7 +523,7 @@ pub async fn insert_tautulli_watch_items(
                         &format!("Failed to insert scrobble '{}': {}", item.title, e),
                     );
                 }
-                skipped_count += 1;
+                return Err(e);
             }
         }
     }

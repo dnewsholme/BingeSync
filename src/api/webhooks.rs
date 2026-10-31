@@ -276,6 +276,11 @@ async fn process_webhook(
         }
 
         if !matches {
+            state.log_buffer.push(
+                "INFO",
+                "bingesync::plex",
+                &format!("Ignored Plex webhook for {}: username '{:?}' / ID '{:?}' does not match allowed user(s)", user.email, account_title, account_id),
+            );
             tracing::info!(
                 user_id = %user.id,
                 account_title = ?account_title,
@@ -571,6 +576,12 @@ async fn process_webhook(
                     thumb_url: thumb_url.clone(),
                     user_rating: None,
                 },
+            );
+
+            state.log_buffer.push(
+                "INFO",
+                "bingesync::plex",
+                &format!("Plex scrobble recorded for user {}: '{}' ({})", user.email, title, media_type),
             );
 
             Ok((
@@ -901,6 +912,11 @@ async fn process_jellyfin_or_emby_webhook(
 
         let matches = candidate_identifiers.iter().any(|c| expanded_allowed.contains(c));
         if !matches {
+            state.log_buffer.push(
+                "INFO",
+                &format!("bingesync::{}", source),
+                &format!("Ignored {} webhook for {}: username '{:?}' / ID '{:?}' does not match allowed user(s)", source, user.email, notif_user, notif_id),
+            );
             tracing::info!(
                 user_id = %user.id,
                 source = %source,
@@ -1207,6 +1223,11 @@ async fn process_jellyfin_or_emby_webhook(
             .await;
 
         let status_code = if is_completed {
+            state.log_buffer.push(
+                "INFO",
+                &format!("bingesync::{}", source),
+                &format!("{} scrobble recorded for user {}: '{}' ({})", if source == "emby" { "Emby" } else { "Jellyfin" }, user.email, title, media_type),
+            );
             StatusCode::CREATED
         } else {
             StatusCode::OK
@@ -1267,6 +1288,11 @@ async fn process_jellyfin_or_emby_webhook(
         })?;
 
         let status_code = if is_completed {
+            state.log_buffer.push(
+                "INFO",
+                &format!("bingesync::{}", source),
+                &format!("{} scrobble recorded for user {}: '{}' ({})", if source == "emby" { "Emby" } else { "Jellyfin" }, user.email, title, media_type),
+            );
             StatusCode::CREATED
         } else {
             StatusCode::OK

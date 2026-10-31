@@ -417,15 +417,25 @@ pub async fn writeback_item_to_jellyfin(
     }
 }
 
-/// Dispatches media writeback asynchronously if bidirectional sync is enabled for user
+/// Dispatches media writeback asynchronously if watch history sync is enabled for user
 pub fn dispatch_media_writeback(pool: SqlitePool, user_id: String, item: WritebackItem) {
     tokio::spawn(async move {
-        let enabled = crate::api::user_settings::get_user_setting(&pool, &user_id, "bidirectional_sync_enabled")
+        let bidi = crate::api::user_settings::get_user_setting(&pool, &user_id, "bidirectional_sync_enabled")
             .await
             .map(|s| s == "true" || s == "1")
             .unwrap_or(false);
 
-        if !enabled {
+        let plex_sync = crate::api::user_settings::get_user_setting(&pool, &user_id, "plex_sync_enabled")
+            .await
+            .map(|s| s == "true" || s == "1")
+            .unwrap_or(bidi);
+
+        let jellyfin_sync = crate::api::user_settings::get_user_setting(&pool, &user_id, "jellyfin_sync_enabled")
+            .await
+            .map(|s| s == "true" || s == "1")
+            .unwrap_or(bidi);
+
+        if !plex_sync && !jellyfin_sync {
             return;
         }
 
@@ -434,35 +444,235 @@ pub fn dispatch_media_writeback(pool: SqlitePool, user_id: String, item: Writeba
             .build()
             .unwrap_or_default();
 
-        // 1. Sync to Plex if configured
-        let plex_url = crate::api::user_settings::get_user_setting(&pool, &user_id, "plex_url").await;
-        let plex_api_key = crate::api::user_settings::get_user_setting(&pool, &user_id, "plex_api_key").await;
+        // 1. Sync to Plex if configured & enabled
+        if plex_sync {
+            let plex_url = crate::api::user_settings::get_user_setting(&pool, &user_id, "plex_url").await;
+            let plex_api_key = crate::api::user_settings::get_user_setting(&pool, &user_id, "plex_api_key").await;
 
-        if let (Some(ref url), Some(ref token)) = (plex_url, plex_api_key) {
-            if !url.trim().is_empty() && !token.trim().is_empty() {
-                match writeback_item_to_plex(&client, url, token, &item).await {
-                    Ok(true) => tracing::info!(title = %item.title, "Successfully synced watch state to Plex"),
-                    Ok(false) => tracing::debug!(title = %item.title, "Item not found in Plex library for writeback"),
-                    Err(e) => tracing::warn!(title = %item.title, error = %e, "Failed to writeback watch state to Plex"),
+            if let (Some(ref url), Some(ref token)) = (plex_url, plex_api_key) {
+                if !url.trim().is_empty() && !token.trim().is_empty() {
+                    match writeback_item_to_plex(&client, url, token, &item).await {
+                        Ok(true) => tracing::info!(title = %item.title, "Successfully synced watch state to Plex"),
+                        Ok(false) => tracing::debug!(title = %item.title, "Item not found in Plex library for writeback"),
+                        Err(e) => tracing::warn!(title = %item.title, error = %e, "Failed to writeback watch state to Plex"),
+                    }
                 }
             }
         }
 
-        // 2. Sync to Jellyfin if configured
-        let jellyfin_url = crate::api::user_settings::get_user_setting(&pool, &user_id, "jellyfin_url").await;
-        let jellyfin_api_key = crate::api::user_settings::get_user_setting(&pool, &user_id, "jellyfin_api_key").await;
-        let jellyfin_username = crate::api::user_settings::get_user_setting(&pool, &user_id, "jellyfin_username").await;
+        // 2. Sync to Jellyfin if configured & enabled
+        if jellyfin_sync {
+            let jellyfin_url = crate::api::user_settings::get_user_setting(&pool, &user_id, "jellyfin_url").await;
+            let jellyfin_api_key = crate::api::user_settings::get_user_setting(&pool, &user_id, "jellyfin_api_key").await;
+            let jellyfin_username = crate::api::user_settings::get_user_setting(&pool, &user_id, "jellyfin_username").await;
 
-        if let (Some(ref url), Some(ref key)) = (jellyfin_url, jellyfin_api_key) {
-            if !url.trim().is_empty() && !key.trim().is_empty() {
-                match writeback_item_to_jellyfin(&client, url, key, jellyfin_username.as_deref(), &item).await {
-                    Ok(true) => tracing::info!(title = %item.title, "Successfully synced watch state to Jellyfin"),
-                    Ok(false) => tracing::debug!(title = %item.title, "Item not found in Jellyfin library for writeback"),
-                    Err(e) => tracing::warn!(title = %item.title, error = %e, "Failed to writeback watch state to Jellyfin"),
+            if let (Some(ref url), Some(ref key)) = (jellyfin_url, jellyfin_api_key) {
+                if !url.trim().is_empty() && !key.trim().is_empty() {
+                    match writeback_item_to_jellyfin(&client, url, key, jellyfin_username.as_deref(), &item).await {
+                        Ok(true) => tracing::info!(title = %item.title, "Successfully synced watch state to Jellyfin"),
+                        Ok(false) => tracing::debug!(title = %item.title, "Item not found in Jellyfin library for writeback"),
+                        Err(e) => tracing::warn!(title = %item.title, error = %e, "Failed to writeback watch state to Jellyfin"),
+                    }
                 }
             }
         }
     });
+}
+
+pub fn start_media_sync_worker(state: AppState) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        // Initial delay before background sync starts
+        tokio::time::sleep(Duration::from_secs(10)).await;
+
+        loop {
+            let interval_hours = state.get_task_interval_hours("media_sync").await;
+            let next_run = chrono::Utc::now() + chrono::Duration::hours(interval_hours as i64);
+            state.task_tracker.set_media_sync_next_run(Some(next_run.to_rfc3339())).await;
+
+            let sleep_duration = Duration::from_secs(interval_hours.max(1) * 3600);
+
+            tokio::select! {
+                _ = tokio::time::sleep(sleep_duration) => {},
+                _ = state.media_sync_notify.notified() => {
+                    tracing::info!("Media sync notification received; running cycle immediately");
+                }
+            }
+
+            run_media_sync_cycle(&state).await;
+        }
+    })
+}
+
+pub async fn run_media_sync_cycle(state: &AppState) {
+    let pool = &state.pool;
+    state.task_tracker.set_media_sync_running(Some(pool), "Running media server watch history sync...").await;
+    state.log_buffer.push("INFO", "bingesync::writeback", "Starting media server watch history sync cycle (Plex & Jellyfin)...");
+
+    match sync_all_users_media(state).await {
+        Ok((total_synced, total_processed, users_synced)) => {
+            let msg = if users_synced == 0 {
+                "Watch history sync completed: no users configured for media server sync".to_string()
+            } else {
+                format!(
+                    "Watch history sync completed across {} user{}: {} watches synced to media servers ({} processed)",
+                    users_synced,
+                    if users_synced == 1 { "" } else { "s" },
+                    total_synced,
+                    total_processed
+                )
+            };
+            state.task_tracker.set_media_sync_idle(Some(pool), total_synced, &msg).await;
+            state.log_buffer.push("INFO", "bingesync::writeback", &msg);
+            tracing::info!("{}", msg);
+        }
+        Err(e) => {
+            let err_msg = format!("Watch history sync cycle error: {}", e);
+            tracing::error!("{}", err_msg);
+            state.task_tracker.set_media_sync_idle(Some(pool), 0, &err_msg).await;
+            state.log_buffer.push("ERROR", "bingesync::writeback", &err_msg);
+        }
+    }
+}
+
+pub async fn sync_all_users_media(state: &AppState) -> Result<(usize, usize, usize), String> {
+    let pool = &state.pool;
+
+    #[derive(sqlx::FromRow)]
+    struct UserCandidate {
+        id: String,
+        email: String,
+    }
+
+    let users: Vec<UserCandidate> = sqlx::query_as(
+        r#"
+        SELECT DISTINCT u.id, u.email
+        FROM users u
+        JOIN user_settings s ON s.user_id = u.id
+        WHERE (s.key = 'plex_sync_enabled' AND (s.value = 'true' OR s.value = '1'))
+           OR (s.key = 'jellyfin_sync_enabled' AND (s.value = 'true' OR s.value = '1'))
+           OR (s.key = 'bidirectional_sync_enabled' AND (s.value = 'true' OR s.value = '1'))
+        "#
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|e| format!("Failed to fetch user candidates for media sync: {}", e))?;
+
+    let mut total_synced = 0;
+    let mut total_processed = 0;
+    let mut users_synced = 0;
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(12))
+        .build()
+        .unwrap_or_default();
+
+    for u in users {
+        let bidi = crate::api::user_settings::get_user_setting(pool, &u.id, "bidirectional_sync_enabled")
+            .await
+            .map(|s| s == "true" || s == "1")
+            .unwrap_or(false);
+
+        let plex_sync = crate::api::user_settings::get_user_setting(pool, &u.id, "plex_sync_enabled")
+            .await
+            .map(|s| s == "true" || s == "1")
+            .unwrap_or(bidi);
+
+        let jellyfin_sync = crate::api::user_settings::get_user_setting(pool, &u.id, "jellyfin_sync_enabled")
+            .await
+            .map(|s| s == "true" || s == "1")
+            .unwrap_or(bidi);
+
+        if !plex_sync && !jellyfin_sync {
+            continue;
+        }
+
+        let plex_url = crate::api::user_settings::get_user_setting(pool, &u.id, "plex_url").await;
+        let plex_api_key = crate::api::user_settings::get_user_setting(pool, &u.id, "plex_api_key").await;
+        let jellyfin_url = crate::api::user_settings::get_user_setting(pool, &u.id, "jellyfin_url").await;
+        let jellyfin_api_key = crate::api::user_settings::get_user_setting(pool, &u.id, "jellyfin_api_key").await;
+        let jellyfin_username = crate::api::user_settings::get_user_setting(pool, &u.id, "jellyfin_username").await;
+
+        let has_plex = plex_sync && plex_url.as_ref().map(|s| !s.trim().is_empty()).unwrap_or(false)
+            && plex_api_key.as_ref().map(|s| !s.trim().is_empty()).unwrap_or(false);
+
+        let has_jellyfin = jellyfin_sync && jellyfin_url.as_ref().map(|s| !s.trim().is_empty()).unwrap_or(false)
+            && jellyfin_api_key.as_ref().map(|s| !s.trim().is_empty()).unwrap_or(false);
+
+        if !has_plex && !has_jellyfin {
+            continue;
+        }
+
+        // Fetch user's recent completed scrobbles
+        #[derive(sqlx::FromRow)]
+        struct RawScrobble {
+            title: String,
+            media_type: String,
+            grandparent_title: Option<String>,
+            season_number: Option<i32>,
+            episode_number: Option<i32>,
+            year: Option<i32>,
+            rating_key: Option<String>,
+        }
+
+        let rows = sqlx::query_as::<_, RawScrobble>(
+            "SELECT title, media_type, grandparent_title, season_number, episode_number, year, rating_key FROM scrobbles WHERE user_id = ? AND (watch_status = 'completed' OR progress_percent >= 80) ORDER BY watched_at DESC LIMIT 50"
+        )
+        .bind(&u.id)
+        .fetch_all(pool)
+        .await
+        .unwrap_or_default();
+
+        if rows.is_empty() {
+            continue;
+        }
+
+        let mut user_plex_synced = 0;
+        let mut user_jellyfin_synced = 0;
+
+        for r in &rows {
+            let item = WritebackItem {
+                title: r.title.clone(),
+                media_type: r.media_type.clone(),
+                grandparent_title: r.grandparent_title.clone(),
+                season_number: r.season_number,
+                episode_number: r.episode_number,
+                year: r.year,
+                rating_key: r.rating_key.clone(),
+            };
+
+            if has_plex {
+                if let (Some(ref url), Some(ref token)) = (&plex_url, &plex_api_key) {
+                    if let Ok(true) = writeback_item_to_plex(&client, url, token, &item).await {
+                        user_plex_synced += 1;
+                    }
+                }
+            }
+
+            if has_jellyfin {
+                if let (Some(ref url), Some(ref key)) = (&jellyfin_url, &jellyfin_api_key) {
+                    if let Ok(true) = writeback_item_to_jellyfin(&client, url, key, jellyfin_username.as_deref(), &item).await {
+                        user_jellyfin_synced += 1;
+                    }
+                }
+            }
+        }
+
+        total_processed += rows.len();
+        let user_synced_count = user_plex_synced + user_jellyfin_synced;
+        total_synced += user_synced_count;
+        users_synced += 1;
+
+        state.log_buffer.push(
+            "INFO",
+            "bingesync::writeback",
+            &format!(
+                "Media sync for user {}: {} scrobbles evaluated (Plex: {}, Jellyfin: {})",
+                u.email, rows.len(), user_plex_synced, user_jellyfin_synced
+            ),
+        );
+    }
+
+    Ok((total_synced, total_processed, users_synced))
 }
 
 /// Handler for testing user's Plex connection: POST /api/v1/user/settings/test-plex
@@ -672,12 +882,20 @@ pub async fn trigger_writeback_handler(
         }
     }
 
+    let msg = format!("Writeback complete: {} scrobbles processed (Plex: {}, Jellyfin: {})", total, plex_synced, jellyfin_synced);
+    state.log_buffer.push(
+        "INFO",
+        "bingesync::writeback",
+        &format!("Manual writeback completed for {}: {}", auth.email, msg),
+    );
+    tracing::info!("{}", msg);
+
     Ok(Json(serde_json::json!({
         "status": "success",
         "scrobbles_processed": total,
         "plex_synced": plex_synced,
         "jellyfin_synced": jellyfin_synced,
-        "message": format!("Writeback complete: {} scrobbles processed (Plex: {}, Jellyfin: {})", total, plex_synced, jellyfin_synced)
+        "message": msg
     })))
 }
 

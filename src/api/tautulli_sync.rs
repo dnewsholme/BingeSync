@@ -29,6 +29,7 @@ pub fn start_tautulli_sync_worker(state: AppState) -> tokio::task::JoinHandle<()
 pub async fn run_tautulli_sync_cycle(state: &AppState) {
     let pool = &state.pool;
     state.task_tracker.set_tautulli_sync_running(Some(pool), "Running continuous sync...").await;
+    state.log_buffer.push("INFO", "bingesync::tautulli", "Starting Tautulli continuous 1-way sync cycle...");
 
     match sync_tautulli_all_users(state).await {
         Ok((total_imported, total_skipped, users_synced)) => {
@@ -133,6 +134,11 @@ pub async fn sync_tautulli_all_users(state: &AppState) -> Result<(usize, usize, 
         }
 
         // Fetch recent items (e.g. 100 recent watches)
+        state.log_buffer.push(
+            "INFO",
+            "bingesync::tautulli",
+            &format!("Polling Tautulli history for user {} ({})", u.email, tautulli_user),
+        );
         match crate::api::tautulli_import::fetch_recent_tautulli_history(&url, &api_key, &tautulli_user, 100).await {
             Ok(items) => {
                 if !items.is_empty() {
@@ -159,6 +165,15 @@ pub async fn sync_tautulli_all_users(state: &AppState) -> Result<(usize, usize, 
                                         u.email, tautulli_user, imported, skipped
                                     ),
                                 );
+                            } else {
+                                state.log_buffer.push(
+                                    "INFO",
+                                    "bingesync::tautulli",
+                                    &format!(
+                                        "Tautulli sync for {} ({}): up to date ({} items checked, all already synced)",
+                                        u.email, tautulli_user, items.len()
+                                    ),
+                                );
                             }
                         }
                         Err(e) => {
@@ -171,6 +186,11 @@ pub async fn sync_tautulli_all_users(state: &AppState) -> Result<(usize, usize, 
                     }
                 } else {
                     users_synced += 1;
+                    state.log_buffer.push(
+                        "INFO",
+                        "bingesync::tautulli",
+                        &format!("Tautulli sync for {} ({}): no watches found on server", u.email, tautulli_user),
+                    );
                 }
             }
             Err(e) => {

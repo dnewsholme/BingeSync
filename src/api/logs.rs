@@ -129,6 +129,13 @@ impl LogBuffer {
                                 target_lower.contains("tautulli")
                                     || msg_lower.contains("tautulli")
                             }
+                            "media_sync" | "media_writeback" | "writeback" => {
+                                target_lower.contains("writeback")
+                                    || target_lower.contains("media_sync")
+                                    || msg_lower.contains("writeback")
+                                    || msg_lower.contains("plex")
+                                    || msg_lower.contains("jellyfin")
+                            }
                             _ => msg_lower.contains(q) || target_lower.contains(q),
                         };
 

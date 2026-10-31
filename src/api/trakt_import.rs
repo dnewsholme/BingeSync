@@ -121,14 +121,6 @@ pub async fn import_trakt_handler(
     // Automatically sort all items chronologically (oldest to newest)
     items.sort_by(|a, b| a.watched_at.cmp(&b.watched_at));
 
-    // Execute in a single atomic database transaction for lightning-fast batch insertion
-    let mut tx = state.pool.begin().await.map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({ "error": format!("Database transaction error: {}", e) })),
-        )
-    })?;
-
     #[derive(sqlx::FromRow)]
     struct ExistingScrobble {
         id: String,
@@ -149,7 +141,7 @@ pub async fn import_trakt_handler(
         "#,
     )
     .bind(&auth.user_id)
-    .fetch_all(&mut *tx)
+    .fetch_all(&state.pool)
     .await
     .unwrap_or_default();
 
@@ -168,6 +160,14 @@ pub async fn import_trakt_handler(
         };
         existing_map.insert(key, (rec.id, rec.user_rating));
     }
+
+    // Execute in a single atomic database transaction for lightning-fast batch insertion
+    let mut tx = state.pool.begin().await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": format!("Database transaction error: {}", e) })),
+        )
+    })?;
 
     let mut imported_count = 0;
     let mut updated_count = 0;
@@ -249,8 +249,11 @@ pub async fn import_trakt_handler(
                 existing_map.insert(key, (scrobble_id, item.user_rating));
             }
             Err(e) => {
-                tracing::warn!(error = %e, title = %item.title, "Failed to insert Trakt scrobble during import");
-                skipped_count += 1;
+                tracing::error!(error = %e, title = %item.title, "Database error inserting Trakt scrobble during import");
+                return Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({ "error": format!("Failed to insert scrobble '{}': {}", item.title, e) })),
+                ));
             }
         }
     }

@@ -22,7 +22,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="BingeSync" />
-  <script type="module" crossorigin src="./assets/index-DFUZtYAR.js"></script>
+  <script type="module" crossorigin src="./assets/index-DU7Xdxfw.js"></script>
   <link rel="stylesheet" crossorigin href="./assets/index-09qWcRk4.css">
 </head>
 <body>
@@ -1046,6 +1046,45 @@
                   </div>
                 </div>
 
+                <div class="form-row" style="margin-top: 4px; margin-bottom: 8px;">
+                  <div class="form-group col-full">
+                    <label class="setting-toggle-btn" for="user-setting-plex-sync-enabled">
+                      <input type="checkbox" id="user-setting-plex-sync-enabled" />
+                      <span>Enable Watch History Sync to Plex</span>
+                    </label>
+                    <small style="display:block;margin-top:4px;font-size:0.75rem;color:var(--text-dim);">
+                      Automatically marks media as watched on your Plex Media Server when logged or scrobbled in BingeSync.
+                    </small>
+                  </div>
+                </div>
+
+                <details class="setup-guide-accordion" style="margin-top: 6px; margin-bottom: 14px;">
+                  <summary>How to find your Plex Token (X-Plex-Token)</summary>
+                  <div class="steps-list">
+                    <div class="step-item">
+                      <div class="step-number">1</div>
+                      <div class="step-content">
+                        <h4>Open any media item in Plex Web</h4>
+                        <p>Sign in to Plex Web, navigate to any movie or episode, click the three dots icon (<strong>···</strong>), and select <strong>Get Info</strong>.</p>
+                      </div>
+                    </div>
+                    <div class="step-item">
+                      <div class="step-number">2</div>
+                      <div class="step-content">
+                        <h4>View XML</h4>
+                        <p>In the media info modal, click <strong>View XML</strong> in the bottom left corner.</p>
+                      </div>
+                    </div>
+                    <div class="step-item">
+                      <div class="step-number">3</div>
+                      <div class="step-content">
+                        <h4>Copy the Token from URL</h4>
+                        <p>Look at your browser's address bar. The token is the value of the <code>X-Plex-Token=...</code> query parameter at the very end of the URL. Copy that value and paste it into the Plex API Token field above.</p>
+                      </div>
+                    </div>
+                  </div>
+                </details>
+
                 <!-- Jellyfin Username Filter -->
                 <div class="settings-group-header" style="margin-top: 16px;">
                   <span class="badge-pill" style="background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.3);">Jellyfin</span>
@@ -1081,6 +1120,45 @@
                     <span id="jellyfin-test-status" class="setting-test-status" style="font-size:0.85rem;"></span>
                   </div>
                 </div>
+
+                <div class="form-row" style="margin-top: 4px; margin-bottom: 8px;">
+                  <div class="form-group col-full">
+                    <label class="setting-toggle-btn" for="user-setting-jellyfin-sync-enabled">
+                      <input type="checkbox" id="user-setting-jellyfin-sync-enabled" />
+                      <span>Enable Watch History Sync to Jellyfin</span>
+                    </label>
+                    <small style="display:block;margin-top:4px;font-size:0.75rem;color:var(--text-dim);">
+                      Automatically marks media as watched in your Jellyfin library when logged or scrobbled in BingeSync.
+                    </small>
+                  </div>
+                </div>
+
+                <details class="setup-guide-accordion" style="margin-top: 6px; margin-bottom: 14px;">
+                  <summary>How to generate your Jellyfin API Key</summary>
+                  <div class="steps-list">
+                    <div class="step-item">
+                      <div class="step-number">1</div>
+                      <div class="step-content">
+                        <h4>Open Jellyfin Dashboard</h4>
+                        <p>Sign in to Jellyfin as an administrator and click the menu or gear icon to open the <strong>Dashboard</strong>.</p>
+                      </div>
+                    </div>
+                    <div class="step-item">
+                      <div class="step-number">2</div>
+                      <div class="step-content">
+                        <h4>Navigate to API Keys</h4>
+                        <p>Under the <strong>Advanced</strong> section in the sidebar, click on <strong>API Keys</strong>.</p>
+                      </div>
+                    </div>
+                    <div class="step-item">
+                      <div class="step-number">3</div>
+                      <div class="step-content">
+                        <h4>Generate New Key</h4>
+                        <p>Click the <strong>+</strong> button, enter an App Name such as <code>BingeSync</code>, click OK, and copy the generated key into the Jellyfin API Key field above.</p>
+                      </div>
+                    </div>
+                  </div>
+                </details>
 
                 <!-- Emby Username Filter -->
                 <div class="settings-group-header" style="margin-top: 16px;">

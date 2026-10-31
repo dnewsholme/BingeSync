@@ -889,14 +889,15 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     await page.click('#admin-subnav-pills button[data-subview="admin-sub-tasks"]');
     await expect(page.locator('#admin-sub-tasks')).toBeVisible();
 
-    // Verify task cards exist (poster_cache, tvdb_metadata, user_sync, tautulli_sync, db_backup, and db_maintenance)
+    // Verify task cards exist (poster_cache, tvdb_metadata, user_sync, tautulli_sync, media_sync, db_backup, and db_maintenance)
     const taskCards = page.locator('.task-card');
-    await expect(taskCards).toHaveCount(6);
+    await expect(taskCards).toHaveCount(7);
     const posterCard = page.locator('.task-card', { hasText: 'Media Poster & Thumbnail Caching' });
     await expect(posterCard).toBeVisible();
     await expect(page.locator('.task-card', { hasText: /Metadata Enrichment/ })).toBeVisible();
     await expect(page.locator('.task-card', { hasText: 'Plex & Media Server User Cache Sync' })).toBeVisible();
     await expect(page.locator('.task-card', { hasText: 'Tautulli Continuous 1-Way Sync' })).toBeVisible();
+    await expect(page.locator('.task-card', { hasText: 'Watch History Sync (Plex & Jellyfin)' })).toBeVisible();
     const backupCard = page.locator('.task-card', { hasText: 'Database Backup' });
     await expect(backupCard).toBeVisible();
     await expect(backupCard).toContainText('Backups Stored:');

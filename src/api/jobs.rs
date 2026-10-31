@@ -69,6 +69,13 @@ pub struct BackgroundTaskTracker {
     pub tautulli_sync_last_success: RwLock<Option<String>>,
     pub tautulli_sync_next_run: RwLock<Option<String>>,
     pub tautulli_sync_last_message: RwLock<Option<String>>,
+
+    pub media_sync_status: RwLock<String>,
+    pub media_sync_processed: AtomicUsize,
+    pub media_sync_last_run: RwLock<Option<String>>,
+    pub media_sync_last_success: RwLock<Option<String>>,
+    pub media_sync_next_run: RwLock<Option<String>>,
+    pub media_sync_last_message: RwLock<Option<String>>,
 }
 
 impl Default for BackgroundTaskTracker {
@@ -126,6 +133,13 @@ impl BackgroundTaskTracker {
             tautulli_sync_last_success: RwLock::new(None),
             tautulli_sync_next_run: RwLock::new(Some(initial_tautulli_next.to_rfc3339())),
             tautulli_sync_last_message: RwLock::new(Some("Worker initialized. Ready to sync Tautulli history.".to_string())),
+
+            media_sync_status: RwLock::new("idle".to_string()),
+            media_sync_processed: AtomicUsize::new(0),
+            media_sync_last_run: RwLock::new(None),
+            media_sync_last_success: RwLock::new(None),
+            media_sync_next_run: RwLock::new(Some(initial_next.to_rfc3339())),
+            media_sync_last_message: RwLock::new(Some("Worker initialized. Ready to sync watch history to media servers.".to_string())),
         }
     }
 
@@ -286,6 +300,31 @@ impl BackgroundTaskTracker {
 
     pub async fn set_tautulli_sync_next_run(&self, next_run: Option<String>) {
         *self.tautulli_sync_next_run.write().await = next_run;
+    }
+
+    pub async fn set_media_sync_running(&self, pool: Option<&sqlx::SqlitePool>, message: &str) {
+        let now = chrono::Utc::now().to_rfc3339();
+        *self.media_sync_status.write().await = "running".to_string();
+        *self.media_sync_last_run.write().await = Some(now.clone());
+        *self.media_sync_last_message.write().await = Some(message.to_string());
+        if let Some(p) = pool {
+            let _ = crate::api::settings::set_db_setting(p, "task_last_run:media_sync", &now).await;
+        }
+    }
+
+    pub async fn set_media_sync_idle(&self, pool: Option<&sqlx::SqlitePool>, processed: usize, message: &str) {
+        let now = chrono::Utc::now().to_rfc3339();
+        *self.media_sync_status.write().await = "idle".to_string();
+        self.media_sync_processed.fetch_add(processed, Ordering::Relaxed);
+        *self.media_sync_last_success.write().await = Some(now.clone());
+        *self.media_sync_last_message.write().await = Some(message.to_string());
+        if let Some(p) = pool {
+            let _ = crate::api::settings::set_db_setting(p, "task_last_success:media_sync", &now).await;
+        }
+    }
+
+    pub async fn set_media_sync_next_run(&self, next_run: Option<String>) {
+        *self.media_sync_next_run.write().await = next_run;
     }
 
     pub async fn get_tasks_summary(&self, state: &AppState, tvdb_configured: bool) -> Vec<BackgroundTaskInfo> {
@@ -560,7 +599,35 @@ impl BackgroundTaskTracker {
             last_message: self.tautulli_sync_last_message.read().await.clone(),
         };
 
-        vec![image_task, tvdb_task, user_sync_task, tautulli_sync_task, db_backup_task, db_maintenance_task]
+        let media_sync_interval = state.get_task_interval_hours("media_sync").await;
+        let media_sync_sched_str = format!("Every {} hour{}", media_sync_interval, if media_sync_interval == 1 { "" } else { "s" });
+
+        let media_sync_last_run = match self.media_sync_last_run.read().await.clone() {
+            Some(lr) => Some(lr),
+            None => crate::api::settings::get_db_setting(pool, "task_last_run:media_sync").await,
+        };
+
+        let media_sync_last_success = match self.media_sync_last_success.read().await.clone() {
+            Some(ls) => Some(ls),
+            None => crate::api::settings::get_db_setting(pool, "task_last_success:media_sync").await,
+        };
+
+        let media_sync_task = BackgroundTaskInfo {
+            id: "media_sync".to_string(),
+            name: "Watch History Sync (Plex & Jellyfin)".to_string(),
+            description: "Periodically synchronizes recent watch history and scrobbles to configured Plex and Jellyfin media servers with automatic writeback.".to_string(),
+            status: self.media_sync_status.read().await.clone(),
+            schedule: media_sync_sched_str,
+            interval_hours: media_sync_interval,
+            items_processed: self.media_sync_processed.load(Ordering::Relaxed),
+            items_pending: 0,
+            last_run_at: media_sync_last_run,
+            last_success_at: media_sync_last_success,
+            next_run_at: self.media_sync_next_run.read().await.clone(),
+            last_message: self.media_sync_last_message.read().await.clone(),
+        };
+
+        vec![image_task, tvdb_task, user_sync_task, tautulli_sync_task, media_sync_task, db_backup_task, db_maintenance_task]
     }
 }
 
@@ -754,6 +821,18 @@ pub async fn trigger_admin_task_handler(
                 "task_id": "tautulli_sync",
                 "forced": false,
                 "message": "Tautulli continuous sync worker has been signaled to run immediately"
+            })))
+        }
+        "media_sync" | "media_writeback" | "writeback" => {
+            state.task_tracker.set_media_sync_running(Some(&state.pool), "Manual sync triggered...").await;
+            state.media_sync_notify.notify_waiters();
+            state.media_sync_notify.notify_one();
+            state.log_buffer.push("INFO", "bingesync::tasks", "Manual run triggered for Watch History Sync worker");
+            Ok(Json(serde_json::json!({
+                "status": "triggered",
+                "task_id": "media_sync",
+                "forced": false,
+                "message": "Watch history sync worker has been signaled to run immediately"
             })))
         }
         _ => Err((

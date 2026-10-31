@@ -364,12 +364,14 @@ const el = {
   userSettingPlexUsername: document.getElementById('user-setting-plex-username'),
   userSettingPlexUrl: document.getElementById('user-setting-plex-url'),
   userSettingPlexApiKey: document.getElementById('user-setting-plex-api-key'),
+  userSettingPlexSyncEnabled: document.getElementById('user-setting-plex-sync-enabled'),
   btnTestPlexConnection: document.getElementById('btn-test-plex-connection'),
   plexTestStatus: document.getElementById('plex-test-status'),
   userSettingJellyfinUsername: document.getElementById('user-setting-jellyfin-username'),
   userSettingEmbyUsername: document.getElementById('user-setting-emby-username'),
   userSettingJellyfinUrl: document.getElementById('user-setting-jellyfin-url'),
   userSettingJellyfinApiKey: document.getElementById('user-setting-jellyfin-api-key'),
+  userSettingJellyfinSyncEnabled: document.getElementById('user-setting-jellyfin-sync-enabled'),
   btnTestJellyfinConnection: document.getElementById('btn-test-jellyfin-connection'),
   jellyfinTestStatus: document.getElementById('jellyfin-test-status'),
   userSettingBidirectionalSyncEnabled: document.getElementById('user-setting-bidirectional-sync-enabled'),
@@ -2705,12 +2707,18 @@ async function loadUserSettings() {
     if (el.userSettingPlexUsername) el.userSettingPlexUsername.value = s.plex_username || '';
     if (el.userSettingPlexUrl) el.userSettingPlexUrl.value = s.plex_url || '';
     applySecretField(el.userSettingPlexApiKey, s.plex_api_key, s.plex_api_key_masked);
+    if (el.userSettingPlexSyncEnabled) {
+      el.userSettingPlexSyncEnabled.checked = s.plex_sync_enabled !== undefined ? !!s.plex_sync_enabled : !!s.bidirectional_sync_enabled;
+    }
 
     if (el.userSettingJellyfinUsername) el.userSettingJellyfinUsername.value = s.jellyfin_username || '';
     if (el.userSettingEmbyUsername) el.userSettingEmbyUsername.value = s.emby_username || '';
 
     if (el.userSettingJellyfinUrl) el.userSettingJellyfinUrl.value = s.jellyfin_url || '';
     applySecretField(el.userSettingJellyfinApiKey, s.jellyfin_api_key, s.jellyfin_api_key_masked);
+    if (el.userSettingJellyfinSyncEnabled) {
+      el.userSettingJellyfinSyncEnabled.checked = s.jellyfin_sync_enabled !== undefined ? !!s.jellyfin_sync_enabled : !!s.bidirectional_sync_enabled;
+    }
 
     if (el.userSettingBidirectionalSyncEnabled) {
       el.userSettingBidirectionalSyncEnabled.checked = !!s.bidirectional_sync_enabled;
@@ -2767,11 +2775,13 @@ if (el.formUserSettings) {
         plex_username: el.userSettingPlexUsername ? el.userSettingPlexUsername.value.trim() : null,
         plex_url: el.userSettingPlexUrl ? el.userSettingPlexUrl.value.trim() : null,
         plex_api_key: getSecretValue(el.userSettingPlexApiKey),
+        plex_sync_enabled: el.userSettingPlexSyncEnabled ? el.userSettingPlexSyncEnabled.checked : false,
         jellyfin_username: el.userSettingJellyfinUsername ? el.userSettingJellyfinUsername.value.trim() : null,
         emby_username: el.userSettingEmbyUsername ? el.userSettingEmbyUsername.value.trim() : null,
         jellyfin_url: el.userSettingJellyfinUrl ? el.userSettingJellyfinUrl.value.trim() : null,
         jellyfin_api_key: getSecretValue(el.userSettingJellyfinApiKey),
-        bidirectional_sync_enabled: el.userSettingBidirectionalSyncEnabled ? el.userSettingBidirectionalSyncEnabled.checked : false,
+        jellyfin_sync_enabled: el.userSettingJellyfinSyncEnabled ? el.userSettingJellyfinSyncEnabled.checked : false,
+        bidirectional_sync_enabled: (el.userSettingPlexSyncEnabled && el.userSettingPlexSyncEnabled.checked) || (el.userSettingJellyfinSyncEnabled && el.userSettingJellyfinSyncEnabled.checked) || (el.userSettingBidirectionalSyncEnabled ? el.userSettingBidirectionalSyncEnabled.checked : false),
         radarr_url: el.userSettingRadarrUrl ? el.userSettingRadarrUrl.value.trim() : null,
         radarr_api_key: getSecretValue(el.userSettingRadarrApiKey),
         sonarr_url: el.userSettingSonarrUrl ? el.userSettingSonarrUrl.value.trim() : null,
@@ -3293,7 +3303,11 @@ function switchImportTab(source) {
     if (el.btnImportTabTautulli) el.btnImportTabTautulli.classList.add('active');
     if (el.importPaneTrakt) el.importPaneTrakt.style.display = 'none';
     if (el.importPaneTautulli) el.importPaneTautulli.style.display = 'block';
-    if (el.tautulliImportStatus) el.tautulliImportStatus.style.display = 'none';
+    if (el.tautulliImportStatus) {
+      el.tautulliImportStatus.style.display = 'none';
+      el.tautulliImportStatus.className = 'import-status-box';
+      el.tautulliImportStatus.innerHTML = '';
+    }
     if (el.tautulliImportUsername && !el.tautulliImportUsername.value) {
       el.tautulliImportUsername.value = state.user?.preferred_username || state.user?.display_name || (state.user?.email ? state.user.email.split('@')[0] : '');
     }
@@ -3302,7 +3316,11 @@ function switchImportTab(source) {
     if (el.btnImportTabTautulli) el.btnImportTabTautulli.classList.remove('active');
     if (el.importPaneTrakt) el.importPaneTrakt.style.display = 'block';
     if (el.importPaneTautulli) el.importPaneTautulli.style.display = 'none';
-    if (el.importStatusBox) el.importStatusBox.style.display = 'none';
+    if (el.importStatusBox) {
+      el.importStatusBox.style.display = 'none';
+      el.importStatusBox.className = 'import-status-box';
+      el.importStatusBox.innerHTML = '';
+    }
   }
 }
 
@@ -3322,10 +3340,12 @@ if (el.btnOpenImportModal) {
     if (el.importStatusBox) {
       el.importStatusBox.style.display = 'none';
       el.importStatusBox.className = 'import-status-box';
+      el.importStatusBox.innerHTML = '';
     }
     if (el.tautulliImportStatus) {
       el.tautulliImportStatus.style.display = 'none';
       el.tautulliImportStatus.className = 'import-status-box';
+      el.tautulliImportStatus.innerHTML = '';
     }
     if (el.tautulliImportUsername) {
       el.tautulliImportUsername.value = state.user?.preferred_username || state.user?.display_name || (state.user?.email ? state.user.email.split('@')[0] : '');
@@ -3466,6 +3486,7 @@ if (el.formImportTautulli) {
     if (el.tautulliImportStatus) {
       el.tautulliImportStatus.style.display = 'block';
       el.tautulliImportStatus.className = 'import-status-box';
+      el.tautulliImportStatus.innerHTML = '';
       el.tautulliImportStatus.textContent = 'Importing Tautulli history...';
     }
     if (el.btnSubmitTautulliImport) el.btnSubmitTautulliImport.disabled = true;

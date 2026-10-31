@@ -52,6 +52,7 @@ pub struct AppState {
     pub db_backup_notify: Arc<tokio::sync::Notify>,
     pub db_maintenance_notify: Arc<tokio::sync::Notify>,
     pub tautulli_sync_notify: Arc<tokio::sync::Notify>,
+    pub media_sync_notify: Arc<tokio::sync::Notify>,
 }
 
 impl AppState {

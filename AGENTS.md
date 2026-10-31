@@ -246,7 +246,7 @@ Playwright tests in `web/tests/e2e.spec.js` (46 browser E2E tests) cover:
 - Settings menu sub-navigation tabs: switch between Webhooks, Connected Services, API Keys, Preferences, and Data & Export
 - Admin "About" tab: dedicated system information view displaying dynamic runtime versions (Docker base image, SQLite engine, Rust compiler, OS kernel, Axum, Tokio), GitHub release update checks, and clean status badges
 - Tautulli continuous 1-way sync: user settings configuration, dynamic user selector dropdown with "Fetch Users" trigger, sync toggle, and background task management card (schedule, Run Now, View Logs)
-- Bidirectional media sync: user settings configuration (Plex & Jellyfin), test connection buttons, automatic writeback toggle, and manual on-demand writeback trigger
+- Bidirectional media sync: user settings configuration (Plex & Jellyfin), test connection buttons, per-service sync checkboxes (Plex & Jellyfin), collapsible token extraction guides, scheduled and on-demand writeback, and dedicated admin background task management card (schedule, Run Now, View Logs)
 
 
 ### Run the App Locally

@@ -9,6 +9,51 @@ BingeSync is a lightweight, self-hosted media tracker and Trakt.tv alternative. 
 
 ---
 
+## Screenshots
+
+| Interactive Timeline View | Viewing Analytics & Heatmap |
+| :---: | :---: |
+| ![Timeline View](docs/screenshots/timeline.png) | ![Statistics & Viewing Heatmap](docs/screenshots/stats.png) |
+
+| Connected Services & Media Server Sync | Admin Background Tasks & Monitoring |
+| :---: | :---: |
+| ![Connected Services](docs/screenshots/connected_services.png) | ![Admin Background Tasks](docs/screenshots/background_tasks.png) |
+
+---
+
+## Use Case: Keeping Watch History in Sync Between Plex and Jellyfin
+
+A common challenge for home media lab enthusiasts is running both a **Plex Media Server** and a **Jellyfin** (or Emby) instance simultaneously. Different household members may prefer different clients, mobile streaming might be routed through one platform while high-bitrate local 4K HDR playback is served by the other, or one server acts as a backup redundancy.
+
+Traditionally, keeping watched status synchronized between Plex and Jellyfin required fragile Python cron scripts, webhook forwarders, or external cloud services. **BingeSync solves this natively as a lightweight central hub**:
+
+```
+                  ┌────────────────────────┐
+                  │       BingeSync        │
+                  │   (SQLite Central Hub) │
+                  └──────┬──────────┬──────┘
+       Plex Webhook      │          │      Jellyfin Webhook
+     (Media Watched)     ▼          ▼     (Media Watched)
+  ┌────────────────────────┐      ┌────────────────────────┐
+  │   Plex Media Server    │      │  Jellyfin Media Server │
+  │   (Automatic Writeback)│◄────►│  (Automatic Writeback) │
+  └────────────────────────┘      └────────────────────────┘
+```
+
+1. **Automatic Bi-directional Writeback**:
+   - Watch an episode or movie on **Plex** $\rightarrow$ Plex sends a webhook to BingeSync $\rightarrow$ BingeSync writes the watched state directly to **Jellyfin** via its REST API (`/Users/{id}/PlayedItems/{itemId}`).
+   - Watch on **Jellyfin** $\rightarrow$ Jellyfin webhook scrobbles to BingeSync $\rightarrow$ BingeSync marks the item as watched on **Plex** (`/:/scrobble`).
+2. **Per-Service Controls & Setup Guides**:
+   - Enable watch history sync independently for Plex, Jellyfin, or both with simple toggles under **User Settings** $\rightarrow$ **Connected Services**.
+   - Built-in, collapsible setup guides show exactly how to find your Plex token (`X-Plex-Token`) via *Get Info* $\rightarrow$ *View XML*, and how to generate a Jellyfin API key in the Jellyfin Dashboard.
+3. **Scheduled & On-Demand Sync**:
+   - An integrated background worker (`Watch History Sync (Plex & Jellyfin)`) runs on a customizable schedule (default: every 4 hours) to catch up on any items watched while a server was offline.
+   - Users can trigger immediate on-demand writeback with a single click (*"Sync Recent Watches to Media Server"*), and admins can trigger or reschedule the sync worker from the **Admin Background Tasks** panel.
+4. **Live Activity Logging**:
+   - Every writeback and sync cycle generates transparent, filterable logs in the **Application Logs** viewer (`bingesync::writeback`), displaying matched titles, server target responses, and item counts.
+
+---
+
 ## Features
 
 - **Plex, Jellyfin & Emby Webhooks**: Captures playback start, pause, resume, progress, and completed scrobbles with configurable playback completion thresholds and username/UUID filtering.
