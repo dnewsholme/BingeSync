@@ -12,6 +12,7 @@ BingeSync is a lightweight, self-hosted media tracker and Trakt.tv alternative. 
 ## Features
 
 - **Plex, Jellyfin & Emby Webhooks**: Captures playback start, pause, resume, progress, and completed scrobbles with configurable playback completion thresholds and username/UUID filtering.
+- **Bidirectional Media Sync**: Push watched status directly back to configured Plex and Jellyfin/Emby servers automatically when scrobbled or on-demand, keeping your media servers in lockstep with BingeSync.
 - **Multi-User Isolation**: Strictly scoped watch histories, user settings, active sessions, and personal webhook tokens for every account.
 - **Rating Threshold & Star History**: Filter watch history and timeline by minimum star rating thresholds (10/10, 9+ stars, 8+ stars down to 1+ star, rated, or unrated). Seamlessly combine ratings with media type filters to view all movies or TV shows above a specific rating.
 - **Duplicate Watch Detector & Cleanup Tool**: Scan scrobbles for duplicate watches within configurable time windows (1h, 6h, 12h, 24h, 48h, 72h) and automatically prune redundant entries using *Keep Oldest* or *Keep Newest* strategies, or delete selectively.

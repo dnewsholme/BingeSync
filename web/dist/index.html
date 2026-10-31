@@ -22,8 +22,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="BingeSync" />
-  <script type="module" crossorigin src="./assets/index-C7In1uCy.js"></script>
-  <link rel="stylesheet" crossorigin href="./assets/index-BDeLrwT0.css">
+  <script type="module" crossorigin src="./assets/index-DFUZtYAR.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-09qWcRk4.css">
 </head>
 <body>
   <div id="app">
@@ -1010,10 +1010,10 @@
               </p>
 
               <form id="form-user-settings" style="margin-top: 18px;">
-                <!-- Plex Username Filter -->
+                <!-- Plex Username Filter & Server -->
                 <div class="settings-group-header">
                   <span class="badge-pill" style="background: rgba(234, 179, 8, 0.15); color: #eab308; border: 1px solid rgba(234, 179, 8, 0.3);">Plex</span>
-                  <strong data-i18n="settings.plex_filter">Plex Account Filtering</strong>
+                  <strong data-i18n="settings.plex_filter">Plex Media Server & Account Filtering</strong>
                 </div>
                 <div class="form-row">
                   <div class="form-group col-full">
@@ -1022,6 +1022,27 @@
                     <small style="color: var(--text-muted); font-size: 0.8rem; margin-top: 4px; display: block;" data-i18n="settings.plex_hint">
                       Only record scrobbles matching these Plex username(s) or user ID(s). Incoming user IDs are automatically resolved and cached via your Tautulli integration.
                     </small>
+                  </div>
+                </div>
+                <div class="form-row">
+                  <div class="form-group col-half">
+                    <label for="user-setting-plex-url">Plex Server URL (for Bidirectional Sync)</label>
+                    <input type="url" id="user-setting-plex-url" class="form-control" placeholder="http://192.168.1.100:32400" />
+                  </div>
+                  <div class="form-group col-half">
+                    <label for="user-setting-plex-api-key">Plex API Token (X-Plex-Token)</label>
+                    <div class="input-secret-wrapper">
+                      <input type="text" id="user-setting-plex-api-key" class="form-control font-mono" placeholder="X-Plex-Token" autocomplete="off" spellcheck="false" />
+                      <button type="button" class="btn-toggle-secret" data-target="user-setting-plex-api-key" title="Unhide / Show full key">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <div class="form-row" style="margin-top: -6px; margin-bottom: 12px;">
+                  <div class="form-group col-full" style="display:flex;align-items:center;gap:10px;">
+                    <button type="button" class="btn btn-outline btn-sm" id="btn-test-plex-connection">Test Plex Connection</button>
+                    <span id="plex-test-status" class="setting-test-status" style="font-size:0.85rem;"></span>
                   </div>
                 </div>
 
@@ -1039,6 +1060,27 @@
                     </small>
                   </div>
                 </div>
+                <div class="form-row">
+                  <div class="form-group col-half">
+                    <label for="user-setting-jellyfin-url">Jellyfin Server URL (for Sync & Writeback)</label>
+                    <input type="url" id="user-setting-jellyfin-url" class="form-control" placeholder="http://192.168.1.100:8096" />
+                  </div>
+                  <div class="form-group col-half">
+                    <label for="user-setting-jellyfin-api-key">Jellyfin API Key</label>
+                    <div class="input-secret-wrapper">
+                      <input type="text" id="user-setting-jellyfin-api-key" class="form-control font-mono" placeholder="Jellyfin API Key" autocomplete="off" spellcheck="false" />
+                      <button type="button" class="btn-toggle-secret" data-target="user-setting-jellyfin-api-key" title="Unhide / Show full key">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <div class="form-row" style="margin-top: -6px; margin-bottom: 12px;">
+                  <div class="form-group col-full" style="display:flex;align-items:center;gap:10px;">
+                    <button type="button" class="btn btn-outline btn-sm" id="btn-test-jellyfin-connection">Test Jellyfin Connection</button>
+                    <span id="jellyfin-test-status" class="setting-test-status" style="font-size:0.85rem;"></span>
+                  </div>
+                </div>
 
                 <!-- Emby Username Filter -->
                 <div class="settings-group-header" style="margin-top: 16px;">
@@ -1054,19 +1096,29 @@
                     </small>
                   </div>
                 </div>
+
+                <!-- Bidirectional Watch State Sync -->
+                <div class="settings-group-header" style="margin-top: 16px;">
+                  <span class="badge-pill" style="background: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3);">Media Server Sync</span>
+                  <strong>Bidirectional Watch State Sync (Plex & Jellyfin)</strong>
+                </div>
                 <div class="form-row">
                   <div class="form-group col-half">
-                    <label for="user-setting-jellyfin-url">Jellyfin Server URL (Optional for User Sync)</label>
-                    <input type="url" id="user-setting-jellyfin-url" class="form-control" placeholder="http://192.168.1.100:8096" />
+                    <label for="user-setting-bidirectional-sync-enabled">Automatic Writeback</label>
+                    <label class="setting-toggle-btn" for="user-setting-bidirectional-sync-enabled">
+                      <input type="checkbox" id="user-setting-bidirectional-sync-enabled" />
+                      <span>Enable Bidirectional Sync</span>
+                    </label>
+                    <small style="display:block;margin-top:4px;font-size:0.75rem;color:var(--text-dim);">When enabled, watches logged or completed in BingeSync are automatically synced back to your configured Plex and Jellyfin servers.</small>
                   </div>
-                  <div class="form-group col-half">
-                    <label for="user-setting-jellyfin-api-key">Jellyfin API Key</label>
-                    <div class="input-secret-wrapper">
-                      <input type="text" id="user-setting-jellyfin-api-key" class="form-control font-mono" placeholder="Jellyfin API Key" autocomplete="off" spellcheck="false" />
-                      <button type="button" class="btn-toggle-secret" data-target="user-setting-jellyfin-api-key" title="Unhide / Show full key">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="7" r="3"/></svg>
+                  <div class="form-group col-half" style="display:flex;flex-direction:column;justify-content:flex-end;">
+                    <label>Manual Sync Writeback</label>
+                    <div style="display:flex;gap:8px;align-items:center;">
+                      <button type="button" class="btn btn-outline btn-sm" id="btn-trigger-writeback-now" style="height:42px;white-space:nowrap;padding:0 16px;">
+                        Sync Recent Watches to Media Server
                       </button>
                     </div>
+                    <small id="writeback-status" style="display:block;margin-top:4px;font-size:0.75rem;color:var(--text-dim);min-height:18px;"></small>
                   </div>
                 </div>
 
@@ -1145,11 +1197,13 @@
                     </div>
                     <small style="display:block;margin-top:4px;font-size:0.75rem;color:var(--text-dim);">Select which user's watch history to continuously sync from Tautulli.</small>
                   </div>
-                  <div class="form-group col-half" style="display:flex;align-items:flex-end;padding-bottom:10px;">
-                    <label class="checkbox-label" style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;user-select:none;font-weight:500;">
+                  <div class="form-group col-half">
+                    <label for="user-setting-tautulli-sync-enabled">Continuous 1-Way Sync</label>
+                    <label class="setting-toggle-btn" for="user-setting-tautulli-sync-enabled">
                       <input type="checkbox" id="user-setting-tautulli-sync-enabled" />
                       <span>Enable Continuous 1-Way Sync</span>
                     </label>
+                    <small style="display:block;margin-top:4px;font-size:0.75rem;color:var(--text-dim);">Automatically import new watch events from Tautulli in the background.</small>
                   </div>
                 </div>
 

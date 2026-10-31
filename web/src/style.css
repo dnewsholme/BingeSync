@@ -4882,5 +4882,50 @@ body[data-theme="rose"] .heatmap-cell[data-level="4"] { background: rgba(244, 63
   font-weight: 600;
 }
 
+/* Settings Toggle Button Control */
+.setting-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 0.88rem;
+  font-weight: 500;
+  color: var(--text-main);
+  padding: 0 14px;
+  background: var(--bg-input, #131d33);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.12));
+  border-radius: var(--radius-md);
+  height: 42px;
+  width: 100%;
+  box-sizing: border-box;
+  transition: all 0.2s ease;
+}
+
+.setting-toggle-btn:hover {
+  border-color: rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.setting-toggle-btn input[type="checkbox"] {
+  accent-color: var(--primary, #e50914);
+  width: 17px;
+  height: 17px;
+  cursor: pointer;
+  margin: 0;
+  flex-shrink: 0;
+}
+
+.setting-toggle-btn:has(input[type="checkbox"]:checked) {
+  border-color: rgba(16, 185, 129, 0.45);
+  background: rgba(16, 185, 129, 0.08);
+  color: #34d399;
+}
+
+.setting-toggle-btn:has(input[type="checkbox"]:checked) input[type="checkbox"] {
+  accent-color: #10b981;
+}
+
+
 
 

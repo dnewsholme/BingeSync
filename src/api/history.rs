@@ -306,6 +306,37 @@ pub async fn create_scrobble(
     }
     state.metadata_notify.notify_one();
 
+    if scrobble.watch_status.as_deref() == Some("completed") || scrobble.progress_percent.unwrap_or(0) >= 80 {
+        crate::api::media_writeback::dispatch_media_writeback(
+            state.pool.clone(),
+            auth.user_id.clone(),
+            crate::api::media_writeback::WritebackItem {
+                title: scrobble.title.clone(),
+                media_type: scrobble.media_type.clone(),
+                grandparent_title: scrobble.grandparent_title.clone(),
+                season_number: scrobble.season_number,
+                episode_number: scrobble.episode_number,
+                year: scrobble.year,
+                rating_key: scrobble.rating_key.clone(),
+            },
+        );
+        crate::api::outbound_webhooks::dispatch_scrobble_notification(
+            state.pool.clone(),
+            auth.user_id.clone(),
+            crate::api::outbound_webhooks::ScrobbleNotificationData {
+                title: scrobble.title.clone(),
+                grandparent_title: scrobble.grandparent_title.clone(),
+                media_type: scrobble.media_type.clone(),
+                season_number: scrobble.season_number,
+                episode_number: scrobble.episode_number,
+                year: scrobble.year,
+                progress_percent: scrobble.progress_percent.unwrap_or(100),
+                thumb_url: scrobble.thumb_url.clone(),
+                user_rating: scrobble.user_rating,
+            },
+        );
+    }
+
     Ok((StatusCode::CREATED, Json(scrobble)))
 }
 

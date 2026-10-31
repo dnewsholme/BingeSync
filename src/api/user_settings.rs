@@ -12,6 +12,11 @@ use crate::{api::AppState, auth::AuthUser};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserSettingsResponse {
     pub plex_username: Option<String>,
+    pub plex_url: Option<String>,
+    pub plex_api_key_configured: bool,
+    pub plex_api_key_masked: Option<String>,
+    pub plex_api_key: Option<String>,
+
     pub jellyfin_username: Option<String>,
     pub jellyfin_url: Option<String>,
     pub jellyfin_api_key_configured: bool,
@@ -19,6 +24,8 @@ pub struct UserSettingsResponse {
     pub jellyfin_api_key: Option<String>,
 
     pub emby_username: Option<String>,
+
+    pub bidirectional_sync_enabled: bool,
 
     pub radarr_url: Option<String>,
     pub radarr_api_key_configured: bool,
@@ -52,10 +59,13 @@ pub type UserSettingsView = UserSettingsResponse;
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct UpdateUserSettingsRequest {
     pub plex_username: Option<String>,
+    pub plex_url: Option<String>,
+    pub plex_api_key: Option<String>,
     pub jellyfin_username: Option<String>,
     pub jellyfin_url: Option<String>,
     pub jellyfin_api_key: Option<String>,
     pub emby_username: Option<String>,
+    pub bidirectional_sync_enabled: Option<bool>,
     pub radarr_url: Option<String>,
     pub radarr_api_key: Option<String>,
     pub sonarr_url: Option<String>,
@@ -114,9 +124,17 @@ pub async fn get_user_settings_handler(
     auth: AuthUser,
 ) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
     let plex_username = get_user_setting(&state.pool, &auth.user_id, "plex_username").await;
+    let plex_url = get_user_setting(&state.pool, &auth.user_id, "plex_url").await;
+    let plex_api_key = get_user_setting(&state.pool, &auth.user_id, "plex_api_key").await;
+
     let jellyfin_username = get_user_setting(&state.pool, &auth.user_id, "jellyfin_username").await;
     let jellyfin_url = get_user_setting(&state.pool, &auth.user_id, "jellyfin_url").await;
     let jellyfin_api_key = get_user_setting(&state.pool, &auth.user_id, "jellyfin_api_key").await;
+
+    let emby_username = get_user_setting(&state.pool, &auth.user_id, "emby_username").await;
+
+    let bidirectional_sync_enabled_str = get_user_setting(&state.pool, &auth.user_id, "bidirectional_sync_enabled").await;
+    let bidirectional_sync_enabled = bidirectional_sync_enabled_str.as_deref().map(|s| s == "true" || s == "1").unwrap_or(false);
 
     let radarr_url = get_user_setting(&state.pool, &auth.user_id, "radarr_url").await;
     let radarr_api_key = get_user_setting(&state.pool, &auth.user_id, "radarr_api_key").await;
@@ -130,8 +148,6 @@ pub async fn get_user_settings_handler(
     let tautulli_sync_enabled_str = get_user_setting(&state.pool, &auth.user_id, "tautulli_sync_enabled").await;
     let tautulli_sync_enabled = tautulli_sync_enabled_str.as_deref().map(|s| s == "true" || s == "1").unwrap_or(false);
 
-    let emby_username = get_user_setting(&state.pool, &auth.user_id, "emby_username").await;
-
     let outbound_webhook_url = get_user_setting(&state.pool, &auth.user_id, "outbound_webhook_url").await;
     let outbound_webhook_type = get_user_setting(&state.pool, &auth.user_id, "outbound_webhook_type").await;
     let outbound_webhook_enabled_str = get_user_setting(&state.pool, &auth.user_id, "outbound_webhook_enabled").await;
@@ -142,6 +158,11 @@ pub async fn get_user_settings_handler(
 
     let resp = UserSettingsResponse {
         plex_username,
+        plex_url,
+        plex_api_key_configured: plex_api_key.as_ref().map(|k| !k.trim().is_empty()).unwrap_or(false),
+        plex_api_key_masked: plex_api_key.as_deref().map(mask_secret),
+        plex_api_key: None,
+
         jellyfin_username,
         jellyfin_url,
         jellyfin_api_key_configured: jellyfin_api_key.as_ref().map(|k| !k.trim().is_empty()).unwrap_or(false),
@@ -149,6 +170,8 @@ pub async fn get_user_settings_handler(
         jellyfin_api_key: None,
 
         emby_username,
+
+        bidirectional_sync_enabled,
 
         radarr_url,
         radarr_api_key_configured: radarr_api_key.as_ref().map(|k| !k.trim().is_empty()).unwrap_or(false),
@@ -189,6 +212,24 @@ pub async fn update_user_settings_handler(
     if let Some(ref val) = payload.plex_username {
         let _ = set_user_setting(&state.pool, &auth.user_id, "plex_username", val.trim()).await;
     }
+    if let Some(ref val) = payload.plex_url {
+        let trimmed = val.trim();
+        if !trimmed.is_empty() {
+            crate::api::ssrf::validate_integration_url(trimmed).map_err(|e| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({ "error": format!("Invalid Plex URL: {}", e) })),
+                )
+            })?;
+        }
+        let _ = set_user_setting(&state.pool, &auth.user_id, "plex_url", trimmed).await;
+    }
+    if let Some(ref val) = payload.plex_api_key {
+        if !val.contains('•') {
+            let _ = set_user_setting(&state.pool, &auth.user_id, "plex_api_key", val.trim()).await;
+        }
+    }
+
     if let Some(ref val) = payload.jellyfin_username {
         let _ = set_user_setting(&state.pool, &auth.user_id, "jellyfin_username", val.trim()).await;
     }
@@ -212,6 +253,10 @@ pub async fn update_user_settings_handler(
 
     if let Some(ref val) = payload.emby_username {
         let _ = set_user_setting(&state.pool, &auth.user_id, "emby_username", val.trim()).await;
+    }
+
+    if let Some(enabled) = payload.bidirectional_sync_enabled {
+        let _ = set_user_setting(&state.pool, &auth.user_id, "bidirectional_sync_enabled", if enabled { "true" } else { "false" }).await;
     }
 
     if let Some(ref val) = payload.radarr_url {

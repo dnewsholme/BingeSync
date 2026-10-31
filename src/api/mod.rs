@@ -25,6 +25,7 @@ pub mod setup;
 pub mod webhooks;
 pub mod outbound_webhooks;
 pub mod overseerr;
+pub mod media_writeback;
 pub mod ssrf;
 pub mod rate_limit;
 
@@ -372,6 +373,9 @@ pub fn create_api_router(state: AppState) -> Router {
         .route("/api/v1/user/api-keys/{id}", delete(api_keys::delete_api_key_handler))
         .route("/api/v1/user/settings", get(user_settings::get_user_settings_handler).post(user_settings::update_user_settings_handler).put(user_settings::update_user_settings_handler))
         .route("/api/v1/user/settings/test-outbound-webhook", post(outbound_webhooks::test_outbound_webhook_handler))
+        .route("/api/v1/user/settings/test-plex", post(media_writeback::test_plex_connection_handler))
+        .route("/api/v1/user/settings/test-jellyfin", post(media_writeback::test_jellyfin_connection_handler))
+        .route("/api/v1/user/sync/writeback", post(media_writeback::trigger_writeback_handler))
         // Image cache (serves cached posters from disk)
         .route("/api/v1/images/{filename}", get(images::get_image_handler))
         // Radarr / Sonarr Integrations (Cleanup after watching)

@@ -184,6 +184,21 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+  testPlexConnection: (data) =>
+    request('/user/settings/test-plex', {
+      method: 'POST',
+      body: JSON.stringify(data || {}),
+    }),
+  testJellyfinConnection: (data) =>
+    request('/user/settings/test-jellyfin', {
+      method: 'POST',
+      body: JSON.stringify(data || {}),
+    }),
+  triggerMediaWriteback: (options) =>
+    request('/user/sync/writeback', {
+      method: 'POST',
+      body: JSON.stringify(options || {}),
+    }),
   importTrakt: (payload, isZip = false) => {
     if (isZip || payload instanceof ArrayBuffer || payload instanceof Uint8Array || payload instanceof Blob) {
       return request('/import/trakt', {

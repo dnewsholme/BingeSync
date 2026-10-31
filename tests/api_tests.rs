@@ -7891,6 +7891,166 @@ async fn test_tautulli_continuous_sync_and_settings() {
     assert_eq!(count, 2);
 }
 
+#[tokio::test]
+async fn test_user_settings_bidirectional_sync_and_plex_config() {
+    let (app, pool, config) = setup_test_app().await;
+
+    // Create user
+    let user_id = "test-user-sync-bidirectional".to_string();
+    sqlx::query("INSERT INTO users (id, email, display_name, webhook_token, role) VALUES (?, ?, ?, ?, ?)")
+        .bind(&user_id)
+        .bind("sync_test@bingesync.local")
+        .bind("Sync Tester")
+        .bind("token-bidirectional-test")
+        .bind("user")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let token = create_jwt(&user_id, "sync_test@bingesync.local", &config.jwt_secret).unwrap();
+
+    // 1. Initial settings should have bidirectional sync false and plex not configured
+    let req = Request::builder()
+        .uri("/api/v1/user/settings")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .body(Body::empty())
+        .unwrap();
+
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let settings: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+
+    assert_eq!(settings["bidirectional_sync_enabled"], false);
+    assert_eq!(settings["plex_api_key_configured"], false);
+    assert!(settings["plex_url"].is_null());
+
+    // 2. Update settings with Plex credentials and bidirectional sync enabled
+    let update_payload = json!({
+        "plex_url": "http://192.168.1.100:32400",
+        "plex_api_key": "plex-secret-token-xyz123",
+        "bidirectional_sync_enabled": true
+    });
+
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/user/settings")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(serde_json::to_vec(&update_payload).unwrap()))
+        .unwrap();
+
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // 3. Fetch settings and verify masked secret and enabled status
+    let req = Request::builder()
+        .uri("/api/v1/user/settings")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .body(Body::empty())
+        .unwrap();
+
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let settings: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+
+    assert_eq!(settings["plex_url"], "http://192.168.1.100:32400");
+    assert_eq!(settings["plex_api_key_configured"], true);
+    assert_eq!(settings["bidirectional_sync_enabled"], true);
+    let masked = settings["plex_api_key_masked"].as_str().unwrap();
+    assert!(masked.contains('•'));
+    assert!(masked.starts_with("pl"));
+}
+
+#[tokio::test]
+async fn test_media_writeback_endpoints_and_trigger() {
+    let (app, pool, config) = setup_test_app().await;
+
+    let user_id = "test-user-writeback".to_string();
+    sqlx::query("INSERT INTO users (id, email, display_name, webhook_token, role) VALUES (?, ?, ?, ?, ?)")
+        .bind(&user_id)
+        .bind("writeback_user@bingesync.local")
+        .bind("Writeback Tester")
+        .bind("token-writeback-test")
+        .bind("user")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let token = create_jwt(&user_id, "writeback_user@bingesync.local", &config.jwt_secret).unwrap();
+
+    // 1. Calling writeback without media server configured should return 400
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/user/sync/writeback")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(json!({}).to_string()))
+        .unwrap();
+
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+    // 2. Test Plex connection endpoint validation (missing token)
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/user/settings/test-plex")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(json!({ "plex_url": "http://192.168.1.100:32400" }).to_string()))
+        .unwrap();
+
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+    // 3. Test Jellyfin connection endpoint validation (missing api key)
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/user/settings/test-jellyfin")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(json!({ "jellyfin_url": "http://192.168.1.100:8096" }).to_string()))
+        .unwrap();
+
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+    // 4. Configure dummy Plex settings and insert a completed scrobble
+    bingesync::api::user_settings::set_user_setting(&pool, &user_id, "plex_url", "http://127.0.0.1:9").await.unwrap();
+    bingesync::api::user_settings::set_user_setting(&pool, &user_id, "plex_api_key", "dummy-plex-token").await.unwrap();
+
+    sqlx::query(
+        "INSERT INTO scrobbles (id, user_id, title, media_type, year, watch_status, progress_percent, watched_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))"
+    )
+    .bind("scrobble-wb-1")
+    .bind(&user_id)
+    .bind("Inception")
+    .bind("movie")
+    .bind(2010)
+    .bind("completed")
+    .bind(100)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    // 5. Trigger writeback now that a server is configured
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/user/sync/writeback")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(json!({ "scrobble_id": "scrobble-wb-1" }).to_string()))
+        .unwrap();
+
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let result: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    assert_eq!(result["status"], "success");
+    assert_eq!(result["scrobbles_processed"], 1);
+}
+
 
 
 

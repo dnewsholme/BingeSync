@@ -362,10 +362,19 @@ const el = {
   userSettingTheme: document.getElementById('user-setting-theme'),
   navLanguageSelect: document.getElementById('nav-language-select'),
   userSettingPlexUsername: document.getElementById('user-setting-plex-username'),
+  userSettingPlexUrl: document.getElementById('user-setting-plex-url'),
+  userSettingPlexApiKey: document.getElementById('user-setting-plex-api-key'),
+  btnTestPlexConnection: document.getElementById('btn-test-plex-connection'),
+  plexTestStatus: document.getElementById('plex-test-status'),
   userSettingJellyfinUsername: document.getElementById('user-setting-jellyfin-username'),
   userSettingEmbyUsername: document.getElementById('user-setting-emby-username'),
   userSettingJellyfinUrl: document.getElementById('user-setting-jellyfin-url'),
   userSettingJellyfinApiKey: document.getElementById('user-setting-jellyfin-api-key'),
+  btnTestJellyfinConnection: document.getElementById('btn-test-jellyfin-connection'),
+  jellyfinTestStatus: document.getElementById('jellyfin-test-status'),
+  userSettingBidirectionalSyncEnabled: document.getElementById('user-setting-bidirectional-sync-enabled'),
+  btnTriggerWritebackNow: document.getElementById('btn-trigger-writeback-now'),
+  writebackStatus: document.getElementById('writeback-status'),
   userSettingRadarrUrl: document.getElementById('user-setting-radarr-url'),
   userSettingRadarrApiKey: document.getElementById('user-setting-radarr-api-key'),
   userSettingSonarrUrl: document.getElementById('user-setting-sonarr-url'),
@@ -2694,11 +2703,18 @@ async function loadUserSettings() {
     const s = await api.getUserSettings();
     if (el.userSettingLanguage) el.userSettingLanguage.value = getLanguage();
     if (el.userSettingPlexUsername) el.userSettingPlexUsername.value = s.plex_username || '';
+    if (el.userSettingPlexUrl) el.userSettingPlexUrl.value = s.plex_url || '';
+    applySecretField(el.userSettingPlexApiKey, s.plex_api_key, s.plex_api_key_masked);
+
     if (el.userSettingJellyfinUsername) el.userSettingJellyfinUsername.value = s.jellyfin_username || '';
     if (el.userSettingEmbyUsername) el.userSettingEmbyUsername.value = s.emby_username || '';
 
     if (el.userSettingJellyfinUrl) el.userSettingJellyfinUrl.value = s.jellyfin_url || '';
     applySecretField(el.userSettingJellyfinApiKey, s.jellyfin_api_key, s.jellyfin_api_key_masked);
+
+    if (el.userSettingBidirectionalSyncEnabled) {
+      el.userSettingBidirectionalSyncEnabled.checked = !!s.bidirectional_sync_enabled;
+    }
 
     if (el.userSettingRadarrUrl) el.userSettingRadarrUrl.value = s.radarr_url || '';
     applySecretField(el.userSettingRadarrApiKey, s.radarr_api_key, s.radarr_api_key_masked);
@@ -2749,10 +2765,13 @@ if (el.formUserSettings) {
     try {
       const payload = {
         plex_username: el.userSettingPlexUsername ? el.userSettingPlexUsername.value.trim() : null,
+        plex_url: el.userSettingPlexUrl ? el.userSettingPlexUrl.value.trim() : null,
+        plex_api_key: getSecretValue(el.userSettingPlexApiKey),
         jellyfin_username: el.userSettingJellyfinUsername ? el.userSettingJellyfinUsername.value.trim() : null,
         emby_username: el.userSettingEmbyUsername ? el.userSettingEmbyUsername.value.trim() : null,
         jellyfin_url: el.userSettingJellyfinUrl ? el.userSettingJellyfinUrl.value.trim() : null,
         jellyfin_api_key: getSecretValue(el.userSettingJellyfinApiKey),
+        bidirectional_sync_enabled: el.userSettingBidirectionalSyncEnabled ? el.userSettingBidirectionalSyncEnabled.checked : false,
         radarr_url: el.userSettingRadarrUrl ? el.userSettingRadarrUrl.value.trim() : null,
         radarr_api_key: getSecretValue(el.userSettingRadarrApiKey),
         sonarr_url: el.userSettingSonarrUrl ? el.userSettingSonarrUrl.value.trim() : null,
@@ -2825,6 +2844,102 @@ if (el.btnTestOutboundWebhook) {
       }
     } finally {
       el.btnTestOutboundWebhook.disabled = false;
+    }
+  });
+}
+
+if (el.btnTestPlexConnection) {
+  el.btnTestPlexConnection.addEventListener('click', async () => {
+    const url = el.userSettingPlexUrl ? el.userSettingPlexUrl.value.trim() : '';
+    const key = getSecretValue(el.userSettingPlexApiKey);
+    if (!url) {
+      if (el.plexTestStatus) {
+        el.plexTestStatus.style.color = 'var(--accent-red)';
+        el.plexTestStatus.textContent = 'Please enter a Plex Server URL first.';
+      }
+      return;
+    }
+    el.btnTestPlexConnection.disabled = true;
+    el.btnTestPlexConnection.textContent = 'Testing...';
+    if (el.plexTestStatus) {
+      el.plexTestStatus.style.color = 'var(--text-muted)';
+      el.plexTestStatus.textContent = 'Connecting to Plex...';
+    }
+    try {
+      const res = await api.testPlexConnection({ plex_url: url, plex_api_key: key });
+      if (el.plexTestStatus) {
+        el.plexTestStatus.style.color = '#34d399';
+        el.plexTestStatus.textContent = res.message || 'Connection successful!';
+      }
+    } catch (err) {
+      if (el.plexTestStatus) {
+        el.plexTestStatus.style.color = 'var(--accent-red)';
+        el.plexTestStatus.textContent = 'Failed: ' + err.message;
+      }
+    } finally {
+      el.btnTestPlexConnection.disabled = false;
+      el.btnTestPlexConnection.textContent = 'Test Plex Connection';
+    }
+  });
+}
+
+if (el.btnTestJellyfinConnection) {
+  el.btnTestJellyfinConnection.addEventListener('click', async () => {
+    const url = el.userSettingJellyfinUrl ? el.userSettingJellyfinUrl.value.trim() : '';
+    const key = getSecretValue(el.userSettingJellyfinApiKey);
+    if (!url) {
+      if (el.jellyfinTestStatus) {
+        el.jellyfinTestStatus.style.color = 'var(--accent-red)';
+        el.jellyfinTestStatus.textContent = 'Please enter a Jellyfin Server URL first.';
+      }
+      return;
+    }
+    el.btnTestJellyfinConnection.disabled = true;
+    el.btnTestJellyfinConnection.textContent = 'Testing...';
+    if (el.jellyfinTestStatus) {
+      el.jellyfinTestStatus.style.color = 'var(--text-muted)';
+      el.jellyfinTestStatus.textContent = 'Connecting to Jellyfin...';
+    }
+    try {
+      const res = await api.testJellyfinConnection({ jellyfin_url: url, jellyfin_api_key: key });
+      if (el.jellyfinTestStatus) {
+        el.jellyfinTestStatus.style.color = '#34d399';
+        el.jellyfinTestStatus.textContent = res.message || 'Connection successful!';
+      }
+    } catch (err) {
+      if (el.jellyfinTestStatus) {
+        el.jellyfinTestStatus.style.color = 'var(--accent-red)';
+        el.jellyfinTestStatus.textContent = 'Failed: ' + err.message;
+      }
+    } finally {
+      el.btnTestJellyfinConnection.disabled = false;
+      el.btnTestJellyfinConnection.textContent = 'Test Jellyfin Connection';
+    }
+  });
+}
+
+if (el.btnTriggerWritebackNow) {
+  el.btnTriggerWritebackNow.addEventListener('click', async () => {
+    el.btnTriggerWritebackNow.disabled = true;
+    el.btnTriggerWritebackNow.textContent = 'Syncing...';
+    if (el.writebackStatus) {
+      el.writebackStatus.style.color = 'var(--text-muted)';
+      el.writebackStatus.textContent = 'Pushing recent watch status to media servers...';
+    }
+    try {
+      const res = await api.triggerMediaWriteback({ limit: 25 });
+      if (el.writebackStatus) {
+        el.writebackStatus.style.color = '#34d399';
+        el.writebackStatus.textContent = res.message || 'Writeback sync complete!';
+      }
+    } catch (err) {
+      if (el.writebackStatus) {
+        el.writebackStatus.style.color = 'var(--accent-red)';
+        el.writebackStatus.textContent = 'Writeback failed: ' + err.message;
+      }
+    } finally {
+      el.btnTriggerWritebackNow.disabled = false;
+      el.btnTriggerWritebackNow.textContent = 'Sync Recent Watches to Media Server';
     }
   });
 }

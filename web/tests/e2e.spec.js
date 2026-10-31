@@ -2556,6 +2556,57 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     await expect(page.locator('#admin-sub-logs')).toBeVisible();
     await expect(page.locator('#admin-logs-filter-search')).toHaveValue('tautulli_sync');
   });
+
+  test('user settings: bidirectional media sync and plex server configuration', async ({ page }) => {
+    const userEmail = `sync_bidi_${Date.now()}@bingesync.local`;
+
+    // 1. Sign in
+    await page.goto('/');
+    await page.fill('#dev-email', userEmail);
+    await page.fill('#dev-name', 'Sync Bidi Tester');
+    await page.click('#btn-dev-submit');
+    await expect(page.locator('#user-display-name')).toHaveText('Sync Bidi Tester');
+    await expect(page.locator('#view-timeline')).toBeVisible();
+
+    // 2. Open Settings -> Connected Services
+    await page.click('#tab-settings');
+    await page.click('#pill-settings-services');
+
+    // 3. Verify Plex and Bidirectional elements exist
+    await expect(page.locator('#user-setting-plex-url')).toBeVisible();
+    await expect(page.locator('#user-setting-plex-api-key')).toBeVisible();
+    await expect(page.locator('#btn-test-plex-connection')).toBeVisible();
+    await expect(page.locator('#btn-test-jellyfin-connection')).toBeVisible();
+    await expect(page.locator('#user-setting-bidirectional-sync-enabled')).toBeVisible();
+    await expect(page.locator('#btn-trigger-writeback-now')).toBeVisible();
+
+    // 4. Test clicking connection test without URL shows validation message
+    await page.click('#btn-test-plex-connection');
+    await expect(page.locator('#plex-test-status')).toContainText('Please enter a Plex Server URL first');
+
+    await page.click('#btn-test-jellyfin-connection');
+    await expect(page.locator('#jellyfin-test-status')).toContainText('Please enter a Jellyfin Server URL first');
+
+    // 5. Fill Plex settings and check Bidirectional Sync
+    await page.fill('#user-setting-plex-url', 'http://192.168.1.100:32400');
+    await page.fill('#user-setting-plex-api-key', 'plex_test_token_xyz987');
+    await page.check('#user-setting-bidirectional-sync-enabled');
+
+    // 6. Save Settings
+    await page.click('#btn-save-user-settings');
+    await expect(page.locator('#user-settings-status')).toContainText('Settings saved successfully');
+
+    // 7. Reload and verify settings persisted
+    await page.reload();
+    await page.click('#tab-settings');
+    await page.click('#pill-settings-services');
+    await expect(page.locator('#user-setting-plex-url')).toHaveValue('http://192.168.1.100:32400');
+    await expect(page.locator('#user-setting-bidirectional-sync-enabled')).toBeChecked();
+
+    // 8. Test triggering manual writeback button
+    await page.click('#btn-trigger-writeback-now');
+    await expect(page.locator('#writeback-status')).toBeVisible();
+  });
 });
 
 

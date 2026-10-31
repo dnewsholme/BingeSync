@@ -542,7 +542,21 @@ async fn process_webhook(
                 .execute(&state.pool)
                 .await;
 
-            // Dispatch outbound notification
+            // Dispatch bidirectional writeback & outbound notification
+            crate::api::media_writeback::dispatch_media_writeback(
+                state.pool.clone(),
+                user.id.clone(),
+                crate::api::media_writeback::WritebackItem {
+                    title: title.clone(),
+                    media_type: media_type.clone(),
+                    grandparent_title: grandparent_title.clone(),
+                    season_number,
+                    episode_number,
+                    year,
+                    rating_key: rating_key.clone(),
+                },
+            );
+
             crate::api::outbound_webhooks::dispatch_scrobble_notification(
                 state.pool.clone(),
                 user.id.clone(),
@@ -1154,6 +1168,20 @@ async fn process_jellyfin_or_emby_webhook(
     };
 
     if is_completed {
+        crate::api::media_writeback::dispatch_media_writeback(
+            state.pool.clone(),
+            user.id.clone(),
+            crate::api::media_writeback::WritebackItem {
+                title: title.clone(),
+                media_type: media_type.clone(),
+                grandparent_title: grandparent_title.clone(),
+                season_number,
+                episode_number,
+                year,
+                rating_key: rating_key.clone(),
+            },
+        );
+
         crate::api::outbound_webhooks::dispatch_scrobble_notification(
             state.pool.clone(),
             user.id.clone(),
