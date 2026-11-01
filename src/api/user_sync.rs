@@ -7,10 +7,7 @@ use crate::api::AppState;
 /// Start background user cache sync worker loop.
 pub fn start_user_cache_worker(state: AppState) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
-        let client = Client::builder()
-            .timeout(Duration::from_secs(10))
-            .build()
-            .unwrap_or_default();
+        let client = state.http_client.clone();
 
         // Initial delay to let application start up cleanly
         tokio::time::sleep(Duration::from_secs(2)).await;
@@ -47,11 +44,7 @@ pub fn start_user_cache_worker(state: AppState) -> tokio::task::JoinHandle<()> {
 
 /// Run a single user cache sync cycle across all configured Tautulli and Jellyfin instances.
 pub async fn sync_user_cache_once(state: &AppState) -> usize {
-    let client = Client::builder()
-        .timeout(Duration::from_secs(10))
-        .build()
-        .unwrap_or_default();
-    sync_user_cache_once_with_client(state, &client).await
+    sync_user_cache_once_with_client(state, &state.http_client).await
 }
 
 async fn sync_user_cache_once_with_client(state: &AppState, client: &Client) -> usize {

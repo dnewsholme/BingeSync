@@ -140,16 +140,25 @@ pub fn dispatch_scrobble_notification(
     dispatch_notification(pool, user_id, data);
 }
 
+static OUTBOUND_CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+
+fn get_outbound_client() -> &'static reqwest::Client {
+    OUTBOUND_CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(10))
+            .pool_max_idle_per_host(10)
+            .build()
+            .unwrap_or_default()
+    })
+}
+
 /// Sends formatted notification payload to the configured outbound webhook service
 pub async fn send_notification(
     url: &str,
     wh_type: &str,
     data: &NotificationData,
 ) -> Result<(), String> {
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(10))
-        .build()
-        .map_err(|e| e.to_string())?;
+    let client = get_outbound_client();
 
     let is_episode = data.media_type.eq_ignore_ascii_case("episode");
     let display_title = if is_episode {

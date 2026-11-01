@@ -195,6 +195,7 @@ Tests in `tests/api_tests.rs` (67 integration tests) cover:
 - Bidirectional media sync: user settings configuration (`plex_url`, `plex_api_key`, `jellyfin_url`, `jellyfin_api_key`, `emby_url`, `emby_api_key`, `emby_sync_enabled`, `bidirectional_sync_enabled`), connection testing endpoints (`/test-plex`, `/test-jellyfin`, `/test-emby`), and on-demand writeback (`/api/v1/user/sync/writeback`)
 - Media source (`source`: `"plex"`, `"jellyfin"`, `"emby"`, `"trakt"`, `"manual"`), import origin (`imported_from`: `"tautulli"`, `"trakt"`), and watched-by user (`source_user` / `watched_by`) logging on scrobbles and active sessions, card source/import/user badges, and history/timeline search and filtering
 - Server user fetching and multi-user filtering endpoints: `/api/v1/user/settings/plex/users`, `/api/v1/user/settings/jellyfin/users`, and `/api/v1/user/settings/emby/users` querying server APIs, inserting/caching mappings in `plex_user_cache`, and supporting both GET and POST
+- Production performance & resource optimizations: release profile LLVM optimizations (`opt-level = 3`, `lto = "thin"`, `codegen-units = 1`, `panic = "abort"`, `strip = true`), SQLite pool PRAGMAs (`synchronous = NORMAL`, `mmap_size = 256MB`, `cache_size = 64MB`, `temp_store = MEMORY`), `tower-http` dynamic compression (`gzip`, `br`, `zstd`), static asset immutable caching (`Cache-Control: public, max-age=31536000, immutable`), and shared `reqwest::Client` connection pooling with socket reuse across media integrations
 
 ### Run Playwright E2E UI Tests
 ```bash

@@ -53,9 +53,33 @@ pub struct AppState {
     pub db_maintenance_notify: Arc<tokio::sync::Notify>,
     pub tautulli_sync_notify: Arc<tokio::sync::Notify>,
     pub media_sync_notify: Arc<tokio::sync::Notify>,
+    pub http_client: reqwest::Client,
 }
 
 impl AppState {
+    pub fn new(pool: SqlitePool, config: Arc<Config>, oidc_client: Option<Arc<OidcClient>>) -> Self {
+        Self {
+            pool,
+            config,
+            oidc_client,
+            image_notify: Arc::new(tokio::sync::Notify::new()),
+            metadata_notify: Arc::new(tokio::sync::Notify::new()),
+            user_sync_notify: Arc::new(tokio::sync::Notify::new()),
+            log_buffer: Arc::new(logs::LogBuffer::new(500)),
+            task_tracker: Arc::new(jobs::BackgroundTaskTracker::new()),
+            db_backup_notify: Arc::new(tokio::sync::Notify::new()),
+            db_maintenance_notify: Arc::new(tokio::sync::Notify::new()),
+            tautulli_sync_notify: Arc::new(tokio::sync::Notify::new()),
+            media_sync_notify: Arc::new(tokio::sync::Notify::new()),
+            http_client: reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(15))
+                .danger_accept_invalid_certs(true)
+                .pool_max_idle_per_host(10)
+                .build()
+                .unwrap_or_default(),
+        }
+    }
+
     pub async fn is_oidc_enabled(&self) -> bool {
         if let Some(val) = settings::get_db_setting(&self.pool, "oidc_enabled").await {
             return val == "true" || val == "1";
@@ -414,6 +438,7 @@ pub fn create_api_router(state: AppState) -> Router {
         .route("/api/v1/openapi.json", get(openapi::get_openapi_json))
         .route("/docs", get(openapi::get_swagger_ui))
         .route("/swagger", get(openapi::get_swagger_ui))
+        .layer(tower_http::compression::CompressionLayer::new())
         .layer(axum::middleware::from_fn(security_headers_middleware))
         .layer(cors)
         .layer(Extension(state.clone()))

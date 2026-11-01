@@ -9,7 +9,11 @@ pub async fn init_db(database_url: &str) -> Result<SqlitePool, sqlx::Error> {
         .create_if_missing(true)
         .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
         .busy_timeout(std::time::Duration::from_secs(15))
-        .foreign_keys(true);
+        .foreign_keys(true)
+        .pragma("synchronous", "NORMAL")
+        .pragma("mmap_size", "268435456")
+        .pragma("cache_size", "-64000")
+        .pragma("temp_store", "MEMORY");
 
     let pool = SqlitePoolOptions::new()
         .max_connections(10)

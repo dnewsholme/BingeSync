@@ -5,7 +5,6 @@ use axum::{
     Json,
 };
 use serde::{Deserialize, Serialize};
-use std::time::Duration;
 
 use crate::{api::AppState, auth::AuthUser};
 
@@ -94,10 +93,7 @@ pub async fn request_overseerr_media_handler(
     let is_tv = payload.media_type.eq_ignore_ascii_case("tv") || payload.media_type.eq_ignore_ascii_case("show") || payload.media_type.eq_ignore_ascii_case("episode");
     let media_type_str = if is_tv { "tv" } else { "movie" };
 
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(12))
-        .build()
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "error": e.to_string() }))))?;
+    let client = &state.http_client;
 
     let endpoint = format!("{}/api/v1/request", overseerr_url.trim_end_matches('/'));
 

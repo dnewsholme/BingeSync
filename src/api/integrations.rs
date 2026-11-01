@@ -4,7 +4,6 @@ use axum::{
     response::IntoResponse,
     Json,
 };
-use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
 use crate::{api::AppState, auth::AuthUser};
@@ -148,11 +147,7 @@ pub async fn check_media_in_library(
     auth: AuthUser,
     Query(query): Query<IntegrationCheckQuery>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
-    let client = Client::builder()
-        .timeout(std::time::Duration::from_secs(5))
-        .danger_accept_invalid_certs(true)
-        .build()
-        .unwrap_or_default();
+    let client = &state.http_client;
 
     if query.media_type == "movie" {
         tracing::debug!(service = "radarr", user_id = %auth.user_id, title = %query.title, year = ?query.year, "Checking if movie exists in Radarr");
@@ -305,11 +300,7 @@ pub async fn delete_from_radarr(
         )
     })?;
 
-    let client = Client::builder()
-        .timeout(std::time::Duration::from_secs(10))
-        .danger_accept_invalid_certs(true)
-        .build()
-        .unwrap_or_default();
+    let client = &state.http_client;
 
     let mut base_url = safe_url.as_str().trim_end_matches('/').to_string();
     if safe_url.scheme() == "https" {
@@ -401,11 +392,7 @@ pub async fn delete_from_sonarr(
         )
     })?;
 
-    let client = Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .danger_accept_invalid_certs(true)
-        .build()
-        .unwrap_or_default();
+    let client = &state.http_client;
 
     let mut base_url = safe_url.as_str().trim_end_matches('/').to_string();
     if safe_url.scheme() == "https" {
@@ -786,11 +773,7 @@ pub async fn get_cleanup_items(
     State(state): State<AppState>,
     auth: AuthUser,
 ) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
-    let client = Client::builder()
-        .timeout(std::time::Duration::from_secs(15))
-        .danger_accept_invalid_certs(true)
-        .build()
-        .unwrap_or_default();
+    let client = &state.http_client;
 
     // 1. Resolve Radarr config
     let user_radarr_url = crate::api::user_settings::get_user_setting(&state.pool, &auth.user_id, "radarr_url").await

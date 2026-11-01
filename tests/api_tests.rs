@@ -21,20 +21,7 @@ async fn setup_test_app() -> (axum::Router, sqlx::SqlitePool, Arc<Config>) {
     config.dev_login_enabled = true;
     let config = Arc::new(config);
 
-    let state = AppState {
-        pool: pool.clone(),
-        config: config.clone(),
-        oidc_client: None,
-        image_notify: Arc::new(tokio::sync::Notify::new()),
-        metadata_notify: Arc::new(tokio::sync::Notify::new()),
-        user_sync_notify: Arc::new(tokio::sync::Notify::new()),
-        log_buffer: Arc::new(bingesync::api::logs::LogBuffer::new(500)),
-        task_tracker: Arc::new(bingesync::api::jobs::BackgroundTaskTracker::new()),
-        db_backup_notify: Arc::new(tokio::sync::Notify::new()),
-        db_maintenance_notify: Arc::new(tokio::sync::Notify::new()),
-        tautulli_sync_notify: Arc::new(tokio::sync::Notify::new()),
-        media_sync_notify: Arc::new(tokio::sync::Notify::new()),
-    };
+    let state = AppState::new(pool.clone(), config.clone(), None);
 
     let router = create_api_router(state);
     (router, pool, config)
@@ -1288,20 +1275,7 @@ async fn test_subpath_routing_and_assets() {
     let mut config = Config::from_env();
     config.base_path = "/bingesync".to_string();
     let config = Arc::new(config);
-    let state = AppState {
-        pool,
-        config: config.clone(),
-        oidc_client: None,
-        image_notify: Arc::new(tokio::sync::Notify::new()),
-        metadata_notify: Arc::new(tokio::sync::Notify::new()),
-        user_sync_notify: Arc::new(tokio::sync::Notify::new()),
-        log_buffer: Arc::new(bingesync::api::logs::LogBuffer::new(500)),
-        task_tracker: Arc::new(bingesync::api::jobs::BackgroundTaskTracker::new()),
-        db_backup_notify: Arc::new(tokio::sync::Notify::new()),
-        db_maintenance_notify: Arc::new(tokio::sync::Notify::new()),
-        tautulli_sync_notify: Arc::new(tokio::sync::Notify::new()),
-        media_sync_notify: Arc::new(tokio::sync::Notify::new()),
-    };
+    let state = AppState::new(pool, config.clone(), None);
     let app = create_api_router(state).fallback(bingesync::assets::static_handler);
     let base = config.base_path.trim_end_matches('/').to_string();
     let redirect_target = format!("{}/", base);
@@ -1323,17 +1297,33 @@ async fn test_subpath_routing_and_assets() {
     assert_eq!(res.status(), StatusCode::PERMANENT_REDIRECT);
     assert_eq!(res.headers().get("location").unwrap(), "/bingesync/");
 
-    // Request /bingesync/ (should serve index.html with 200 OK)
+    // Request /bingesync/ (should serve index.html with 200 OK and no-cache)
     let req2 = Request::builder().uri("/bingesync/").body(Body::empty()).unwrap();
     let res2 = app.clone().oneshot(req2).await.unwrap();
     println!("Status for /bingesync/: {}", res2.status());
     assert_eq!(res2.status(), StatusCode::OK);
+    assert_eq!(res2.headers().get("cache-control").unwrap(), "no-cache");
 
-    // Request /bingesync/assets/index-DTQhH7_5.css
-    let req_asset = Request::builder().uri("/bingesync/assets/index-DTQhH7_5.css").body(Body::empty()).unwrap();
+    // Request an actual asset from web/dist/assets/ (should serve with immutable cache)
+    let asset_name = bingesync::assets::WebAssets::iter()
+        .find(|p| p.starts_with("assets/") && p.ends_with(".css"))
+        .map(|p| p.to_string())
+        .unwrap_or_else(|| "assets/index-BdcyK8uk.css".to_string());
+    let req_asset = Request::builder().uri(format!("/bingesync/{}", asset_name)).body(Body::empty()).unwrap();
     let res_asset = app.clone().oneshot(req_asset).await.unwrap();
-    println!("Status for /bingesync/assets/index-DTQhH7_5.css: {}", res_asset.status());
+    println!("Status for asset: {}", res_asset.status());
     assert_eq!(res_asset.status(), StatusCode::OK);
+    assert_eq!(res_asset.headers().get("cache-control").unwrap(), "public, max-age=31536000, immutable");
+
+    // Request with Accept-Encoding: gzip should receive Content-Encoding: gzip
+    let req_gzip = Request::builder()
+        .uri("/bingesync/api/v1/setup/status")
+        .header(header::ACCEPT_ENCODING, "gzip")
+        .body(Body::empty())
+        .unwrap();
+    let res_gzip = app.oneshot(req_gzip).await.unwrap();
+    assert_eq!(res_gzip.status(), StatusCode::OK);
+    assert_eq!(res_gzip.headers().get("content-encoding").unwrap(), "gzip");
 }
 
 #[tokio::test]
@@ -1492,20 +1482,7 @@ async fn test_oidc_backchannel_logout() {
         "http://localhost:8080/api/v1/auth/callback".to_string(),
     ));
 
-    let state = AppState {
-        pool: pool.clone(),
-        config: config.clone(),
-        oidc_client: Some(oidc_client),
-        image_notify: Arc::new(tokio::sync::Notify::new()),
-        metadata_notify: Arc::new(tokio::sync::Notify::new()),
-        user_sync_notify: Arc::new(tokio::sync::Notify::new()),
-        log_buffer: Arc::new(bingesync::api::logs::LogBuffer::new(500)),
-        task_tracker: Arc::new(bingesync::api::jobs::BackgroundTaskTracker::new()),
-        db_backup_notify: Arc::new(tokio::sync::Notify::new()),
-        db_maintenance_notify: Arc::new(tokio::sync::Notify::new()),
-        tautulli_sync_notify: Arc::new(tokio::sync::Notify::new()),
-        media_sync_notify: Arc::new(tokio::sync::Notify::new()),
-    };
+    let state = AppState::new(pool.clone(), config.clone(), Some(oidc_client));
 
     let app = create_api_router(state);
 
@@ -1675,20 +1652,7 @@ async fn test_image_cache_serving_and_background_worker() {
     config.image_cache_dir = temp_dir.path().to_string_lossy().to_string();
     let config = Arc::new(config);
 
-    let state = AppState {
-        pool: pool.clone(),
-        config: config.clone(),
-        oidc_client: None,
-        image_notify: Arc::new(tokio::sync::Notify::new()),
-        metadata_notify: Arc::new(tokio::sync::Notify::new()),
-        user_sync_notify: Arc::new(tokio::sync::Notify::new()),
-        log_buffer: Arc::new(bingesync::api::logs::LogBuffer::new(500)),
-        task_tracker: Arc::new(bingesync::api::jobs::BackgroundTaskTracker::new()),
-        db_backup_notify: Arc::new(tokio::sync::Notify::new()),
-        db_maintenance_notify: Arc::new(tokio::sync::Notify::new()),
-        tautulli_sync_notify: Arc::new(tokio::sync::Notify::new()),
-        media_sync_notify: Arc::new(tokio::sync::Notify::new()),
-    };
+    let state = AppState::new(pool.clone(), config.clone(), None);
 
     let app = create_api_router(state.clone());
 
@@ -1869,20 +1833,7 @@ async fn test_sonarr_delete_options() {
     });
 
     let config = Arc::new(Config::from_env());
-    let state = AppState {
-        pool: pool.clone(),
-        config: config.clone(),
-        oidc_client: None,
-        image_notify: Arc::new(tokio::sync::Notify::new()),
-        metadata_notify: Arc::new(tokio::sync::Notify::new()),
-        user_sync_notify: Arc::new(tokio::sync::Notify::new()),
-        log_buffer: Arc::new(bingesync::api::logs::LogBuffer::new(500)),
-        task_tracker: Arc::new(bingesync::api::jobs::BackgroundTaskTracker::new()),
-        db_backup_notify: Arc::new(tokio::sync::Notify::new()),
-        db_maintenance_notify: Arc::new(tokio::sync::Notify::new()),
-        tautulli_sync_notify: Arc::new(tokio::sync::Notify::new()),
-        media_sync_notify: Arc::new(tokio::sync::Notify::new()),
-    };
+    let state = AppState::new(pool.clone(), config.clone(), None);
     let app = create_api_router(state);
 
     // Dev login to obtain valid token
@@ -2073,20 +2024,7 @@ async fn test_tvdb_metadata_enrichment_worker() {
     config.tvdb_api_key = Some("test_tvdb_key".to_string());
     config.tvdb_base_url = format!("http://{}", addr);
     let config = Arc::new(config);
-    let state = AppState {
-        pool: pool.clone(),
-        config: config.clone(),
-        oidc_client: None,
-        image_notify: Arc::new(tokio::sync::Notify::new()),
-        metadata_notify: Arc::new(tokio::sync::Notify::new()),
-        user_sync_notify: Arc::new(tokio::sync::Notify::new()),
-        log_buffer: Arc::new(bingesync::api::logs::LogBuffer::new(500)),
-        task_tracker: Arc::new(bingesync::api::jobs::BackgroundTaskTracker::new()),
-        db_backup_notify: Arc::new(tokio::sync::Notify::new()),
-        db_maintenance_notify: Arc::new(tokio::sync::Notify::new()),
-        tautulli_sync_notify: Arc::new(tokio::sync::Notify::new()),
-        media_sync_notify: Arc::new(tokio::sync::Notify::new()),
-    };
+    let state = AppState::new(pool.clone(), config.clone(), None);
 
     // 2. Create test user and insert a scrobble with missing overview, genres, actors, directors
     let user_id = "test_user_tvdb";
@@ -2246,20 +2184,7 @@ async fn test_movie_tvdb_metadata_fallback_and_refresh() {
     config.tvdb_api_key = Some("test_tvdb_key".to_string());
     config.tvdb_base_url = format!("http://{}", addr);
     let config = Arc::new(config);
-    let state = AppState {
-        pool: pool.clone(),
-        config: config.clone(),
-        oidc_client: None,
-        image_notify: Arc::new(tokio::sync::Notify::new()),
-        metadata_notify: Arc::new(tokio::sync::Notify::new()),
-        user_sync_notify: Arc::new(tokio::sync::Notify::new()),
-        log_buffer: Arc::new(bingesync::api::logs::LogBuffer::new(500)),
-        task_tracker: Arc::new(bingesync::api::jobs::BackgroundTaskTracker::new()),
-        db_backup_notify: Arc::new(tokio::sync::Notify::new()),
-        db_maintenance_notify: Arc::new(tokio::sync::Notify::new()),
-        tautulli_sync_notify: Arc::new(tokio::sync::Notify::new()),
-        media_sync_notify: Arc::new(tokio::sync::Notify::new()),
-    };
+    let state = AppState::new(pool.clone(), config.clone(), None);
 
     // 2. Create test user and insert movie with title "Obsession" and year 2025
     let user_id = "test_user_movie_tvdb";
@@ -2737,20 +2662,8 @@ async fn test_admin_settings_logs_and_tasks_management() {
         .execute(&pool)
         .await
         .unwrap();
-    let state_with_fake = bingesync::api::AppState {
-        pool: pool.clone(),
-        config: config.clone(),
-        oidc_client: None,
-        image_notify: std::sync::Arc::new(tokio::sync::Notify::new()),
-        metadata_notify: std::sync::Arc::new(tokio::sync::Notify::new()),
-        user_sync_notify: std::sync::Arc::new(tokio::sync::Notify::new()),
-        log_buffer: std::sync::Arc::new(bingesync::api::logs::LogBuffer::new(100)),
-        task_tracker: std::sync::Arc::new(fake_tracker),
-        db_backup_notify: std::sync::Arc::new(tokio::sync::Notify::new()),
-        db_maintenance_notify: std::sync::Arc::new(tokio::sync::Notify::new()),
-        tautulli_sync_notify: std::sync::Arc::new(tokio::sync::Notify::new()),
-        media_sync_notify: std::sync::Arc::new(tokio::sync::Notify::new()),
-    };
+    let mut state_with_fake = bingesync::api::AppState::new(pool.clone(), config.clone(), None);
+    state_with_fake.task_tracker = std::sync::Arc::new(fake_tracker);
     let restored_tasks = state_with_fake.task_tracker.get_tasks_summary(&state_with_fake, true).await;
     let restored_tvdb = restored_tasks.iter().find(|t| t.id == "tvdb_metadata").unwrap();
     assert_eq!(restored_tvdb.last_success_at.as_deref(), Some("2026-10-30T10:00:00Z"));
@@ -4257,20 +4170,7 @@ async fn test_user_cache_background_sync_and_jellyfin_id_resolution() {
     assert_eq!(count, 1);
 
     // Test running sync_user_cache_once
-    let state = AppState {
-        pool: pool.clone(),
-        config: config.clone(),
-        oidc_client: None,
-        image_notify: std::sync::Arc::new(tokio::sync::Notify::new()),
-        metadata_notify: std::sync::Arc::new(tokio::sync::Notify::new()),
-        user_sync_notify: std::sync::Arc::new(tokio::sync::Notify::new()),
-        log_buffer: std::sync::Arc::new(bingesync::api::logs::LogBuffer::new(100)),
-        task_tracker: std::sync::Arc::new(bingesync::api::jobs::BackgroundTaskTracker::new()),
-        db_backup_notify: std::sync::Arc::new(tokio::sync::Notify::new()),
-        db_maintenance_notify: std::sync::Arc::new(tokio::sync::Notify::new()),
-        tautulli_sync_notify: std::sync::Arc::new(tokio::sync::Notify::new()),
-        media_sync_notify: std::sync::Arc::new(tokio::sync::Notify::new()),
-    };
+    let state = AppState::new(pool.clone(), config.clone(), None);
 
     let processed = bingesync::api::user_sync::sync_user_cache_once(&state).await;
     // Without active external servers, it safely returns without panicking
@@ -5179,20 +5079,7 @@ async fn test_tmdb_metadata_enrichment_worker() {
     config.tmdb_api_key = Some("test_tmdb_key".to_string());
     config.tmdb_base_url = format!("http://{}", addr);
     let config = Arc::new(config);
-    let state = AppState {
-        pool: pool.clone(),
-        config: config.clone(),
-        oidc_client: None,
-        image_notify: Arc::new(tokio::sync::Notify::new()),
-        metadata_notify: Arc::new(tokio::sync::Notify::new()),
-        user_sync_notify: Arc::new(tokio::sync::Notify::new()),
-        log_buffer: Arc::new(bingesync::api::logs::LogBuffer::new(500)),
-        task_tracker: Arc::new(bingesync::api::jobs::BackgroundTaskTracker::new()),
-        db_backup_notify: Arc::new(tokio::sync::Notify::new()),
-        db_maintenance_notify: Arc::new(tokio::sync::Notify::new()),
-        tautulli_sync_notify: Arc::new(tokio::sync::Notify::new()),
-        media_sync_notify: Arc::new(tokio::sync::Notify::new()),
-    };
+    let state = AppState::new(pool.clone(), config.clone(), None);
 
     // 2. Insert test user and scrobble for "Stranger Things"
     let user_id = "test_user_tmdb";
@@ -5267,20 +5154,7 @@ async fn test_tmdb_metadata_enrichment_worker() {
 async fn test_admin_settings_metadata_source_and_tmdb() {
     let pool = init_db("sqlite::memory:").await.unwrap();
     let config = Arc::new(Config::from_env());
-    let state = AppState {
-        pool: pool.clone(),
-        config: config.clone(),
-        oidc_client: None,
-        image_notify: Arc::new(tokio::sync::Notify::new()),
-        metadata_notify: Arc::new(tokio::sync::Notify::new()),
-        user_sync_notify: Arc::new(tokio::sync::Notify::new()),
-        log_buffer: Arc::new(bingesync::api::logs::LogBuffer::new(500)),
-        task_tracker: Arc::new(bingesync::api::jobs::BackgroundTaskTracker::new()),
-        db_backup_notify: Arc::new(tokio::sync::Notify::new()),
-        db_maintenance_notify: Arc::new(tokio::sync::Notify::new()),
-        tautulli_sync_notify: Arc::new(tokio::sync::Notify::new()),
-        media_sync_notify: Arc::new(tokio::sync::Notify::new()),
-    };
+    let state = AppState::new(pool.clone(), config.clone(), None);
     let app = bingesync::api::create_api_router(state.clone());
 
     // Create admin user
@@ -5349,20 +5223,7 @@ async fn test_admin_database_backup_and_restore() {
     config_val.backup_dir = temp_backup_dir.to_string_lossy().to_string();
     let config = Arc::new(config_val);
 
-    let state = AppState {
-        pool: pool.clone(),
-        config: config.clone(),
-        oidc_client: None,
-        image_notify: Arc::new(tokio::sync::Notify::new()),
-        metadata_notify: Arc::new(tokio::sync::Notify::new()),
-        user_sync_notify: Arc::new(tokio::sync::Notify::new()),
-        log_buffer: Arc::new(bingesync::api::logs::LogBuffer::new(500)),
-        task_tracker: Arc::new(bingesync::api::jobs::BackgroundTaskTracker::new()),
-        db_backup_notify: Arc::new(tokio::sync::Notify::new()),
-        db_maintenance_notify: Arc::new(tokio::sync::Notify::new()),
-        tautulli_sync_notify: Arc::new(tokio::sync::Notify::new()),
-        media_sync_notify: Arc::new(tokio::sync::Notify::new()),
-    };
+    let state = AppState::new(pool.clone(), config.clone(), None);
     let app = bingesync::api::create_api_router(state.clone());
 
     // 1. Create admin and regular user
@@ -6390,20 +6251,7 @@ async fn test_tmdb_fix_match_cinematographer_filtering() {
     config.tmdb_base_url = format!("http://{}", addr);
     let config = Arc::new(config);
 
-    let state = AppState {
-        pool: pool.clone(),
-        config: config.clone(),
-        oidc_client: None,
-        image_notify: Arc::new(tokio::sync::Notify::new()),
-        metadata_notify: Arc::new(tokio::sync::Notify::new()),
-        user_sync_notify: Arc::new(tokio::sync::Notify::new()),
-        log_buffer: Arc::new(bingesync::api::logs::LogBuffer::new(500)),
-        task_tracker: Arc::new(bingesync::api::jobs::BackgroundTaskTracker::new()),
-        db_backup_notify: Arc::new(tokio::sync::Notify::new()),
-        db_maintenance_notify: Arc::new(tokio::sync::Notify::new()),
-        tautulli_sync_notify: Arc::new(tokio::sync::Notify::new()),
-        media_sync_notify: Arc::new(tokio::sync::Notify::new()),
-    };
+    let state = AppState::new(pool.clone(), config.clone(), None);
 
     let app = create_api_router(state.clone());
 

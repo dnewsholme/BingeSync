@@ -33,6 +33,15 @@ pub async fn static_handler(uri: Uri) -> Response {
                 builder = builder
                     .header("Service-Worker-Allowed", "/")
                     .header(header::CACHE_CONTROL, "no-cache, no-store, must-revalidate");
+            } else if file_path.starts_with("assets/") {
+                // Vite content-hashed assets can be cached immutably for 1 year
+                builder = builder.header(header::CACHE_CONTROL, "public, max-age=31536000, immutable");
+            } else if file_path == "index.html" {
+                // SPA entry point must always be revalidated to detect new deploys immediately
+                builder = builder.header(header::CACHE_CONTROL, "no-cache");
+            } else {
+                // Other static assets (favicons, manifests, etc.) cached for 1 day
+                builder = builder.header(header::CACHE_CONTROL, "public, max-age=86400");
             }
 
             builder
@@ -45,6 +54,7 @@ pub async fn static_handler(uri: Uri) -> Response {
                 Response::builder()
                     .status(StatusCode::OK)
                     .header(header::CONTENT_TYPE, HeaderValue::from_static("text/html; charset=utf-8"))
+                    .header(header::CACHE_CONTROL, "no-cache")
                     .header("X-Content-Type-Options", "nosniff")
                     .header("X-Frame-Options", "SAMEORIGIN")
                     .header("Referrer-Policy", "strict-origin-when-cross-origin")

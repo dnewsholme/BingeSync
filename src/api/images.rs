@@ -53,10 +53,7 @@ pub fn start_image_cache_worker(state: AppState) -> tokio::task::JoinHandle<()> 
         // Ensure cache directory exists on disk
         let _ = tokio::fs::create_dir_all(&state.config.image_cache_dir).await;
 
-        let client = Client::builder()
-            .timeout(Duration::from_secs(5))
-            .build()
-            .unwrap_or_default();
+        let client = state.http_client.clone();
 
         let mut failed_lookups: HashSet<String> = HashSet::new();
 

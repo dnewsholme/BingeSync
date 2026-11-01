@@ -214,16 +214,25 @@ pub fn is_version_newer(latest: &str, current: &str) -> bool {
     }
 }
 
+static GITHUB_CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+
+fn get_github_client() -> &'static reqwest::Client {
+    GITHUB_CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .user_agent("BingeSync-Server")
+            .timeout(std::time::Duration::from_secs(5))
+            .pool_max_idle_per_host(2)
+            .build()
+            .unwrap_or_default()
+    })
+}
+
 pub async fn check_latest_github_release(pool: Option<&sqlx::SqlitePool>) -> VersionCheckResponse {
     let current = APP_VERSION.to_string();
     let (docker_base_image, os_name, sqlite_version, rust_version, components) =
         build_system_components(pool).await;
 
-    let client = reqwest::Client::builder()
-        .user_agent("BingeSync-Server")
-        .timeout(std::time::Duration::from_secs(5))
-        .build()
-        .unwrap_or_default();
+    let client = get_github_client();
 
     let res = client
         .get("https://api.github.com/repos/dnewsholme/BingeSync/releases/latest")

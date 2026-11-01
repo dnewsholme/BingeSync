@@ -67,15 +67,25 @@ pub struct FetchUsersParams {
     pub api_key: Option<String>,
 }
 
+static MEDIA_WRITEBACK_CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+
+pub fn get_writeback_client() -> &'static reqwest::Client {
+    MEDIA_WRITEBACK_CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .timeout(Duration::from_secs(12))
+            .danger_accept_invalid_certs(true)
+            .pool_max_idle_per_host(10)
+            .build()
+            .unwrap_or_default()
+    })
+}
+
 /// Tests connection to Plex Media Server using X-Plex-Token
 pub async fn test_plex_connection(plex_url: &str, plex_token: &str) -> Result<String, String> {
     let base = plex_url.trim_end_matches('/');
     crate::api::ssrf::validate_integration_url(base).map_err(|e| format!("Invalid Plex URL: {}", e))?;
 
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(8))
-        .build()
-        .map_err(|e| e.to_string())?;
+    let client = get_writeback_client();
 
     let url = format!("{}/identity", base);
     let resp = client
@@ -111,10 +121,7 @@ pub async fn test_jellyfin_connection(jellyfin_url: &str, api_key: &str) -> Resu
     let base = jellyfin_url.trim_end_matches('/');
     crate::api::ssrf::validate_integration_url(base).map_err(|e| format!("Invalid Jellyfin URL: {}", e))?;
 
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(8))
-        .build()
-        .map_err(|e| e.to_string())?;
+    let client = get_writeback_client();
 
     let url = format!("{}/System/Info", base);
     let resp = client
@@ -154,10 +161,7 @@ pub async fn test_emby_connection(emby_url: &str, api_key: &str) -> Result<Strin
     let base = emby_url.trim_end_matches('/');
     crate::api::ssrf::validate_integration_url(base).map_err(|e| format!("Invalid Emby URL: {}", e))?;
 
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(8))
-        .build()
-        .map_err(|e| e.to_string())?;
+    let client = get_writeback_client();
 
     let url = format!("{}/System/Info", base);
     let resp = client
@@ -514,10 +518,7 @@ pub fn dispatch_media_writeback(pool: SqlitePool, user_id: String, item: Writeba
             return;
         }
 
-        let client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(12))
-            .build()
-            .unwrap_or_default();
+        let client = get_writeback_client();
 
         // 1. Sync to Plex if configured & enabled
         if plex_sync {
@@ -653,10 +654,7 @@ pub async fn sync_all_users_media(state: &AppState) -> Result<(usize, usize, usi
     let mut total_processed = 0;
     let mut users_synced = 0;
 
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(12))
-        .build()
-        .unwrap_or_default();
+    let client = &state.http_client;
 
     for u in users {
         let bidi = crate::api::user_settings::get_user_setting(pool, &u.id, "bidirectional_sync_enabled")
@@ -950,10 +948,7 @@ pub async fn trigger_writeback_handler(
         ));
     }
 
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(12))
-        .build()
-        .unwrap_or_default();
+    let client = &state.http_client;
 
     // Query scrobbles
     let items: Vec<WritebackItem> = if let Some(ref scrobble_id) = payload.scrobble_id {
@@ -1078,10 +1073,7 @@ pub async fn fetch_plex_users(
     let base = plex_url.trim_end_matches('/');
     crate::api::ssrf::validate_integration_url(base).map_err(|e| format!("Invalid Plex URL: {}", e))?;
 
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(8))
-        .build()
-        .map_err(|e| e.to_string())?;
+    let client = get_writeback_client();
 
     let mut users: Vec<ServerUserItem> = Vec::new();
     let mut seen_keys = std::collections::HashSet::new();
@@ -1278,10 +1270,7 @@ pub async fn fetch_jellyfin_users(
     let base = jellyfin_url.trim_end_matches('/');
     crate::api::ssrf::validate_integration_url(base).map_err(|e| format!("Invalid Jellyfin URL: {}", e))?;
 
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(8))
-        .build()
-        .map_err(|e| e.to_string())?;
+    let client = get_writeback_client();
 
     let endpoint = format!("{}/Users", base);
     let resp = client
@@ -1494,10 +1483,7 @@ pub async fn fetch_emby_users(
     let base = emby_url.trim_end_matches('/');
     crate::api::ssrf::validate_integration_url(base).map_err(|e| format!("Invalid Emby URL: {}", e))?;
 
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(8))
-        .build()
-        .map_err(|e| e.to_string())?;
+    let client = get_writeback_client();
 
     let endpoint = format!("{}/Users", base);
     let resp = client

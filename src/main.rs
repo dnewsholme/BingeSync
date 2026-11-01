@@ -82,6 +82,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         db_maintenance_notify: Arc::new(tokio::sync::Notify::new()),
         tautulli_sync_notify: Arc::new(tokio::sync::Notify::new()),
         media_sync_notify: Arc::new(tokio::sync::Notify::new()),
+        http_client: reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(15))
+            .danger_accept_invalid_certs(true)
+            .pool_max_idle_per_host(10)
+            .build()
+            .unwrap_or_default(),
     };
 
     // 6. Start background workers
@@ -114,7 +120,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .merge(app)
     } else {
         app
-    };
+    }
+    .layer(tower_http::compression::CompressionLayer::new());
 
     // 7. Start server
     let bind_addr = format!("{}:{}", config.host, config.port);

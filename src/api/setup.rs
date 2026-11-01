@@ -119,6 +119,18 @@ pub async fn get_setup_status_handler(
     }))
 }
 
+static SETUP_CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+
+fn get_setup_client() -> &'static reqwest::Client {
+    SETUP_CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(8))
+            .pool_max_idle_per_host(5)
+            .build()
+            .unwrap_or_default()
+    })
+}
+
 pub async fn test_oidc_discovery_handler(
     Json(payload): Json<TestOidcRequest>,
 ) -> impl IntoResponse {
@@ -156,28 +168,7 @@ pub async fn test_oidc_discovery_handler(
     }
 
     let well_known = format!("{}/.well-known/openid-configuration", trimmed.trim_end_matches('/'));
-
-    let client = match reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(8))
-        .build()
-    {
-        Ok(c) => c,
-        Err(e) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(TestOidcResponse {
-                    success: false,
-                    issuer: None,
-                    authorization_endpoint: None,
-                    token_endpoint: None,
-                    userinfo_endpoint: None,
-                    jwks_uri: None,
-                    backchannel_logout_supported: None,
-                    error: Some(format!("Failed to build HTTP client: {}", e)),
-                }),
-            );
-        }
-    };
+    let client = get_setup_client();
 
     let res = match client.get(&well_known).send().await {
         Ok(r) => r,
