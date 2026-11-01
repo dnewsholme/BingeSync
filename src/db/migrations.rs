@@ -66,7 +66,7 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
             studio TEXT,
             original_language TEXT,
             content_rating TEXT,
-            is_rewatch BOOLEAN NOT NULL DEFAULT 0,
+            is_rewatch BOOLEAN DEFAULT 0,
             watched_at TEXT NOT NULL DEFAULT (datetime('now')),
             created_at TEXT NOT NULL DEFAULT (datetime('now'))
         );

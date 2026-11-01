@@ -10264,3 +10264,87 @@ async fn test_rich_scrobble_metadata_specs_device_and_rewatch() {
     assert_eq!(history_res.items.len(), 2);
     assert_eq!(history_res.items[0].imdb_id.as_deref(), Some("tt1375666"));
 }
+
+#[tokio::test]
+async fn test_legacy_database_migration_with_null_columns_and_history_fetch() {
+    let (app, pool, config) = setup_test_app().await;
+
+    let user_id = uuid::Uuid::new_v4().to_string();
+    sqlx::query(
+        "INSERT INTO users (id, email, display_name, webhook_token, role) VALUES (?, ?, ?, ?, 'user')"
+    )
+    .bind(&user_id)
+    .bind("legacy@example.com")
+    .bind("Legacy User")
+    .bind("tok_legacy")
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    // Insert a legacy scrobble record where all new columns (including is_rewatch) are explicitly NULL
+    let scrobble_id = "legacy-scrobble-1";
+    sqlx::query(
+        r#"
+        INSERT INTO scrobbles (
+            id, user_id, title, media_type, year, watched_at, created_at,
+            player_name, device_name, platform, is_local, resolution,
+            hdr_format, audio_codec, audio_channels, video_codec,
+            studio, original_language, content_rating, imdb_id, is_rewatch
+        )
+        VALUES (?, ?, ?, ?, ?, ?, datetime('now'), NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL)
+        "#
+    )
+    .bind(scrobble_id)
+    .bind(&user_id)
+    .bind("Legacy Classic Movie")
+    .bind("movie")
+    .bind(1999)
+    .bind("2026-01-01T12:00:00Z")
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    // Verify raw row in database has is_rewatch IS NULL
+    let raw_is_rewatch: Option<i64> = sqlx::query_scalar("SELECT is_rewatch FROM scrobbles WHERE id = ?")
+        .bind(scrobble_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(raw_is_rewatch, None);
+
+    let auth_token = create_jwt(&user_id, "legacy@example.com", &config.jwt_secret).unwrap();
+
+    // 1. Fetch /api/v1/history -> MUST NOT fail with UnexpectedNull or return empty!
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/history")
+        .header(header::AUTHORIZATION, format!("Bearer {}", auth_token))
+        .body(Body::empty())
+        .unwrap();
+
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let history_res: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    assert_eq!(history_res["total"], 1);
+    assert_eq!(history_res["items"][0]["title"], "Legacy Classic Movie");
+    assert_eq!(history_res["items"][0]["is_rewatch"], false);
+    assert_eq!(history_res["items"][0]["player_name"], serde_json::Value::Null);
+
+    // 2. Fetch /api/v1/timeline -> MUST NOT fail with 500 error!
+    let timeline_req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/timeline")
+        .header(header::AUTHORIZATION, format!("Bearer {}", auth_token))
+        .body(Body::empty())
+        .unwrap();
+
+    let timeline_resp = app.clone().oneshot(timeline_req).await.unwrap();
+    assert_eq!(timeline_resp.status(), StatusCode::OK);
+    let timeline_bytes = axum::body::to_bytes(timeline_resp.into_body(), usize::MAX).await.unwrap();
+    let timeline_res: serde_json::Value = serde_json::from_slice(&timeline_bytes).unwrap();
+    let days = timeline_res.as_array().unwrap();
+    assert_eq!(days.len(), 1);
+    assert_eq!(days[0]["items"][0]["title"], "Legacy Classic Movie");
+    assert_eq!(days[0]["items"][0]["is_rewatch"], false);
+}
