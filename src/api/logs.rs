@@ -334,12 +334,20 @@ impl LogMessageVisitor {
         let fields_str = self
             .fields
             .into_iter()
-            .map(|(k, v)| format!("{}={}", k, v))
+            .map(|(k, v)| {
+                let clean_v = v.trim();
+                if clean_v.contains(' ') || clean_v.contains('"') || clean_v.is_empty() {
+                    let escaped = clean_v.replace('"', "\\\"");
+                    format!("{}=\"{}\"", k, escaped)
+                } else {
+                    format!("{}={}", k, clean_v)
+                }
+            })
             .collect::<Vec<_>>()
             .join(" ");
 
         if self.message.is_empty() {
-            fields_str
+            format!("[{}]", fields_str)
         } else {
             format!("{} [{}]", self.message, fields_str)
         }

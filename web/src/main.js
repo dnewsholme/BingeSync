@@ -5785,27 +5785,37 @@ let initialLogsLoaded = false;
 
 function formatLogMessage(rawMsg) {
   if (!rawMsg) return '';
-  const escaped = escapeHtml(rawMsg);
 
-  // Match bracketed key=val metadata e.g. "Message text [key1=val1 key2=val2]"
-  const bracketMatch = escaped.match(/^(.*?)(\s*\[([a-zA-Z0-9_]+=[^\]]+)\])$/);
+  // Match bracketed key=val metadata e.g. "Message text [key1=val1 key2=val2]" or "[key=val]"
+  const bracketMatch = rawMsg.match(/^(.*?)(\s*\[([a-zA-Z0-9_]+=.+)\])$/);
   if (bracketMatch) {
     const textPart = bracketMatch[1];
     const tagsPart = bracketMatch[3];
-    const formattedTags = tagsPart.split(/\s+/).map(pair => {
-      const eqIdx = pair.indexOf('=');
-      if (eqIdx > 0) {
-        const k = pair.substring(0, eqIdx);
-        const v = pair.substring(eqIdx + 1);
-        return `<span class="log-meta-tag"><span class="log-key">${k}</span>=<span class="log-val">${v}</span></span>`;
-      }
-      return `<span class="log-meta-tag">${pair}</span>`;
-    }).join(' ');
 
-    return `${textPart} ${formattedTags}`;
+    // Regex matches key=value pairs where values can be double-quoted ("..."),
+    // single-quoted ('...'), or unquoted (even with spaces up until the next key= or end of string)
+    const regex = /([a-zA-Z0-9_]+)=(?:"([^"\\]*(?:\\.[^"\\]*)*)"|'([^'\\]*(?:\\.[^'\\]*)*)'|((?:(?![\s]+[a-zA-Z0-9_]+=).)*))/g;
+    const formattedTags = [];
+    let match;
+
+    while ((match = regex.exec(tagsPart)) !== null) {
+      const key = escapeHtml(match[1]);
+      const hasQuotes = match[2] !== undefined || match[3] !== undefined;
+      let val = match[2] !== undefined ? match[2] : (match[3] !== undefined ? match[3] : match[4]);
+      if (val !== undefined) {
+        val = val.trim();
+      }
+      const displayVal = hasQuotes ? `&quot;${escapeHtml(val)}&quot;` : escapeHtml(val);
+      formattedTags.push(`<span class="log-meta-tag"><span class="log-key">${key}</span>=<span class="log-val">${displayVal}</span></span>`);
+    }
+
+    if (formattedTags.length > 0) {
+      const escapedText = escapeHtml(textPart);
+      return (escapedText ? escapedText + ' ' : '') + formattedTags.join(' ');
+    }
   }
 
-  return escaped;
+  return escapeHtml(rawMsg);
 }
 
 function renderAdminLogs(logs) {
