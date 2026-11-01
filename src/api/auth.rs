@@ -64,6 +64,7 @@ pub async fn get_auth_status(State(state): State<AppState>) -> impl IntoResponse
 
 pub async fn login_handler(State(state): State<AppState>) -> Result<Redirect, (StatusCode, Json<serde_json::Value>)> {
     let oidc = state.get_effective_oidc_client().await.ok_or_else(|| {
+        tracing::warn!("OIDC login attempted but OpenID Connect is not enabled or configured");
         (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({ "error": "OpenID Connect is not enabled or configured on this instance. Please complete the setup flow." })),
@@ -74,12 +75,14 @@ pub async fn login_handler(State(state): State<AppState>) -> Result<Redirect, (S
         .generate_auth_url(&state.pool)
         .await
         .map_err(|e| {
+            tracing::error!(error = %e, "Failed to generate OIDC authorization URL");
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(serde_json::json!({ "error": format!("Failed to generate auth URL: {}", e) })),
             )
         })?;
 
+    tracing::info!("Redirecting user to OIDC identity provider authorization endpoint");
     Ok(Redirect::temporary(&auth_url))
 }
 
@@ -105,6 +108,7 @@ pub async fn callback_handler(
 ) -> Result<(CookieJar, Redirect), (StatusCode, Json<serde_json::Value>)> {
     if let Some(err) = query.error {
         let desc = query.error_description.unwrap_or_default();
+        tracing::warn!(error = %err, description = %desc, "OIDC login callback received error from provider");
         return Err((
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({ "error": format!("OIDC provider returned error: {} ({})", err, desc) })),
@@ -112,6 +116,7 @@ pub async fn callback_handler(
     }
 
     let code = query.code.ok_or_else(|| {
+        tracing::warn!("OIDC login callback missing authorization code");
         (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({ "error": "Missing 'code' query parameter" })),
@@ -119,6 +124,7 @@ pub async fn callback_handler(
     })?;
 
     let state_param = query.state.ok_or_else(|| {
+        tracing::warn!("OIDC login callback missing state parameter");
         (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({ "error": "Missing 'state' query parameter" })),
@@ -126,6 +132,7 @@ pub async fn callback_handler(
     })?;
 
     let oidc = state.get_effective_oidc_client().await.ok_or_else(|| {
+        tracing::error!("OIDC login callback invoked but client is not initialized");
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({ "error": "OIDC client is not initialized or configured" })),
@@ -136,6 +143,7 @@ pub async fn callback_handler(
         .handle_callback(&state.pool, &code, &state_param)
         .await
         .map_err(|e| {
+            tracing::warn!(error = %e, "OIDC authentication code exchange failed");
             (
                 StatusCode::UNAUTHORIZED,
                 Json(serde_json::json!({ "error": format!("OIDC authentication failed: {}", e) })),
@@ -154,6 +162,13 @@ pub async fn callback_handler(
     if !is_admin {
         if let Some(ref req_group) = custom_user_group.filter(|g| !g.trim().is_empty()) {
             if !user_info.has_group(Some(req_group)) {
+                tracing::warn!(
+                    email = %email,
+                    oidc_sub = %user_info.sub,
+                    required_group = %req_group,
+                    user_groups = ?user_info.groups,
+                    "OIDC login rejected: user is not in required group"
+                );
                 return Err((
                     StatusCode::FORBIDDEN,
                     Json(serde_json::json!({
@@ -182,11 +197,22 @@ pub async fn callback_handler(
     )
     .await
     .map_err(|e| {
+        tracing::error!(error = %e, email = %email, "Database error saving OIDC user");
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({ "error": format!("Database error creating user: {}", e) })),
         )
     })?;
+
+    tracing::info!(
+        user_id = %user.id,
+        email = %user.email,
+        display_name = %user.display_name,
+        role = %user.role,
+        oidc_sub = %user_info.sub,
+        preferred_username = ?user_info.preferred_username,
+        "User logged in via OpenID Connect"
+    );
 
     let token = create_jwt(&user.id, &user.email, &state.config.jwt_secret).map_err(|e| {
         (
@@ -263,6 +289,14 @@ pub async fn dev_login_handler(
         )
     })?;
 
+    tracing::info!(
+        user_id = %user.id,
+        email = %user.email,
+        display_name = %user.display_name,
+        role = %user.role,
+        "User logged in via dev login"
+    );
+
     let token = create_jwt(&user.id, &user.email, &state.config.jwt_secret).map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -331,6 +365,8 @@ pub async fn logout_handler(
         removal_builder = removal_builder.secure(true);
     }
     let removal_cookie = removal_builder.build();
+
+    tracing::info!("User logged out successfully");
 
     (jar.add(removal_cookie), Json(serde_json::json!({ "status": "logged_out" })))
 }
