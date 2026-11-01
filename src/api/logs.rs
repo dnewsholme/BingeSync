@@ -154,15 +154,23 @@ impl LogBuffer {
                             "metadata" | "tvdb" | "tmdb" => {
                                 target_lower.contains("tvdb")
                                     || target_lower.contains("tmdb")
+                                    || target_lower.contains("metadata")
+                                    || target_lower.contains("backfill")
                                     || msg_lower.contains("tvdb")
                                     || msg_lower.contains("tmdb")
                                     || msg_lower.contains("metadata")
+                                    || msg_lower.contains("backfill")
                             }
                             "images" | "poster" => {
                                 target_lower.contains("image")
+                                    || target_lower.contains("poster")
+                                    || target_lower.contains("thumb")
+                                    || target_lower.contains("prune")
                                     || msg_lower.contains("image")
                                     || msg_lower.contains("poster")
                                     || msg_lower.contains("thumb")
+                                    || msg_lower.contains("prune")
+                                    || msg_lower.contains("orphaned")
                             }
                             "sync" | "writeback" | "media_sync" => {
                                 target_lower.contains("writeback")
@@ -177,19 +185,26 @@ impl LogBuffer {
                             "integrations" | "radarr" | "sonarr" | "overseerr" => {
                                 target_lower.contains("integration")
                                     || target_lower.contains("overseerr")
+                                    || target_lower.contains("audit")
                                     || msg_lower.contains("radarr")
                                     || msg_lower.contains("sonarr")
                                     || msg_lower.contains("cleanup")
                                     || msg_lower.contains("overseerr")
+                                    || msg_lower.contains("audit")
                             }
                             "maintenance" | "db" | "database" => {
                                 target_lower.contains("maintenance")
                                     || target_lower.contains("db")
+                                    || target_lower.contains("reaper")
+                                    || target_lower.contains("duplicate")
                                     || msg_lower.contains("maintenance")
                                     || msg_lower.contains("vacuum")
                                     || msg_lower.contains("reindex")
                                     || msg_lower.contains("analyze")
                                     || msg_lower.contains("optimize")
+                                    || msg_lower.contains("reaper")
+                                    || msg_lower.contains("stale")
+                                    || msg_lower.contains("duplicate")
                             }
                             "backup" | "backups" => {
                                 target_lower.contains("backup")
@@ -254,6 +269,41 @@ impl LogBuffer {
                                     || msg_lower.contains("writeback")
                                     || msg_lower.contains("plex")
                                     || msg_lower.contains("jellyfin")
+                            }
+                            "session_reaper" | "reaper" => {
+                                target_lower.contains("reaper")
+                                    || target_lower.contains("session")
+                                    || msg_lower.contains("reaper")
+                                    || msg_lower.contains("session")
+                            }
+                            "image_prune" | "prune_images" | "prune" => {
+                                target_lower.contains("image_prune")
+                                    || target_lower.contains("prune")
+                                    || msg_lower.contains("prune")
+                                    || msg_lower.contains("orphaned")
+                            }
+                            "duplicate_pruner" | "duplicates" | "dedupe" => {
+                                target_lower.contains("duplicate")
+                                    || msg_lower.contains("duplicate")
+                                    || msg_lower.contains("pruner")
+                            }
+                            "metadata_backfill" | "backfill" => {
+                                target_lower.contains("backfill")
+                                    || target_lower.contains("metadata")
+                                    || msg_lower.contains("backfill")
+                                    || msg_lower.contains("enrichment")
+                            }
+                            "version_check" | "version" | "updates" => {
+                                target_lower.contains("version")
+                                    || msg_lower.contains("version")
+                                    || msg_lower.contains("github")
+                                    || msg_lower.contains("release")
+                            }
+                            "library_audit" | "audit" | "arr_audit" => {
+                                target_lower.contains("audit")
+                                    || target_lower.contains("library")
+                                    || msg_lower.contains("audit")
+                                    || msg_lower.contains("arr")
                             }
                             _ => msg_lower.contains(q) || target_lower.contains(q),
                         };

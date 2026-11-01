@@ -5784,6 +5784,9 @@ let logsAutoRefreshInterval = null;
 
 function viewLogsForTask(taskId, taskName) {
   state.admin.logsFilterTask = { id: taskId, name: taskName };
+  if (el.adminLogsFilterService) {
+    el.adminLogsFilterService.value = '';
+  }
   if (el.adminLogsFilterSearch) {
     el.adminLogsFilterSearch.value = taskId;
   }

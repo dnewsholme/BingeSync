@@ -6,7 +6,7 @@ use crate::api::AppState;
 
 /// Reaps abandoned active sessions that have had no playback progress or heartbeat in over 2 hours.
 pub async fn run_session_reaper(state: &AppState) -> Result<String, String> {
-    state.log_buffer.push("INFO", "bingesync::tasks::reaper", "Sweeping for abandoned active playback sessions...");
+    state.log_buffer.push("INFO", "bingesync::tasks::session_reaper", "Sweeping for abandoned active playback sessions... [task=session_reaper]");
     tracing::info!("Starting stale active sessions reaper sweep (threshold: 2 hours inactive)");
 
     let res = sqlx::query("DELETE FROM active_sessions WHERE updated_at < datetime('now', '-2 hours')")
@@ -16,12 +16,12 @@ pub async fn run_session_reaper(state: &AppState) -> Result<String, String> {
 
     let count = res.rows_affected() as usize;
     let msg = if count > 0 {
-        format!("Reaped {} abandoned active playback session(s)", count)
+        format!("Reaped {} abandoned active playback session(s) [task=session_reaper]", count)
     } else {
-        "No abandoned active sessions found (0 cleared)".to_string()
+        "No abandoned active sessions found (0 cleared) [task=session_reaper]".to_string()
     };
 
-    state.log_buffer.push("INFO", "bingesync::tasks::reaper", &msg);
+    state.log_buffer.push("INFO", "bingesync::tasks::session_reaper", &msg);
     tracing::info!("{}", msg);
 
     Ok(msg)
@@ -31,7 +31,7 @@ pub async fn run_session_reaper(state: &AppState) -> Result<String, String> {
 /// Runs hourly by default (every 1 hour) or upon notification.
 pub fn start_session_reaper_worker(state: AppState) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
-        tokio::time::sleep(Duration::from_secs(15)).await;
+        tokio::time::sleep(Duration::from_secs(3)).await;
 
         loop {
             let interval_hours = state.get_task_interval_hours("session_reaper").await;
@@ -63,13 +63,13 @@ pub fn start_session_reaper_worker(state: AppState) -> tokio::task::JoinHandle<(
 
 /// Scans the disk image cache directory and deletes unreferenced orphaned poster files.
 pub async fn run_image_prune(state: &AppState) -> Result<String, String> {
-    state.log_buffer.push("INFO", "bingesync::tasks::images", "Scanning disk image cache for orphaned poster files...");
+    state.log_buffer.push("INFO", "bingesync::tasks::image_prune", "Scanning disk image cache for orphaned poster files... [task=image_prune]");
     tracing::info!("Starting orphaned poster image cache prune");
 
     let cache_dir = FilePath::new(&state.config.image_cache_dir);
     if !cache_dir.exists() {
-        let msg = "Image cache directory does not exist yet (0 pruned)".to_string();
-        state.log_buffer.push("INFO", "bingesync::tasks::images", &msg);
+        let msg = "Image cache directory does not exist yet (0 pruned) [task=image_prune]".to_string();
+        state.log_buffer.push("INFO", "bingesync::tasks::image_prune", &msg);
         return Ok(msg);
     }
 
@@ -122,18 +122,18 @@ pub async fn run_image_prune(state: &AppState) -> Result<String, String> {
     }
 
     let kb_freed = bytes_freed / 1024;
-    let msg = format!("Pruned {} orphaned image file(s), reclaiming {} KB of disk storage", deleted_count, kb_freed);
-    state.log_buffer.push("INFO", "bingesync::tasks::images", &msg);
+    let msg = format!("Pruned {} orphaned image file(s), reclaiming {} KB of disk storage [task=image_prune]", deleted_count, kb_freed);
+    state.log_buffer.push("INFO", "bingesync::tasks::image_prune", &msg);
     tracing::info!("{}", msg);
 
     Ok(msg)
 }
 
 /// Spawns the background worker for pruning orphaned poster image files.
-/// Runs weekly by default (every 168 hours) or upon notification.
+/// Runs daily by default (every 24 hours) or upon notification.
 pub fn start_image_prune_worker(state: AppState) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
-        tokio::time::sleep(Duration::from_secs(30)).await;
+        tokio::time::sleep(Duration::from_secs(4)).await;
 
         loop {
             let interval_hours = state.get_task_interval_hours("image_prune").await;
@@ -165,7 +165,7 @@ pub fn start_image_prune_worker(state: AppState) -> tokio::task::JoinHandle<()> 
 
 /// Automatically detects and prunes rapid duplicate scrobbles across all user accounts.
 pub async fn run_duplicate_pruner(state: &AppState) -> Result<String, String> {
-    state.log_buffer.push("INFO", "bingesync::tasks::duplicates", "Scanning for duplicate scrobbles across all accounts...");
+    state.log_buffer.push("INFO", "bingesync::tasks::duplicate_pruner", "Scanning for duplicate scrobbles across all accounts... [task=duplicate_pruner]");
     tracing::info!("Starting automated duplicate scrobble cleanup");
 
     let users: Vec<String> = sqlx::query_scalar("SELECT id FROM users")
@@ -182,12 +182,12 @@ pub async fn run_duplicate_pruner(state: &AppState) -> Result<String, String> {
     }
 
     let msg = if total_deleted > 0 {
-        format!("Automatically pruned {} duplicate scrobble(s)", total_deleted)
+        format!("Automatically pruned {} duplicate scrobble(s) [task=duplicate_pruner]", total_deleted)
     } else {
-        "No duplicate scrobbles detected across user accounts (0 pruned)".to_string()
+        "No duplicate scrobbles detected across user accounts (0 pruned) [task=duplicate_pruner]".to_string()
     };
 
-    state.log_buffer.push("INFO", "bingesync::tasks::duplicates", &msg);
+    state.log_buffer.push("INFO", "bingesync::tasks::duplicate_pruner", &msg);
     tracing::info!("{}", msg);
 
     Ok(msg)
@@ -197,7 +197,7 @@ pub async fn run_duplicate_pruner(state: &AppState) -> Result<String, String> {
 /// Runs daily by default (every 24 hours) or upon notification.
 pub fn start_duplicate_pruner_worker(state: AppState) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
-        tokio::time::sleep(Duration::from_secs(45)).await;
+        tokio::time::sleep(Duration::from_secs(5)).await;
 
         loop {
             let interval_hours = state.get_task_interval_hours("duplicate_pruner").await;
@@ -229,7 +229,19 @@ pub fn start_duplicate_pruner_worker(state: AppState) -> tokio::task::JoinHandle
 
 /// Re-evaluates missing metadata and refreshes community ratings for recently watched media.
 pub async fn run_metadata_backfill(state: &AppState) -> Result<String, String> {
-    state.log_buffer.push("INFO", "bingesync::tasks::metadata", "Scanning for scrobbles requiring metadata backfill or score refresh...");
+    let tmdb_key = state.get_effective_tmdb_api_key().await;
+    let tvdb_key = state.get_effective_tvdb_api_key().await;
+    let has_provider = tmdb_key.as_ref().map(|k| !k.trim().is_empty()).unwrap_or(false)
+        || tvdb_key.as_ref().map(|k| !k.trim().is_empty()).unwrap_or(false);
+
+    if !has_provider {
+        let msg = "Metadata provider API key not configured (TMDB or TVDB required in Admin Settings)".to_string();
+        state.log_buffer.push("WARN", "bingesync::tasks::metadata_backfill", &format!("{} [task=metadata_backfill]", msg));
+        tracing::warn!("{}", msg);
+        return Ok(msg);
+    }
+
+    state.log_buffer.push("INFO", "bingesync::tasks::metadata_backfill", "Scanning for scrobbles requiring metadata backfill or score refresh... [task=metadata_backfill]");
     tracing::info!("Starting missing metadata backfill & stale rating refresh");
 
     let res1 = sqlx::query(
@@ -240,20 +252,45 @@ pub async fn run_metadata_backfill(state: &AppState) -> Result<String, String> {
     .unwrap_or_default();
 
     let res2 = sqlx::query(
-        "UPDATE scrobbles SET metadata_updated_at = NULL WHERE watched_at >= datetime('now', '-30 days') AND metadata_updated_at < datetime('now', '-7 days')"
+        "UPDATE scrobbles SET metadata_updated_at = NULL WHERE watched_at >= datetime('now', '-30 days') AND metadata_updated_at IS NOT NULL AND metadata_updated_at < datetime('now', '-7 days')"
     )
     .execute(&state.pool)
     .await
     .unwrap_or_default();
 
-    let count = (res1.rows_affected() + res2.rows_affected()) as usize;
-    if count > 0 {
-        state.metadata_notify.notify_waiters();
-        state.metadata_notify.notify_one();
+    let total_queued = (res1.rows_affected() + res2.rows_affected()) as usize;
+
+    // Directly process batches to enrich missing metadata
+    let mut total_enriched = 0usize;
+    for _ in 0..15 {
+        let processed = crate::api::tvdb::process_missing_metadata_once(state).await;
+        if processed == 0 {
+            break;
+        }
+        total_enriched += processed;
+        tokio::time::sleep(Duration::from_millis(150)).await;
     }
 
-    let msg = format!("Queued {} scrobble(s) for metadata enrichment & rating refresh", count);
-    state.log_buffer.push("INFO", "bingesync::tasks::metadata", &msg);
+    if total_enriched > 0 {
+        state.image_notify.notify_one();
+    }
+
+    let still_pending: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM scrobbles WHERE metadata_updated_at IS NULL AND ((overview IS NULL OR overview = '') OR (genres IS NULL OR genres = '') OR (actors IS NULL OR actors = ''))"
+    )
+    .fetch_one(&state.pool)
+    .await
+    .unwrap_or(0);
+
+    let msg = if total_enriched > 0 {
+        format!("Enriched {} scrobble(s) with metadata & refreshed ratings ({} pending) [task=metadata_backfill]", total_enriched, still_pending)
+    } else if total_queued > 0 {
+        format!("Queued {} scrobble(s) for metadata enrichment ({} pending provider search) [task=metadata_backfill]", total_queued, still_pending)
+    } else {
+        "All media items have complete up-to-date metadata (0 pending) [task=metadata_backfill]".to_string()
+    };
+
+    state.log_buffer.push("INFO", "bingesync::tasks::metadata_backfill", &msg);
     tracing::info!("{}", msg);
 
     Ok(msg)
@@ -263,7 +300,7 @@ pub async fn run_metadata_backfill(state: &AppState) -> Result<String, String> {
 /// Runs daily by default (every 24 hours) or upon notification.
 pub fn start_metadata_backfill_worker(state: AppState) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
-        tokio::time::sleep(Duration::from_secs(60)).await;
+        tokio::time::sleep(Duration::from_secs(6)).await;
 
         loop {
             let interval_hours = state.get_task_interval_hours("metadata_backfill").await;
@@ -278,7 +315,9 @@ pub fn start_metadata_backfill_worker(state: AppState) -> tokio::task::JoinHandl
             state.task_tracker.set_metadata_backfill_running(Some(&state.pool), "Backfilling missing metadata & refreshing ratings...").await;
             match run_metadata_backfill(&state).await {
                 Ok(msg) => {
-                    let count = if let Some(first_word) = msg.strip_prefix("Queued ") {
+                    let count = if let Some(first_word) = msg.strip_prefix("Enriched ") {
+                        first_word.split_whitespace().next().and_then(|n| n.parse::<usize>().ok()).unwrap_or(0)
+                    } else if let Some(first_word) = msg.strip_prefix("Queued ") {
                         first_word.split_whitespace().next().and_then(|n| n.parse::<usize>().ok()).unwrap_or(0)
                     } else {
                         0
@@ -295,21 +334,21 @@ pub fn start_metadata_backfill_worker(state: AppState) -> tokio::task::JoinHandl
 
 /// Checks the GitHub releases API for latest BingeSync release.
 pub async fn run_version_check(state: &AppState) -> Result<String, String> {
-    state.log_buffer.push("INFO", "bingesync::tasks::version", "Checking GitHub API for latest BingeSync release...");
+    state.log_buffer.push("INFO", "bingesync::tasks::version_check", "Checking GitHub API for latest BingeSync release... [task=version_check]");
     tracing::info!("Running automated GitHub release version check");
 
     let resp = crate::api::settings::check_latest_github_release(Some(&state.pool)).await;
     let msg = if let Some(latest) = resp.latest_version {
         if resp.update_available {
-            format!("New version v{} is available! (Current: v{})", latest, resp.current_version)
+            format!("New version v{} is available! (Current: v{}) [task=version_check]", latest, resp.current_version)
         } else {
-            format!("BingeSync is up to date (v{})", resp.current_version)
+            format!("BingeSync is up to date (v{}) [task=version_check]", resp.current_version)
         }
     } else {
-        format!("Current version: v{} (GitHub release check completed)", resp.current_version)
+        format!("Current version: v{} (GitHub release check completed) [task=version_check]", resp.current_version)
     };
 
-    state.log_buffer.push("INFO", "bingesync::tasks::version", &msg);
+    state.log_buffer.push("INFO", "bingesync::tasks::version_check", &msg);
     tracing::info!("{}", msg);
 
     Ok(msg)
@@ -319,7 +358,7 @@ pub async fn run_version_check(state: &AppState) -> Result<String, String> {
 /// Runs daily by default (every 24 hours) or upon notification.
 pub fn start_version_check_worker(state: AppState) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
-        tokio::time::sleep(Duration::from_secs(90)).await;
+        tokio::time::sleep(Duration::from_secs(7)).await;
 
         loop {
             let interval_hours = state.get_task_interval_hours("version_check").await;
@@ -346,7 +385,7 @@ pub fn start_version_check_worker(state: AppState) -> tokio::task::JoinHandle<()
 
 /// Audits watched scrobbles against connected Radarr and Sonarr libraries.
 pub async fn run_library_audit(state: &AppState) -> Result<String, String> {
-    state.log_buffer.push("INFO", "bingesync::tasks::integrations", "Auditing watched media against connected Radarr & Sonarr libraries...");
+    state.log_buffer.push("INFO", "bingesync::tasks::library_audit", "Auditing watched media against connected Radarr & Sonarr libraries... [task=library_audit]");
     tracing::info!("Starting Radarr/Sonarr watched library desync audit");
 
     let users: Vec<String> = sqlx::query_scalar("SELECT id FROM users")
@@ -365,8 +404,8 @@ pub async fn run_library_audit(state: &AppState) -> Result<String, String> {
     }
 
     let mb_reclaimable = total_reclaimable_bytes / (1024 * 1024);
-    let msg = format!("Audited {} watched item(s) across Arr libraries (~{} MB reclaimable space)", total_audited, mb_reclaimable);
-    state.log_buffer.push("INFO", "bingesync::tasks::integrations", &msg);
+    let msg = format!("Audited {} watched item(s) across Arr libraries (~{} MB reclaimable space) [task=library_audit]", total_audited, mb_reclaimable);
+    state.log_buffer.push("INFO", "bingesync::tasks::library_audit", &msg);
     tracing::info!("{}", msg);
 
     Ok(msg)
@@ -376,7 +415,7 @@ pub async fn run_library_audit(state: &AppState) -> Result<String, String> {
 /// Runs daily by default (every 24 hours) or upon notification.
 pub fn start_library_audit_worker(state: AppState) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
-        tokio::time::sleep(Duration::from_secs(120)).await;
+        tokio::time::sleep(Duration::from_secs(8)).await;
 
         loop {
             let interval_hours = state.get_task_interval_hours("library_audit").await;

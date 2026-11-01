@@ -949,7 +949,7 @@ impl BackgroundTaskTracker {
         let metadata_backfill_interval = state.get_task_interval_hours("metadata_backfill").await;
         let metadata_backfill_sched_str = format!("Every {} hour{}", metadata_backfill_interval, if metadata_backfill_interval == 1 { "" } else { "s" });
         let pending_backfill: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM scrobbles WHERE (overview IS NULL OR overview = '') OR (genres IS NULL OR genres = '') OR (actors IS NULL OR actors = '')"
+            "SELECT COUNT(*) FROM scrobbles WHERE metadata_updated_at IS NULL AND ((overview IS NULL OR overview = '') OR (genres IS NULL OR genres = '') OR (actors IS NULL OR actors = ''))"
         )
         .fetch_one(pool)
         .await
@@ -1255,74 +1255,155 @@ pub async fn trigger_admin_task_handler(
         }
         "session_reaper" | "reaper" => {
             state.task_tracker.set_session_reaper_running(Some(&state.pool), "Manual reaper run triggered...").await;
-            state.session_reaper_notify.notify_waiters();
-            state.session_reaper_notify.notify_one();
-            state.log_buffer.push("INFO", "bingesync::tasks", "Manual run triggered for Stale Active Session Reaper");
+            state.log_buffer.push("INFO", "bingesync::tasks::session_reaper", "Manual run triggered for Stale Active Session Reaper [task=session_reaper]");
+            let state_clone = state.clone();
+            tokio::spawn(async move {
+                match crate::api::maintenance_tasks::run_session_reaper(&state_clone).await {
+                    Ok(msg) => {
+                        let count = if let Some(first_word) = msg.strip_prefix("Reaped ") {
+                            first_word.split_whitespace().next().and_then(|n| n.parse::<usize>().ok()).unwrap_or(0)
+                        } else {
+                            0
+                        };
+                        state_clone.task_tracker.set_session_reaper_idle(Some(&state_clone.pool), count, &msg).await;
+                    }
+                    Err(err) => {
+                        state_clone.task_tracker.set_session_reaper_idle(Some(&state_clone.pool), 0, &format!("Reaper error: {}", err)).await;
+                    }
+                }
+            });
             Ok(Json(serde_json::json!({
                 "status": "triggered",
                 "task_id": "session_reaper",
                 "forced": false,
-                "message": "Session reaper worker has been signaled to sweep stale sessions immediately"
+                "message": "Session reaper worker started immediately"
             })))
         }
         "image_prune" | "prune_images" => {
             state.task_tracker.set_image_prune_running(Some(&state.pool), "Manual image prune triggered...").await;
-            state.image_prune_notify.notify_waiters();
-            state.image_prune_notify.notify_one();
-            state.log_buffer.push("INFO", "bingesync::tasks", "Manual run triggered for Orphaned Poster Pruning worker");
+            state.log_buffer.push("INFO", "bingesync::tasks::image_prune", "Manual run triggered for Orphaned Poster Pruning worker [task=image_prune]");
+            let state_clone = state.clone();
+            tokio::spawn(async move {
+                match crate::api::maintenance_tasks::run_image_prune(&state_clone).await {
+                    Ok(msg) => {
+                        let count = if let Some(first_word) = msg.strip_prefix("Pruned ") {
+                            first_word.split_whitespace().next().and_then(|n| n.parse::<usize>().ok()).unwrap_or(0)
+                        } else {
+                            0
+                        };
+                        state_clone.task_tracker.set_image_prune_idle(Some(&state_clone.pool), count, &msg).await;
+                    }
+                    Err(err) => {
+                        state_clone.task_tracker.set_image_prune_idle(Some(&state_clone.pool), 0, &format!("Prune error: {}", err)).await;
+                    }
+                }
+            });
             Ok(Json(serde_json::json!({
                 "status": "triggered",
                 "task_id": "image_prune",
                 "forced": false,
-                "message": "Image pruner worker has been signaled to clean orphaned posters immediately"
+                "message": "Image pruner worker started immediately"
             })))
         }
         "duplicate_pruner" | "duplicates" | "dedupe" => {
             state.task_tracker.set_duplicate_pruner_running(Some(&state.pool), "Manual duplicate cleanup triggered...").await;
-            state.duplicate_pruner_notify.notify_waiters();
-            state.duplicate_pruner_notify.notify_one();
-            state.log_buffer.push("INFO", "bingesync::tasks", "Manual run triggered for Duplicate Scrobble Cleaner");
+            state.log_buffer.push("INFO", "bingesync::tasks::duplicate_pruner", "Manual run triggered for Duplicate Scrobble Cleaner [task=duplicate_pruner]");
+            let state_clone = state.clone();
+            tokio::spawn(async move {
+                match crate::api::maintenance_tasks::run_duplicate_pruner(&state_clone).await {
+                    Ok(msg) => {
+                        let count = if let Some(first_word) = msg.strip_prefix("Automatically pruned ") {
+                            first_word.split_whitespace().next().and_then(|n| n.parse::<usize>().ok()).unwrap_or(0)
+                        } else {
+                            0
+                        };
+                        state_clone.task_tracker.set_duplicate_pruner_idle(Some(&state_clone.pool), count, &msg).await;
+                    }
+                    Err(err) => {
+                        state_clone.task_tracker.set_duplicate_pruner_idle(Some(&state_clone.pool), 0, &format!("Duplicate pruner error: {}", err)).await;
+                    }
+                }
+            });
             Ok(Json(serde_json::json!({
                 "status": "triggered",
                 "task_id": "duplicate_pruner",
                 "forced": false,
-                "message": "Duplicate pruner worker has been signaled to run immediately"
+                "message": "Duplicate pruner worker started immediately"
             })))
         }
         "metadata_backfill" | "backfill" => {
             state.task_tracker.set_metadata_backfill_running(Some(&state.pool), "Manual metadata backfill triggered...").await;
-            state.metadata_backfill_notify.notify_waiters();
-            state.metadata_backfill_notify.notify_one();
-            state.log_buffer.push("INFO", "bingesync::tasks", "Manual run triggered for Metadata Backfill worker");
+            state.log_buffer.push("INFO", "bingesync::tasks::metadata_backfill", "Manual run triggered for Metadata Backfill worker [task=metadata_backfill]");
+            let state_clone = state.clone();
+            tokio::spawn(async move {
+                match crate::api::maintenance_tasks::run_metadata_backfill(&state_clone).await {
+                    Ok(msg) => {
+                        let count = if let Some(first_word) = msg.strip_prefix("Enriched ") {
+                            first_word.split_whitespace().next().and_then(|n| n.parse::<usize>().ok()).unwrap_or(0)
+                        } else if let Some(first_word) = msg.strip_prefix("Queued ") {
+                            first_word.split_whitespace().next().and_then(|n| n.parse::<usize>().ok()).unwrap_or(0)
+                        } else {
+                            0
+                        };
+                        state_clone.task_tracker.set_metadata_backfill_idle(Some(&state_clone.pool), count, &msg).await;
+                    }
+                    Err(err) => {
+                        state_clone.task_tracker.set_metadata_backfill_idle(Some(&state_clone.pool), 0, &format!("Metadata backfill error: {}", err)).await;
+                    }
+                }
+            });
             Ok(Json(serde_json::json!({
                 "status": "triggered",
                 "task_id": "metadata_backfill",
                 "forced": false,
-                "message": "Metadata backfill worker has been signaled to run immediately"
+                "message": "Metadata backfill worker started immediately"
             })))
         }
         "version_check" | "updates" | "check_updates" => {
             state.task_tracker.set_version_check_running(Some(&state.pool), "Manual version check triggered...").await;
-            state.version_check_notify.notify_waiters();
-            state.version_check_notify.notify_one();
-            state.log_buffer.push("INFO", "bingesync::tasks", "Manual run triggered for GitHub Release Version Check");
+            state.log_buffer.push("INFO", "bingesync::tasks::version_check", "Manual run triggered for GitHub Release Version Check [task=version_check]");
+            let state_clone = state.clone();
+            tokio::spawn(async move {
+                match crate::api::maintenance_tasks::run_version_check(&state_clone).await {
+                    Ok(msg) => {
+                        state_clone.task_tracker.set_version_check_idle(Some(&state_clone.pool), 1, &msg).await;
+                    }
+                    Err(err) => {
+                        state_clone.task_tracker.set_version_check_idle(Some(&state_clone.pool), 0, &format!("Version check error: {}", err)).await;
+                    }
+                }
+            });
             Ok(Json(serde_json::json!({
                 "status": "triggered",
                 "task_id": "version_check",
                 "forced": false,
-                "message": "Version check worker has been signaled to run immediately"
+                "message": "Version check worker started immediately"
             })))
         }
         "library_audit" | "audit_libraries" | "arr_audit" => {
             state.task_tracker.set_library_audit_running(Some(&state.pool), "Manual library audit triggered...").await;
-            state.library_audit_notify.notify_waiters();
-            state.library_audit_notify.notify_one();
-            state.log_buffer.push("INFO", "bingesync::tasks", "Manual run triggered for Radarr/Sonarr Library Audit");
+            state.log_buffer.push("INFO", "bingesync::tasks::library_audit", "Manual run triggered for Radarr/Sonarr Library Audit [task=library_audit]");
+            let state_clone = state.clone();
+            tokio::spawn(async move {
+                match crate::api::maintenance_tasks::run_library_audit(&state_clone).await {
+                    Ok(msg) => {
+                        let count = if let Some(first_word) = msg.strip_prefix("Audited ") {
+                            first_word.split_whitespace().next().and_then(|n| n.parse::<usize>().ok()).unwrap_or(0)
+                        } else {
+                            0
+                        };
+                        state_clone.task_tracker.set_library_audit_idle(Some(&state_clone.pool), count, &msg).await;
+                    }
+                    Err(err) => {
+                        state_clone.task_tracker.set_library_audit_idle(Some(&state_clone.pool), 0, &format!("Library audit error: {}", err)).await;
+                    }
+                }
+            });
             Ok(Json(serde_json::json!({
                 "status": "triggered",
                 "task_id": "library_audit",
                 "forced": false,
-                "message": "Library audit worker has been signaled to run immediately"
+                "message": "Library audit worker started immediately"
             })))
         }
         _ => Err((

@@ -2901,8 +2901,8 @@ async fn test_admin_settings_logs_and_tasks_management() {
     assert_eq!(session_reaper_task["schedule"], "Every 1 hour");
     assert!(session_reaper_task["next_run_at"].is_string());
     assert_eq!(image_prune_task["interval_hours"], 24);
-    assert_eq!(duplicate_pruner_task["interval_hours"], 6);
-    assert_eq!(metadata_backfill_task["interval_hours"], 12);
+    assert_eq!(duplicate_pruner_task["interval_hours"], 24);
+    assert_eq!(metadata_backfill_task["interval_hours"], 24);
     assert_eq!(version_check_task["interval_hours"], 24);
     assert_eq!(library_audit_task["interval_hours"], 24);
 
