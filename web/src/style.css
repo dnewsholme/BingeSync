@@ -1400,6 +1400,18 @@ select.form-control-sm {
   margin-bottom: 24px;
 }
 
+.settings-save-card {
+  position: sticky;
+  bottom: 24px;
+  z-index: 40;
+  background: rgba(15, 23, 42, 0.92);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--border-color);
+  box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.6);
+  margin-top: 8px;
+}
+
 .settings-grid-layout {
   display: flex;
   flex-direction: column;
@@ -4080,6 +4092,9 @@ select option,
   .settings-card {
     padding: 18px 14px;
     border-radius: var(--radius-md);
+  }
+  .settings-save-card {
+    bottom: 74px;
   }
   .card-title {
     font-size: 1.12rem;

@@ -1113,9 +1113,10 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     await expect(page.locator('#btn-timeline-up')).toBeVisible();
 
     // 2. Drill up to Months view for the current year
+    const currentMonthName = new Date().toLocaleString('en-US', { month: 'long' });
     await page.click('#btn-timeline-up');
     await expect(page.locator('.timeline-container')).toContainText('Months Overview');
-    await expect(page.locator('.timeline-month-card', { hasText: 'October' })).toBeVisible();
+    await expect(page.locator('.timeline-month-card', { hasText: currentMonthName })).toBeVisible();
 
     // 3. Drill up to Years view
     await page.click('#btn-timeline-up');
@@ -1126,8 +1127,8 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     await page.locator('.timeline-year-card', { hasText: '2026' }).click();
     await expect(page.locator('.timeline-container')).toContainText('2026 — Months Overview');
 
-    // Click October month card to view dates
-    await page.locator('.timeline-month-card', { hasText: 'October' }).click();
+    // Click current month card to view dates
+    await page.locator('.timeline-month-card', { hasText: currentMonthName }).click();
     await expect(page.locator('.timeline-container')).toContainText('Arrival');
   });
 

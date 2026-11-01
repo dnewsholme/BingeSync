@@ -22,8 +22,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="BingeSync" />
-  <script type="module" crossorigin src="./assets/index-8pREzgmv.js"></script>
-  <link rel="stylesheet" crossorigin href="./assets/index-BWJanohV.css">
+  <script type="module" crossorigin src="./assets/index-Dxl2f1UZ.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-0oE08-J7.css">
 </head>
 <body>
   <div id="app">
@@ -846,210 +846,202 @@
 
           <!-- Sub-view 1: Webhooks -->
           <div id="settings-sub-webhooks" class="settings-subview">
+            <!-- Plex Webhook Card -->
             <div class="card settings-card" id="card-webhook-setup">
-                <div class="card-title">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
-                  <span data-i18n="settings.webhooks_title">Personal Webhook Endpoints</span>
-                </div>
-                
-                <!-- Plex Webhook -->
-                <div style="margin-top: 14px;">
-                  <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
-                    <span class="badge-pill badge-pill-plex" style="background: rgba(229, 160, 13, 0.15); color: #fbbf24; border: 1px solid rgba(229, 160, 13, 0.4); display: inline-flex; align-items: center; gap: 5px;">
-                      <svg class="service-icon" width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M11.64 0H4.68l7.68 12-7.68 12h6.96l7.68-12L11.64 0z"/></svg>
-                      Plex
-                    </span>
-                    <strong style="font-size: 0.95rem;" data-i18n="settings.plex_webhook_title">Plex Webhook URL</strong>
-                  </div>
-                  <p class="card-desc" style="margin-bottom: 8px;" data-i18n="settings.plex_webhook_desc">
-                    Plex sends scrobble events exclusively for your user account to this secure URL:
-                  </p>
-                  <div class="webhook-input-group">
-                    <input type="text" id="webhook-url-input" class="form-control font-mono" readonly value="" />
-                    <button class="btn btn-primary" id="btn-copy-webhook">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
-                      <span data-i18n="settings.copy_url">Copy URL</span>
-                    </button>
-                  </div>
-                  <div id="copy-status" class="copy-status" style="display: none;" data-i18n="settings.copied">Copied to clipboard!</div>
-
-                  <!-- Plex Collapsible Setup Guide -->
-                  <details class="setup-guide-accordion">
-                    <summary data-i18n="settings.plex_guide_title">How to connect Plex to BingeSync</summary>
-                    <div class="steps-list">
-                      <div class="step-item">
-                        <div class="step-number">1</div>
-                        <div class="step-content">
-                          <h4>Open Plex Web Settings</h4>
-                          <p>Log in to Plex Media Server web client as administrator or Plex Pass user, click the <strong>Wrench icon</strong> (Settings) in the top right.</p>
-                        </div>
-                      </div>
-                      <div class="step-item">
-                        <div class="step-number">2</div>
-                        <div class="step-content">
-                          <h4>Navigate to Webhooks</h4>
-                          <p>In the left sidebar under <strong>Manage</strong>, select <strong>Webhooks</strong>.</p>
-                        </div>
-                      </div>
-                      <div class="step-item">
-                        <div class="step-number">3</div>
-                        <div class="step-content">
-                          <h4>Add Webhook</h4>
-                          <p>Click <strong>Add Webhook</strong>, paste your personal Plex Webhook URL above, and click <strong>Save Changes</strong>.</p>
-                        </div>
-                      </div>
-                      <div class="step-item">
-                        <div class="step-number">4</div>
-                        <div class="step-content">
-                          <h4>Start Binging!</h4>
-                          <p>Whenever you play or finish watching movies and series, Plex automatically sends scrobbles to BingeSync in real-time.</p>
-                        </div>
-                      </div>
-                    </div>
-                  </details>
-                </div>
-
-                <!-- Jellyfin Webhook -->
-                <div style="margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--border-color);">
-                  <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
-                    <span class="badge-pill badge-pill-jellyfin" style="background: rgba(170, 92, 195, 0.15); color: #c084fc; border: 1px solid rgba(170, 92, 195, 0.4); display: inline-flex; align-items: center; gap: 5px;">
-                      <svg class="service-icon" width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .002C8.826.002-1.398 18.537.16 21.666c1.56 3.129 22.14 3.094 23.682 0S15.177 0 12 0zm7.76 18.949c-1.008 2.028-14.493 2.05-15.514 0C3.224 16.9 9.92 4.755 12.003 4.755c2.081 0 8.77 12.166 7.759 14.196zM12 9.198c-1.054 0-4.446 6.15-3.93 7.189c.518 1.04 7.348 1.027 7.86 0c.511-1.027-2.874-7.19-3.93-7.19z"/></svg>
-                      Jellyfin
-                    </span>
-                    <strong style="font-size: 0.95rem;" data-i18n="settings.jellyfin_webhook_title">Jellyfin Webhook URL</strong>
-                  </div>
-                  <p class="card-desc" style="margin-bottom: 8px;" data-i18n="settings.jellyfin_webhook_desc">
-                    Configure in Jellyfin Dashboard > Plugins > Webhook > Generic Destination:
-                  </p>
-                  <div class="webhook-input-group">
-                    <input type="text" id="jellyfin-webhook-url-input" class="form-control font-mono" readonly value="" />
-                    <button class="btn btn-primary" id="btn-copy-jellyfin-webhook">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
-                      <span data-i18n="settings.copy_url">Copy URL</span>
-                    </button>
-                  </div>
-                  <div id="jellyfin-copy-status" class="copy-status" style="display: none;" data-i18n="settings.copied">Copied to clipboard!</div>
-
-                  <!-- Jellyfin Collapsible Setup Guide -->
-                  <details class="setup-guide-accordion">
-                    <summary data-i18n="settings.jellyfin_guide_title">How to connect Jellyfin to BingeSync</summary>
-                    <div class="steps-list">
-                      <div class="step-item">
-                        <div class="step-number">1</div>
-                        <div class="step-content">
-                          <h4>Install Jellyfin Webhook Plugin</h4>
-                          <p>In the Jellyfin Dashboard, go to <strong>Plugins</strong> &gt; <strong>Catalog</strong>, install the official <strong>Webhook</strong> plugin, and restart your server if prompted.</p>
-                        </div>
-                      </div>
-                      <div class="step-item">
-                        <div class="step-number">2</div>
-                        <div class="step-content">
-                          <h4>Add Generic Destination</h4>
-                          <p>Open <strong>Plugins</strong> &gt; <strong>Webhook</strong> settings, click <strong>Add Generic Destination</strong>, and name it <strong>BingeSync</strong>.</p>
-                        </div>
-                      </div>
-                      <div class="step-item">
-                        <div class="step-number">3</div>
-                        <div class="step-content">
-                          <h4>Paste Webhook URL & Select Events</h4>
-                          <p>Paste your personal Jellyfin Webhook URL above. Under <strong>Notification Type</strong>, check <strong>PlaybackStart</strong>, <strong>PlaybackProgress</strong>, <strong>PlaybackStop</strong>, and <strong>UserDataSaved</strong>.</p>
-                        </div>
-                      </div>
-                      <div class="step-item">
-                        <div class="step-number">4</div>
-                        <div class="step-content">
-                          <h4>Save & Enjoy!</h4>
-                          <p>Click <strong>Save</strong>. Playback and completed watches from Jellyfin will now automatically scrobble to BingeSync!</p>
-                        </div>
-                      </div>
-                    </div>
-                  </details>
-                </div>
-
-                <!-- Emby Webhook -->
-                <div style="margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--border-color);">
-                  <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
-                    <span class="badge-pill badge-pill-emby" style="background: rgba(82, 181, 75, 0.15); color: #4ade80; border: 1px solid rgba(82, 181, 75, 0.4); display: inline-flex; align-items: center; gap: 5px;">
-                      <svg class="service-icon" width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M11.2 1.5a2.5 2.5 0 0 1 3.6 0l7.7 7.7a2.5 2.5 0 0 1 0 3.6l-7.7 7.7a2.5 2.5 0 0 1-3.6 0l-7.7-7.7a2.5 2.5 0 0 1 0-3.6l7.7-7.7zm-1.2 6v9l6.5-4.5-6.5-4.5z"/></svg>
-                      Emby
-                    </span>
-                    <strong style="font-size: 0.95rem;">Emby Webhook URL</strong>
-                  </div>
-                  <p class="card-desc" style="margin-bottom: 8px;">
-                    Configure in Emby Server > Manage Server > Webhooks:
-                  </p>
-                  <div class="webhook-input-group">
-                    <input type="text" id="emby-webhook-url-input" class="form-control font-mono" readonly value="" />
-                    <button class="btn btn-primary" id="btn-copy-emby-webhook">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
-                      <span>Copy URL</span>
-                    </button>
-                  </div>
-                  <div id="emby-copy-status" class="copy-status" style="display: none;">Copied to clipboard!</div>
-
-                  <!-- Emby Collapsible Setup Guide -->
-                  <details class="setup-guide-accordion">
-                    <summary>How to connect Emby to BingeSync</summary>
-                    <div class="steps-list">
-                      <div class="step-item">
-                        <div class="step-number">1</div>
-                        <div class="step-content">
-                          <h4>Open Emby Server Settings</h4>
-                          <p>In Emby Web, click the <strong>Gear icon</strong> (Settings) > <strong>Server</strong> > <strong>Webhooks</strong>.</p>
-                        </div>
-                      </div>
-                      <div class="step-item">
-                        <div class="step-number">2</div>
-                        <div class="step-content">
-                          <h4>Add Webhook</h4>
-                          <p>Click <strong>Add Webhook</strong>, paste your personal Emby Webhook URL above.</p>
-                        </div>
-                      </div>
-                      <div class="step-item">
-                        <div class="step-number">3</div>
-                        <div class="step-content">
-                          <h4>Select Playback & User Events</h4>
-                          <p>Enable <strong>Playback</strong> events (Playback Start, Pause, Unpause, Stopped) and <strong>Scrobble / Watched</strong> events.</p>
-                        </div>
-                      </div>
-                      <div class="step-item">
-                        <div class="step-number">4</div>
-                        <div class="step-content">
-                          <h4>Save & Enjoy!</h4>
-                          <p>Click <strong>Save</strong>. Media watched on your Emby server will now scrobble in real-time!</p>
-                        </div>
-                      </div>
-                    </div>
-                  </details>
-                </div>
-
-                <div class="token-regen-wrap" style="margin-top: 20px;">
-                  <span class="token-hint" data-i18n="settings.regen_confirm">Tokens compromised or need a reset?</span>
-                  <button class="btn btn-outline btn-sm text-danger" id="btn-regen-token" data-i18n="settings.regen_token">Regenerate Webhook URLs</button>
-                </div>
+              <div class="card-title">
+                <span class="badge-pill badge-pill-plex" style="background: rgba(229, 160, 13, 0.15); color: #fbbf24; border: 1px solid rgba(229, 160, 13, 0.4); display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; font-weight: 600; font-size: 0.85rem;">
+                  <svg class="service-icon" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M11.64 0H4.68l7.68 12-7.68 12h6.96l7.68-12L11.64 0z"/></svg>
+                  Plex
+                </span>
+                <span data-i18n="settings.plex_webhook_title">Plex Webhook URL</span>
               </div>
+              <p class="card-desc" data-i18n="settings.plex_webhook_desc">
+                Plex sends scrobble events exclusively for your user account to this secure URL:
+              </p>
+              <div class="webhook-input-group">
+                <input type="text" id="webhook-url-input" class="form-control font-mono" readonly value="" />
+                <button class="btn btn-primary" id="btn-copy-webhook">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                  <span data-i18n="settings.copy_url">Copy URL</span>
+                </button>
+              </div>
+              <div id="copy-status" class="copy-status" style="display: none;" data-i18n="settings.copied">Copied to clipboard!</div>
+
+              <!-- Plex Collapsible Setup Guide -->
+              <details class="setup-guide-accordion">
+                <summary data-i18n="settings.plex_guide_title">How to connect Plex to BingeSync</summary>
+                <div class="steps-list">
+                  <div class="step-item">
+                    <div class="step-number">1</div>
+                    <div class="step-content">
+                      <h4>Open Plex Web Settings</h4>
+                      <p>Log in to Plex Media Server web client as administrator or Plex Pass user, click the <strong>Wrench icon</strong> (Settings) in the top right.</p>
+                    </div>
+                  </div>
+                  <div class="step-item">
+                    <div class="step-number">2</div>
+                    <div class="step-content">
+                      <h4>Navigate to Webhooks</h4>
+                      <p>In the left sidebar under <strong>Manage</strong>, select <strong>Webhooks</strong>.</p>
+                    </div>
+                  </div>
+                  <div class="step-item">
+                    <div class="step-number">3</div>
+                    <div class="step-content">
+                      <h4>Add Webhook</h4>
+                      <p>Click <strong>Add Webhook</strong>, paste your personal Plex Webhook URL above, and click <strong>Save Changes</strong>.</p>
+                    </div>
+                  </div>
+                  <div class="step-item">
+                    <div class="step-number">4</div>
+                    <div class="step-content">
+                      <h4>Start Binging!</h4>
+                      <p>Whenever you play or finish watching movies and series, Plex automatically sends scrobbles to BingeSync in real-time.</p>
+                    </div>
+                  </div>
+                </div>
+              </details>
+            </div>
+
+            <!-- Jellyfin Webhook Card -->
+            <div class="card settings-card" id="card-webhook-jellyfin">
+              <div class="card-title">
+                <span class="badge-pill badge-pill-jellyfin" style="background: rgba(170, 92, 195, 0.15); color: #c084fc; border: 1px solid rgba(170, 92, 195, 0.4); display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; font-weight: 600; font-size: 0.85rem;">
+                  <svg class="service-icon" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .002C8.826.002-1.398 18.537.16 21.666c1.56 3.129 22.14 3.094 23.682 0S15.177 0 12 0zm7.76 18.949c-1.008 2.028-14.493 2.05-15.514 0C3.224 16.9 9.92 4.755 12.003 4.755c2.081 0 8.77 12.166 7.759 14.196zM12 9.198c-1.054 0-4.446 6.15-3.93 7.189c.518 1.04 7.348 1.027 7.86 0c.511-1.027-2.874-7.19-3.93-7.19z"/></svg>
+                  Jellyfin
+                </span>
+                <span data-i18n="settings.jellyfin_webhook_title">Jellyfin Webhook URL</span>
+              </div>
+              <p class="card-desc" data-i18n="settings.jellyfin_webhook_desc">
+                Configure in Jellyfin Dashboard > Plugins > Webhook > Generic Destination:
+              </p>
+              <div class="webhook-input-group">
+                <input type="text" id="jellyfin-webhook-url-input" class="form-control font-mono" readonly value="" />
+                <button class="btn btn-primary" id="btn-copy-jellyfin-webhook">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                  <span data-i18n="settings.copy_url">Copy URL</span>
+                </button>
+              </div>
+              <div id="jellyfin-copy-status" class="copy-status" style="display: none;" data-i18n="settings.copied">Copied to clipboard!</div>
+
+              <!-- Jellyfin Collapsible Setup Guide -->
+              <details class="setup-guide-accordion">
+                <summary data-i18n="settings.jellyfin_guide_title">How to connect Jellyfin to BingeSync</summary>
+                <div class="steps-list">
+                  <div class="step-item">
+                    <div class="step-number">1</div>
+                    <div class="step-content">
+                      <h4>Install Jellyfin Webhook Plugin</h4>
+                      <p>In the Jellyfin Dashboard, go to <strong>Plugins</strong> &gt; <strong>Catalog</strong>, install the official <strong>Webhook</strong> plugin, and restart your server if prompted.</p>
+                    </div>
+                  </div>
+                  <div class="step-item">
+                    <div class="step-number">2</div>
+                    <div class="step-content">
+                      <h4>Add Generic Destination</h4>
+                      <p>Open <strong>Plugins</strong> &gt; <strong>Webhook</strong> settings, click <strong>Add Generic Destination</strong>, and name it <strong>BingeSync</strong>.</p>
+                    </div>
+                  </div>
+                  <div class="step-item">
+                    <div class="step-number">3</div>
+                    <div class="step-content">
+                      <h4>Paste Webhook URL & Select Events</h4>
+                      <p>Paste your personal Jellyfin Webhook URL above. Under <strong>Notification Type</strong>, check <strong>PlaybackStart</strong>, <strong>PlaybackProgress</strong>, <strong>PlaybackStop</strong>, and <strong>UserDataSaved</strong>.</p>
+                    </div>
+                  </div>
+                  <div class="step-item">
+                    <div class="step-number">4</div>
+                    <div class="step-content">
+                      <h4>Save & Enjoy!</h4>
+                      <p>Click <strong>Save</strong>. Playback and completed watches from Jellyfin will now automatically scrobble to BingeSync!</p>
+                    </div>
+                  </div>
+                </div>
+              </details>
+            </div>
+
+            <!-- Emby Webhook Card -->
+            <div class="card settings-card" id="card-webhook-emby">
+              <div class="card-title">
+                <span class="badge-pill badge-pill-emby" style="background: rgba(82, 181, 75, 0.15); color: #4ade80; border: 1px solid rgba(82, 181, 75, 0.4); display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; font-weight: 600; font-size: 0.85rem;">
+                  <svg class="service-icon" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M11.2 1.5a2.5 2.5 0 0 1 3.6 0l7.7 7.7a2.5 2.5 0 0 1 0 3.6l-7.7 7.7a2.5 2.5 0 0 1-3.6 0l-7.7-7.7a2.5 2.5 0 0 1 0-3.6l7.7-7.7zm-1.2 6v9l6.5-4.5-6.5-4.5z"/></svg>
+                  Emby
+                </span>
+                <span>Emby Webhook URL</span>
+              </div>
+              <p class="card-desc">
+                Configure in Emby Server > Manage Server > Webhooks:
+              </p>
+              <div class="webhook-input-group">
+                <input type="text" id="emby-webhook-url-input" class="form-control font-mono" readonly value="" />
+                <button class="btn btn-primary" id="btn-copy-emby-webhook">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                  <span>Copy URL</span>
+                </button>
+              </div>
+              <div id="emby-copy-status" class="copy-status" style="display: none;">Copied to clipboard!</div>
+
+              <!-- Emby Collapsible Setup Guide -->
+              <details class="setup-guide-accordion">
+                <summary>How to connect Emby to BingeSync</summary>
+                <div class="steps-list">
+                  <div class="step-item">
+                    <div class="step-number">1</div>
+                    <div class="step-content">
+                      <h4>Open Emby Server Settings</h4>
+                      <p>In Emby Web, click the <strong>Gear icon</strong> (Settings) > <strong>Server</strong> > <strong>Webhooks</strong>.</p>
+                    </div>
+                  </div>
+                  <div class="step-item">
+                    <div class="step-number">2</div>
+                    <div class="step-content">
+                      <h4>Add Webhook</h4>
+                      <p>Click <strong>Add Webhook</strong>, paste your personal Emby Webhook URL above.</p>
+                    </div>
+                  </div>
+                  <div class="step-item">
+                    <div class="step-number">3</div>
+                    <div class="step-content">
+                      <h4>Select Playback & User Events</h4>
+                      <p>Enable <strong>Playback</strong> events (Playback Start, Pause, Unpause, Stopped) and <strong>Scrobble / Watched</strong> events.</p>
+                    </div>
+                  </div>
+                  <div class="step-item">
+                    <div class="step-number">4</div>
+                    <div class="step-content">
+                      <h4>Save & Enjoy!</h4>
+                      <p>Click <strong>Save</strong>. Media watched on your Emby server will now scrobble in real-time!</p>
+                    </div>
+                  </div>
+                </div>
+              </details>
+            </div>
+
+            <!-- Token Management Card -->
+            <div class="card settings-card" id="card-webhook-tokens" style="display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;">
+              <div>
+                <strong style="display: block; font-size: 1rem; color: var(--text-main);" data-i18n="settings.regen_confirm">Tokens compromised or need a reset?</strong>
+                <small style="color: var(--text-dim); font-size: 0.82rem;">Regenerating tokens will instantly invalidate your previous Plex, Jellyfin, and Emby webhook URLs.</small>
+              </div>
+              <button class="btn btn-outline btn-sm text-danger" id="btn-regen-token" data-i18n="settings.regen_token">Regenerate Webhook URLs</button>
+            </div>
           </div>
 
           <!-- Sub-view 2: Connected Services -->
           <div id="settings-sub-services" class="settings-subview" style="display: none;">
-            <div class="card settings-card" id="card-user-services">
-              <h2 class="card-title">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
-                <span data-i18n="settings.connected_services">Connected Services</span>
-              </h2>
-              <p class="card-desc" data-i18n="settings.connected_services_desc">
-                Configure your personal Plex username filter, Radarr, Sonarr, and Tautulli credentials. These settings are specific to your user account.
-              </p>
-
-              <form id="form-user-settings" style="margin-top: 18px;">
-                <!-- Plex Username Filter & Server -->
-                <div class="settings-group-header">
-                  <span class="badge-pill badge-pill-plex" style="background: rgba(229, 160, 13, 0.15); color: #fbbf24; border: 1px solid rgba(229, 160, 13, 0.4); display: inline-flex; align-items: center; gap: 5px;">
-                    <svg class="service-icon" width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M11.64 0H4.68l7.68 12-7.68 12h6.96l7.68-12L11.64 0z"/></svg>
+            <form id="form-user-settings">
+              <!-- Card 1: Plex Media Server & Filtering -->
+              <div class="card settings-card" id="card-user-services">
+                <div class="card-title">
+                  <span class="badge-pill badge-pill-plex" style="background: rgba(229, 160, 13, 0.15); color: #fbbf24; border: 1px solid rgba(229, 160, 13, 0.4); display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; font-weight: 600; font-size: 0.85rem;">
+                    <svg class="service-icon" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M11.64 0H4.68l7.68 12-7.68 12h6.96l7.68-12L11.64 0z"/></svg>
                     Plex
                   </span>
-                  <strong data-i18n="settings.plex_filter">Plex Media Server & Account Filtering</strong>
+                  <span data-i18n="settings.plex_filter">Plex Media Server & Account Filtering</span>
                 </div>
+                <p class="card-desc">
+                  Configure Plex username filtering, server connection, and automated watch history sync for your Plex Media Server.
+                </p>
                 <div class="form-row">
                   <div class="form-group col-full">
                     <label for="user-setting-plex-username" data-i18n="settings.plex_filter">Plex Username(s) or User ID(s)</label>
@@ -1080,7 +1072,6 @@
                     <span id="plex-test-status" class="setting-test-status" style="font-size:0.85rem;"></span>
                   </div>
                 </div>
-
                 <div class="form-row" style="margin-top: 4px; margin-bottom: 8px;">
                   <div class="form-group col-full">
                     <label class="setting-toggle-btn" for="user-setting-plex-sync-enabled">
@@ -1092,8 +1083,7 @@
                     </small>
                   </div>
                 </div>
-
-                <details class="setup-guide-accordion" style="margin-top: 6px; margin-bottom: 14px;">
+                <details class="setup-guide-accordion" style="margin-top: 6px; margin-bottom: 6px;">
                   <summary>How to find your Plex Token (X-Plex-Token)</summary>
                   <div class="steps-list">
                     <div class="step-item">
@@ -1119,15 +1109,20 @@
                     </div>
                   </div>
                 </details>
+              </div>
 
-                <!-- Jellyfin Username Filter -->
-                <div class="settings-group-header" style="margin-top: 16px;">
-                  <span class="badge-pill badge-pill-jellyfin" style="background: rgba(170, 92, 195, 0.15); color: #c084fc; border: 1px solid rgba(170, 92, 195, 0.4); display: inline-flex; align-items: center; gap: 5px;">
-                    <svg class="service-icon" width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .002C8.826.002-1.398 18.537.16 21.666c1.56 3.129 22.14 3.094 23.682 0S15.177 0 12 0zm7.76 18.949c-1.008 2.028-14.493 2.05-15.514 0C3.224 16.9 9.92 4.755 12.003 4.755c2.081 0 8.77 12.166 7.759 14.196zM12 9.198c-1.054 0-4.446 6.15-3.93 7.189c.518 1.04 7.348 1.027 7.86 0c.511-1.027-2.874-7.19-3.93-7.19z"/></svg>
+              <!-- Card 2: Jellyfin Media Server & Filtering -->
+              <div class="card settings-card" id="card-user-jellyfin">
+                <div class="card-title">
+                  <span class="badge-pill badge-pill-jellyfin" style="background: rgba(170, 92, 195, 0.15); color: #c084fc; border: 1px solid rgba(170, 92, 195, 0.4); display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; font-weight: 600; font-size: 0.85rem;">
+                    <svg class="service-icon" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .002C8.826.002-1.398 18.537.16 21.666c1.56 3.129 22.14 3.094 23.682 0S15.177 0 12 0zm7.76 18.949c-1.008 2.028-14.493 2.05-15.514 0C3.224 16.9 9.92 4.755 12.003 4.755c2.081 0 8.77 12.166 7.759 14.196zM12 9.198c-1.054 0-4.446 6.15-3.93 7.189c.518 1.04 7.348 1.027 7.86 0c.511-1.027-2.874-7.19-3.93-7.19z"/></svg>
                     Jellyfin
                   </span>
-                  <strong data-i18n="settings.jellyfin_filter">Jellyfin Account Filtering</strong>
+                  <span data-i18n="settings.jellyfin_filter">Jellyfin Account Filtering & Server Sync</span>
                 </div>
+                <p class="card-desc">
+                  Filter incoming Jellyfin webhooks and sync watch events back to your Jellyfin media server.
+                </p>
                 <div class="form-row">
                   <div class="form-group col-full">
                     <label for="user-setting-jellyfin-username" data-i18n="settings.jellyfin_filter">Jellyfin Username(s) or User ID(s)</label>
@@ -1158,7 +1153,6 @@
                     <span id="jellyfin-test-status" class="setting-test-status" style="font-size:0.85rem;"></span>
                   </div>
                 </div>
-
                 <div class="form-row" style="margin-top: 4px; margin-bottom: 8px;">
                   <div class="form-group col-full">
                     <label class="setting-toggle-btn" for="user-setting-jellyfin-sync-enabled">
@@ -1170,8 +1164,7 @@
                     </small>
                   </div>
                 </div>
-
-                <details class="setup-guide-accordion" style="margin-top: 6px; margin-bottom: 14px;">
+                <details class="setup-guide-accordion" style="margin-top: 6px; margin-bottom: 6px;">
                   <summary>How to generate your Jellyfin API Key</summary>
                   <div class="steps-list">
                     <div class="step-item">
@@ -1197,15 +1190,20 @@
                     </div>
                   </div>
                 </details>
+              </div>
 
-                <!-- Emby Username Filter -->
-                <div class="settings-group-header" style="margin-top: 16px;">
-                  <span class="badge-pill badge-pill-emby" style="background: rgba(82, 181, 75, 0.15); color: #4ade80; border: 1px solid rgba(82, 181, 75, 0.4); display: inline-flex; align-items: center; gap: 5px;">
-                    <svg class="service-icon" width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M11.2 1.5a2.5 2.5 0 0 1 3.6 0l7.7 7.7a2.5 2.5 0 0 1 0 3.6l-7.7 7.7a2.5 2.5 0 0 1-3.6 0l-7.7-7.7a2.5 2.5 0 0 1 0-3.6l7.7-7.7zm-1.2 6v9l6.5-4.5-6.5-4.5z"/></svg>
+              <!-- Card 3: Emby Account Filtering -->
+              <div class="card settings-card" id="card-user-emby">
+                <div class="card-title">
+                  <span class="badge-pill badge-pill-emby" style="background: rgba(82, 181, 75, 0.15); color: #4ade80; border: 1px solid rgba(82, 181, 75, 0.4); display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; font-weight: 600; font-size: 0.85rem;">
+                    <svg class="service-icon" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M11.2 1.5a2.5 2.5 0 0 1 3.6 0l7.7 7.7a2.5 2.5 0 0 1 0 3.6l-7.7 7.7a2.5 2.5 0 0 1-3.6 0l-7.7-7.7a2.5 2.5 0 0 1 0-3.6l7.7-7.7zm-1.2 6v9l6.5-4.5-6.5-4.5z"/></svg>
                     Emby
                   </span>
-                  <strong>Emby Account Filtering</strong>
+                  <span>Emby Account Filtering</span>
                 </div>
+                <p class="card-desc">
+                  Filter incoming Emby webhook scrobbles to only match your personal user account.
+                </p>
                 <div class="form-row">
                   <div class="form-group col-full">
                     <label for="user-setting-emby-username">Emby Username(s) or User ID(s)</label>
@@ -1215,12 +1213,20 @@
                     </small>
                   </div>
                 </div>
+              </div>
 
-                <!-- Bidirectional Watch State Sync -->
-                <div class="settings-group-header" style="margin-top: 16px;">
-                  <span class="badge-pill" style="background: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3);">Media Server Sync</span>
-                  <strong>Bidirectional Watch State Sync (Plex & Jellyfin)</strong>
+              <!-- Card 4: Bidirectional Watch State Sync -->
+              <div class="card settings-card" id="card-user-sync">
+                <div class="card-title">
+                  <span class="badge-pill" style="background: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3); display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; font-weight: 600; font-size: 0.85rem;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
+                    Media Server Sync
+                  </span>
+                  <span>Bidirectional Watch State Sync (Plex & Jellyfin)</span>
                 </div>
+                <p class="card-desc">
+                  Keep watched states synchronized across both Plex and Jellyfin media servers with automatic writeback or on-demand triggers.
+                </p>
                 <div class="form-row">
                   <div class="form-group col-half">
                     <label for="user-setting-bidirectional-sync-enabled">Automatic Writeback</label>
@@ -1240,15 +1246,20 @@
                     <small id="writeback-status" style="display:block;margin-top:4px;font-size:0.75rem;color:var(--text-dim);min-height:18px;"></small>
                   </div>
                 </div>
+              </div>
 
-                <!-- Radarr -->
-                <div class="settings-group-header" style="margin-top: 16px;">
-                  <span class="arr-badge arr-badge-radarr" style="display: inline-flex; align-items: center; gap: 5px;">
-                    <svg class="service-icon" width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M5.274 0C3.189.039 1.19 1.547 1.19 4.705l.184 14.518c0 1.47 1.103 2.205 2.573 2.021L3.764 3.786c0-1.654.919-1.838 2.022-1.103l14.7 8.27c1.103.734 1.655 1.47 1.838 2.756.92-1.654.552-4.043-1.286-5.33L7.991.846A4.559 4.559 0 0 0 5.274.001zm1.982 6.91-.184 10.107 9.004-5.146Zm13.598 6.064-15.068 8.82c-.92.552-2.022.736-3.124.368.918 1.47 3.307 2.389 5.145 1.47l12.68-7.35c1.102-.736 1.286-2.022.367-3.308z"/></svg>
+              <!-- Card 5: Radarr -->
+              <div class="card settings-card" id="card-user-radarr">
+                <div class="card-title">
+                  <span class="arr-badge arr-badge-radarr" style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; font-weight: 600; font-size: 0.85rem;">
+                    <svg class="service-icon" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M5.274 0C3.189.039 1.19 1.547 1.19 4.705l.184 14.518c0 1.47 1.103 2.205 2.573 2.021L3.764 3.786c0-1.654.919-1.838 2.022-1.103l14.7 8.27c1.103.734 1.655 1.47 1.838 2.756.92-1.654.552-4.043-1.286-5.33L7.991.846A4.559 4.559 0 0 0 5.274.001zm1.982 6.91-.184 10.107 9.004-5.146Zm13.598 6.064-15.068 8.82c-.92.552-2.022.736-3.124.368.918 1.47 3.307 2.389 5.145 1.47l12.68-7.35c1.102-.736 1.286-2.022.367-3.308z"/></svg>
                     Radarr
                   </span>
-                  <strong data-i18n="settings.radarr_title">Movie Library & Cleanup</strong>
+                  <span data-i18n="settings.radarr_title">Movie Library & Cleanup</span>
                 </div>
+                <p class="card-desc">
+                  Connect to your Radarr instance to check library presence and delete watched movies from the Library Cleanup page.
+                </p>
                 <div class="form-row">
                   <div class="form-group col-half">
                     <label for="user-setting-radarr-url" data-i18n="settings.radarr_url">Radarr Base URL</label>
@@ -1264,15 +1275,20 @@
                     </div>
                   </div>
                 </div>
+              </div>
 
-                <!-- Sonarr -->
-                <div class="settings-group-header" style="margin-top: 16px;">
-                  <span class="arr-badge arr-badge-sonarr" style="display: inline-flex; align-items: center; gap: 5px;">
-                    <svg class="service-icon" width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M21.212 4.282c1.851 2.204 2.777 4.776 2.777 7.718 0 2.848-.867 5.344-2.602 7.489a934.355 934.355 0 0 1-2.101-2.095c-1.477-1.477-1.792-3.293-1.792-5.278 0-2.224.127-3.486 1.577-4.935l2.478-2.478a13.209 13.209 0 0 0-.337-.421Zm-17.7 16.193C1.708 18.678.6 16.59.188 14.213A11.84 11.84 0 0 1 .011 12c0-.28.006-.548.017-.802 0-.026.007-.052.022-.078.153-2.601 1.076-4.889 2.767-6.865-.108.127-.214.256-.316.387 0 0 1.351 1.346 2.329 2.323 1.408 1.409 1.726 3.215 1.726 5.151 0 1.985-.249 3.762-1.781 5.295-1.035 1.035-2.119 2.124-2.119 2.124.112.136.229.271.349.404.029-.027 1.297-1.348 2.123-2.175 1.638-1.637 1.928-3.528 1.928-5.648 0-2.072-.365-3.997-1.873-5.504a620.045 620.045 0 0 0-2.366-2.357c.168-.196.342-.388.523-.576l3.117 3.106-.194.195 1.903 1.898.547-.549L6.81 6.432l-.196.196L3.495 3.52c.01-.009.436-.416.643-.597.009.011 2.28 2.283 2.28 2.283 1.538 1.537 3.5 1.955 5.621 1.955 2.18 0 4.134-.442 5.731-2.038.907-.908 2.153-2.149 2.162-2.16.17.151.491.461.56.528l.013.013-3.111 3.028-.001.002-.197-.194-1.876 1.903.552.543 1.875-1.903-.197-.194 3.109-3.026c.193.203.377.41.553.619-.03.025-2.495 2.546-2.495 2.546-1.556 1.556-1.723 2.9-1.723 5.288 0 2.121.361 4.054 1.939 5.632a576.91 576.91 0 0 0 2.133 2.124c-.183.208-.599.645-.613.66l-3.066-3.174.195-.196-1.995-1.986-.546.549 1.995 1.986.195-.196 3.065 3.172c-.021.019-.385.362-.552.506-.01-.013-1.974-1.978-1.974-1.978-1.842-1.842-3.299-2.039-5.731-2.039-2.338 0-3.92.239-5.632 1.95-.944.944-2.078 2.085-2.089 2.099-.275-.23-.649-.594-.649-.594l3.019-3.024.199.192 1.854-1.925-.558-.538-1.854 1.926.199.191-3.016 3.022ZM12 8.672A3.33 3.33 0 0 0 8.672 12 3.33 3.33 0 0 0 12 15.328 3.33 3.33 0 0 0 15.328 12 3.33 3.33 0 0 0 12 8.672ZM4.52 2.6C6.665.867 9.162 0 12.011 0c2.88 0 5.394.88 7.541 2.639 0 0-1.215 1.209-2.136 2.13-1.496 1.496-3.334 1.892-5.377 1.892-1.985 0-3.829-.37-5.267-1.809L4.52 2.6Zm14.837 18.909a9.507 9.507 0 0 1-.342.256C16.994 23.255 14.659 24 12.011 24c-2.652 0-4.983-.745-6.993-2.235-.104-.074-.208-.15-.31-.227 0 0 1.096-1.101 2.053-2.058 1.602-1.602 3.09-1.804 5.278-1.804 2.28 0 3.651.166 5.377 1.892l1.941 1.941Z"/></svg>
+              <!-- Card 6: Sonarr -->
+              <div class="card settings-card" id="card-user-sonarr">
+                <div class="card-title">
+                  <span class="arr-badge arr-badge-sonarr" style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; font-weight: 600; font-size: 0.85rem;">
+                    <svg class="service-icon" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M21.212 4.282c1.851 2.204 2.777 4.776 2.777 7.718 0 2.848-.867 5.344-2.602 7.489a934.355 934.355 0 0 1-2.101-2.095c-1.477-1.477-1.792-3.293-1.792-5.278 0-2.224.127-3.486 1.577-4.935l2.478-2.478a13.209 13.209 0 0 0-.337-.421Zm-17.7 16.193C1.708 18.678.6 16.59.188 14.213A11.84 11.84 0 0 1 .011 12c0-.28.006-.548.017-.802 0-.026.007-.052.022-.078.153-2.601 1.076-4.889 2.767-6.865-.108.127-.214.256-.316.387 0 0 1.351 1.346 2.329 2.323 1.408 1.409 1.726 3.215 1.726 5.151 0 1.985-.249 3.762-1.781 5.295-1.035 1.035-2.119 2.124-2.119 2.124.112.136.229.271.349.404.029-.027 1.297-1.348 2.123-2.175 1.638-1.637 1.928-3.528 1.928-5.648 0-2.072-.365-3.997-1.873-5.504a620.045 620.045 0 0 0-2.366-2.357c.168-.196.342-.388.523-.576l3.117 3.106-.194.195 1.903 1.898.547-.549L6.81 6.432l-.196.196L3.495 3.52c.01-.009.436-.416.643-.597.009.011 2.28 2.283 2.28 2.283 1.538 1.537 3.5 1.955 5.621 1.955 2.18 0 4.134-.442 5.731-2.038.907-.908 2.153-2.149 2.162-2.16.17.151.491.461.56.528l.013.013-3.111 3.028-.001.002-.197-.194-1.876 1.903.552.543 1.875-1.903-.197-.194 3.109-3.026c.193.203.377.41.553.619-.03.025-2.495 2.546-2.495 2.546-1.556 1.556-1.723 2.9-1.723 5.288 0 2.121.361 4.054 1.939 5.632a576.91 576.91 0 0 0 2.133 2.124c-.183.208-.599.645-.613.66l-3.066-3.174.195-.196-1.995-1.986-.546.549 1.995 1.986.195-.196 3.065 3.172c-.021.019-.385.362-.552.506-.01-.013-1.974-1.978-1.974-1.978-1.842-1.842-3.299-2.039-5.731-2.039-2.338 0-3.92.239-5.632 1.95-.944.944-2.078 2.085-2.089 2.099-.275-.23-.649-.594-.649-.594l3.019-3.024.199.192 1.854-1.925-.558-.538-1.854 1.926.199.191-3.016 3.022ZM12 8.672A3.33 3.33 0 0 0 8.672 12 3.33 3.33 0 0 0 12 15.328 3.33 3.33 0 0 0 15.328 12 3.33 3.33 0 0 0 12 8.672ZM4.52 2.6C6.665.867 9.162 0 12.011 0c2.88 0 5.394.88 7.541 2.639 0 0-1.215 1.209-2.136 2.13-1.496 1.496-3.334 1.892-5.377 1.892-1.985 0-3.829-.37-5.267-1.809L4.52 2.6Zm14.837 18.909a9.507 9.507 0 0 1-.342.256C16.994 23.255 14.659 24 12.011 24c-2.652 0-4.983-.745-6.993-2.235-.104-.074-.208-.15-.31-.227 0 0 1.096-1.101 2.053-2.058 1.602-1.602 3.09-1.804 5.278-1.804 2.28 0 3.651.166 5.377 1.892l1.941 1.941Z"/></svg>
                     Sonarr
                   </span>
-                  <strong data-i18n="settings.sonarr_title">TV Series Library & Cleanup</strong>
+                  <span data-i18n="settings.sonarr_title">TV Series Library & Cleanup</span>
                 </div>
+                <p class="card-desc">
+                  Connect to your Sonarr instance to check library presence and delete watched episodes/seasons from the Library Cleanup page.
+                </p>
                 <div class="form-row">
                   <div class="form-group col-half">
                     <label for="user-setting-sonarr-url" data-i18n="settings.sonarr_url">Sonarr Base URL</label>
@@ -1288,15 +1304,20 @@
                     </div>
                   </div>
                 </div>
+              </div>
 
-                <!-- Tautulli -->
-                <div class="settings-group-header" style="margin-top: 16px;">
-                  <span class="badge-pill badge-pill-tautulli" style="background: rgba(234, 88, 12, 0.15); color: #fb923c; border: 1px solid rgba(234, 88, 12, 0.3); display: inline-flex; align-items: center; gap: 5px;">
-                    <svg class="service-icon" width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2c.5 3 2 4.5 3.5 6 1.8 1.8 2.5 3.5 2.5 5.5 0 4.4-3.6 8-8 8s-8-3.6-8-8c0-3.5 2.2-6.5 5.5-7.5-.5 2 0 3.5 1 4.5 1.5-2 2.5-5 3.5-8.5z"/></svg>
+              <!-- Card 7: Tautulli -->
+              <div class="card settings-card" id="card-user-tautulli">
+                <div class="card-title">
+                  <span class="badge-pill badge-pill-tautulli" style="background: rgba(234, 88, 12, 0.15); color: #fb923c; border: 1px solid rgba(234, 88, 12, 0.3); display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; font-weight: 600; font-size: 0.85rem;">
+                    <svg class="service-icon" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2c.5 3 2 4.5 3.5 6 1.8 1.8 2.5 3.5 2.5 5.5 0 4.4-3.6 8-8 8s-8-3.6-8-8c0-3.5 2.2-6.5 5.5-7.5-.5 2 0 3.5 1 4.5 1.5-2 2.5-5 3.5-8.5z"/></svg>
                     Tautulli
                   </span>
-                  <strong data-i18n="settings.tautulli_title">Plex Watch History & Statistics</strong>
+                  <span data-i18n="settings.tautulli_title">Plex Watch History & Statistics</span>
                 </div>
+                <p class="card-desc">
+                  Connect to your Tautulli instance for automatic Plex user discovery and continuous 1-way playback sync.
+                </p>
                 <div class="form-row">
                   <div class="form-group col-half">
                     <label for="user-setting-tautulli-url" data-i18n="settings.tautulli_url">Tautulli Base URL</label>
@@ -1334,12 +1355,20 @@
                     <small style="display:block;margin-top:4px;font-size:0.75rem;color:var(--text-dim);">Automatically import new watch events from Tautulli in the background.</small>
                   </div>
                 </div>
+              </div>
 
-                <!-- Outbound Webhooks -->
-                <div class="settings-group-header" style="margin-top: 16px;">
-                  <span class="badge-pill" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3);">Notifications</span>
-                  <strong>Outbound Webhooks (Discord, Telegram, ntfy, Gotify)</strong>
+              <!-- Card 8: Outbound Webhooks -->
+              <div class="card settings-card" id="card-user-outbound">
+                <div class="card-title">
+                  <span class="badge-pill" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; font-weight: 600; font-size: 0.85rem;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                    Notifications
+                  </span>
+                  <span>Outbound Webhooks (Discord, Telegram, ntfy, Gotify)</span>
                 </div>
+                <p class="card-desc">
+                  Receive real-time notifications on external messaging channels whenever media is played, paused, watched, or rated.
+                </p>
                 <div class="form-row">
                   <div class="form-group col-half">
                     <label for="user-setting-outbound-type">Webhook Provider</label>
@@ -1403,13 +1432,20 @@
                   </div>
                 </div>
                 <div id="outbound-webhook-test-status" style="margin-top: 6px; font-size: 0.85rem; display: none;"></div>
+              </div>
 
-                <div style="display:flex;align-items:center;gap:12px;margin-top:20px;">
+              <!-- Card 9: Save Configuration Action Card -->
+              <div class="card settings-card settings-save-card" id="card-user-save" style="display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;">
+                <div>
+                  <strong style="display: block; font-size: 1rem; color: var(--text-main);" data-i18n="settings.connected_services">Connected Services Configuration</strong>
+                  <small style="color: var(--text-dim); font-size: 0.82rem;">Save and persist all credentials and filtering settings across your connected services.</small>
+                </div>
+                <div style="display:flex;align-items:center;gap:12px;">
                   <button type="submit" class="btn btn-primary" id="btn-save-user-settings" data-i18n="settings.save">Save Settings</button>
                   <span id="user-settings-status" style="font-size:0.85rem;"></span>
                 </div>
-              </form>
-            </div>
+              </div>
+            </form>
           </div>
 
           <!-- Sub-view 3: Personal API Keys -->
