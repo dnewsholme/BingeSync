@@ -22,8 +22,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="BingeSync" />
-  <script type="module" crossorigin src="./assets/index-B1J8aCue.js"></script>
-  <link rel="stylesheet" crossorigin href="./assets/index-DZmZA2i8.css">
+  <script type="module" crossorigin src="./assets/index-COYxk1ob.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-Bg02WJzo.css">
 </head>
 <body>
   <div id="app">
@@ -1922,6 +1922,21 @@
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
                   <span>Refresh Status</span>
                 </button>
+              </div>
+            </div>
+
+            <!-- Task Category Filters & Search Toolbar -->
+            <div class="tasks-toolbar">
+              <div class="tasks-category-pills" id="admin-tasks-category-pills">
+                <button type="button" class="pill active" data-task-category="all">All <span class="pill-count" id="count-tasks-all">13</span></button>
+                <button type="button" class="pill" data-task-category="media">Media & Metadata <span class="pill-count" id="count-tasks-media">3</span></button>
+                <button type="button" class="pill" data-task-category="sync">Sync & Servers <span class="pill-count" id="count-tasks-sync">3</span></button>
+                <button type="button" class="pill" data-task-category="maintenance">Maintenance & DB <span class="pill-count" id="count-tasks-maintenance">5</span></button>
+                <button type="button" class="pill" data-task-category="system">System & Arr <span class="pill-count" id="count-tasks-system">2</span></button>
+              </div>
+              <div class="tasks-search-wrap">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input type="search" id="admin-tasks-search" placeholder="Filter tasks by name or keyword..." class="input-tasks-search" />
               </div>
             </div>
 

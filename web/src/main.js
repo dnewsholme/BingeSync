@@ -540,6 +540,8 @@ const el = {
   btnRefreshAdminTasks: document.getElementById('btn-refresh-admin-tasks'),
   btnForceRefreshAllMetadata: document.getElementById('btn-force-refresh-all-metadata'),
   adminTasksContainer: document.getElementById('admin-tasks-container'),
+  adminTasksCategoryPills: document.getElementById('admin-tasks-category-pills'),
+  adminTasksSearch: document.getElementById('admin-tasks-search'),
 
   // Admin Application Logs
   btnRefreshAdminLogs: document.getElementById('btn-refresh-admin-logs'),
@@ -5442,6 +5444,37 @@ async function loadAdminTasks() {
   }
 }
 
+let currentAdminTaskCategory = 'all';
+let currentAdminTaskSearch = '';
+
+function applyAdminTasksFilters() {
+  if (!el.adminTasksContainer) return;
+  const cards = el.adminTasksContainer.querySelectorAll('.task-card');
+  const query = currentAdminTaskSearch.trim().toLowerCase();
+
+  let visibleCount = 0;
+  cards.forEach(card => {
+    const cardCategory = card.dataset.taskCategory;
+    const matchesCat = currentAdminTaskCategory === 'all' || cardCategory === currentAdminTaskCategory;
+    const matchesQuery = !query || card.textContent.toLowerCase().includes(query);
+
+    const isVisible = matchesCat && matchesQuery;
+    card.classList.toggle('is-hidden', !isVisible);
+    if (isVisible) visibleCount++;
+  });
+
+  let noMatchEl = document.getElementById('admin-tasks-no-match');
+  if (!noMatchEl) {
+    noMatchEl = document.createElement('div');
+    noMatchEl.id = 'admin-tasks-no-match';
+    noMatchEl.className = 'empty-state';
+    noMatchEl.style.gridColumn = '1 / -1';
+    noMatchEl.innerHTML = '<p>No background tasks match the current search or category filter.</p>';
+    el.adminTasksContainer.appendChild(noMatchEl);
+  }
+  noMatchEl.style.display = (visibleCount === 0 && cards.length > 0) ? 'block' : 'none';
+}
+
 function renderAdminTasks(tasks) {
   if (!el.adminTasksContainer) return;
   if (!tasks || tasks.length === 0) {
@@ -5461,6 +5494,23 @@ function renderAdminTasks(tasks) {
     }
   }
 
+  // Update Category Counts
+  const mediaCount = tasks.filter(t => t.id === 'image_cache' || t.id === 'tvdb_metadata' || t.id === 'metadata_backfill').length;
+  const syncCount = tasks.filter(t => t.id === 'user_sync' || t.id === 'tautulli_sync' || t.id === 'tautulli' || t.id === 'media_sync').length;
+  const maintCount = tasks.filter(t => t.id === 'session_reaper' || t.id === 'image_prune' || t.id === 'duplicate_pruner' || t.id === 'db_maintenance' || t.id === 'maintenance' || t.id === 'db_backup' || t.id === 'backup').length;
+  const sysCount = tasks.filter(t => t.id === 'version_check' || t.id === 'library_audit').length;
+
+  const countAll = document.getElementById('count-tasks-all');
+  if (countAll) countAll.textContent = tasks.length;
+  const countMedia = document.getElementById('count-tasks-media');
+  if (countMedia) countMedia.textContent = mediaCount;
+  const countSync = document.getElementById('count-tasks-sync');
+  if (countSync) countSync.textContent = syncCount;
+  const countMaint = document.getElementById('count-tasks-maintenance');
+  if (countMaint) countMaint.textContent = maintCount;
+  const countSys = document.getElementById('count-tasks-system');
+  if (countSys) countSys.textContent = sysCount;
+
   el.adminTasksContainer.innerHTML = tasks.map(t => {
     const isRunning = t.status === 'running';
     const statusClass = `task-status-${t.status || 'idle'}`;
@@ -5473,6 +5523,22 @@ function renderAdminTasks(tasks) {
     const msg = t.last_message || t.message || 'Idle';
     const pending = t.items_pending != null ? t.items_pending : 0;
     const intervalHours = t.interval_hours || 4;
+
+    let category = 'system';
+    let categoryLabel = 'System';
+    if (t.id === 'image_cache' || t.id === 'tvdb_metadata' || t.id === 'metadata_backfill') {
+      category = 'media';
+      categoryLabel = 'Media';
+    } else if (t.id === 'user_sync' || t.id === 'tautulli_sync' || t.id === 'tautulli' || t.id === 'media_sync') {
+      category = 'sync';
+      categoryLabel = 'Sync';
+    } else if (t.id === 'session_reaper' || t.id === 'image_prune' || t.id === 'duplicate_pruner' || t.id === 'db_maintenance' || t.id === 'maintenance' || t.id === 'db_backup' || t.id === 'backup') {
+      category = 'maintenance';
+      categoryLabel = 'Maintenance';
+    } else if (t.id === 'version_check' || t.id === 'library_audit') {
+      category = 'system';
+      categoryLabel = 'System';
+    }
 
     let icon = '⚙️';
     let iconColor = 'rgba(56, 189, 248, 0.12)';
@@ -5574,14 +5640,17 @@ function renderAdminTasks(tasks) {
     const hasForceRefresh = t.id === 'image_cache' || t.id === 'tvdb_metadata' || t.id === 'user_sync';
 
     return `
-      <div class="task-card" data-task-id="${t.id}">
+      <div class="task-card" data-task-id="${t.id}" data-task-category="${category}">
         <div class="task-card-header">
           <div class="task-header-left">
             <div class="task-icon-box" style="background: ${iconColor}; color: ${iconTextColor};">
               ${icon}
             </div>
-            <div>
-              <div class="task-card-title">${escapeHtml(t.name)}</div>
+            <div style="min-width: 0;">
+              <div class="task-card-title">
+                <span>${escapeHtml(t.name)}</span>
+                <span class="task-category-tag">${categoryLabel}</span>
+              </div>
               <div class="task-card-desc">${escapeHtml(t.description)}</div>
             </div>
           </div>
@@ -5664,6 +5733,8 @@ function renderAdminTasks(tasks) {
       </div>
     `;
   }).join('');
+
+  applyAdminTasksFilters();
 
   el.adminTasksContainer.querySelectorAll('.btn-task-logs').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -5753,6 +5824,24 @@ function renderAdminTasks(tasks) {
 
 if (el.btnRefreshAdminTasks) {
   el.btnRefreshAdminTasks.addEventListener('click', () => loadAdminTasks());
+}
+
+if (el.adminTasksCategoryPills) {
+  el.adminTasksCategoryPills.querySelectorAll('.pill').forEach(btn => {
+    btn.addEventListener('click', () => {
+      el.adminTasksCategoryPills.querySelectorAll('.pill').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      currentAdminTaskCategory = btn.dataset.taskCategory || 'all';
+      applyAdminTasksFilters();
+    });
+  });
+}
+
+if (el.adminTasksSearch) {
+  el.adminTasksSearch.addEventListener('input', (e) => {
+    currentAdminTaskSearch = e.target.value;
+    applyAdminTasksFilters();
+  });
 }
 
 if (el.btnForceRefreshAllMetadata) {

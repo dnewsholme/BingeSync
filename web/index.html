@@ -1924,6 +1924,21 @@
               </div>
             </div>
 
+            <!-- Task Category Filters & Search Toolbar -->
+            <div class="tasks-toolbar">
+              <div class="tasks-category-pills" id="admin-tasks-category-pills">
+                <button type="button" class="pill active" data-task-category="all">All <span class="pill-count" id="count-tasks-all">13</span></button>
+                <button type="button" class="pill" data-task-category="media">Media & Metadata <span class="pill-count" id="count-tasks-media">3</span></button>
+                <button type="button" class="pill" data-task-category="sync">Sync & Servers <span class="pill-count" id="count-tasks-sync">3</span></button>
+                <button type="button" class="pill" data-task-category="maintenance">Maintenance & DB <span class="pill-count" id="count-tasks-maintenance">5</span></button>
+                <button type="button" class="pill" data-task-category="system">System & Arr <span class="pill-count" id="count-tasks-system">2</span></button>
+              </div>
+              <div class="tasks-search-wrap">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input type="search" id="admin-tasks-search" placeholder="Filter tasks by name or keyword..." class="input-tasks-search" />
+              </div>
+            </div>
+
             <div id="admin-tasks-container" class="admin-tasks-grid">
               <!-- Injected via JavaScript -->
             </div>
