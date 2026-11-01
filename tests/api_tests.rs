@@ -10151,7 +10151,7 @@ async fn test_rich_scrobble_metadata_specs_device_and_rewatch() {
     assert_eq!(s1.audio_channels.as_deref(), Some("7.1"));
     assert_eq!(s1.studio.as_deref(), Some("Warner Bros. Pictures"));
     assert_eq!(s1.content_rating.as_deref(), Some("PG-13"));
-    assert_eq!(s1.is_rewatch, false);
+    assert_eq!(s1.is_rewatch(), false);
 
     // 3. Second watch of "Inception" at a later timestamp -> should be detected as rewatch
     tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;

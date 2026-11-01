@@ -1,6 +1,25 @@
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 
+fn deserialize_bool_opt<'de, D>(deserializer: D) -> Result<Option<bool>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let opt = Option::<serde_json::Value>::deserialize(deserializer)?;
+    match opt {
+        Some(serde_json::Value::Bool(b)) => Ok(Some(b)),
+        Some(serde_json::Value::Number(n)) => Ok(Some(n.as_i64() == Some(1))),
+        _ => Ok(Some(false)),
+    }
+}
+
+fn serialize_bool_opt<S>(val: &Option<bool>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    serializer.serialize_bool(val.unwrap_or(false))
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Scrobble {
     pub id: String,
@@ -73,10 +92,16 @@ pub struct Scrobble {
     #[sqlx(default)]
     pub content_rating: Option<String>,
     #[sqlx(default)]
-    #[serde(default)]
-    pub is_rewatch: bool,
+    #[serde(default, deserialize_with = "deserialize_bool_opt", serialize_with = "serialize_bool_opt")]
+    pub is_rewatch: Option<bool>,
     pub watched_at: String,
     pub created_at: String,
+}
+
+impl Scrobble {
+    pub fn is_rewatch(&self) -> bool {
+        self.is_rewatch.unwrap_or(false)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

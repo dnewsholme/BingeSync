@@ -346,7 +346,8 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
     let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_scrobbles_orig_lang ON scrobbles(original_language)").execute(pool).await;
 
     // 6. Letterboxd / Trakt viewing flags: Rewatch
-    let _ = sqlx::query("ALTER TABLE scrobbles ADD COLUMN is_rewatch BOOLEAN NOT NULL DEFAULT 0").execute(pool).await;
+    let _ = sqlx::query("ALTER TABLE scrobbles ADD COLUMN is_rewatch BOOLEAN DEFAULT 0").execute(pool).await;
+    let _ = sqlx::query("UPDATE scrobbles SET is_rewatch = 0 WHERE is_rewatch IS NULL").execute(pool).await;
     let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_scrobbles_user_rewatch ON scrobbles(user_id, is_rewatch)").execute(pool).await;
 
     // Active session quality and device fields
@@ -360,24 +361,6 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
     let _ = sqlx::query("ALTER TABLE active_sessions ADD COLUMN audio_channels TEXT").execute(pool).await;
     let _ = sqlx::query("ALTER TABLE active_sessions ADD COLUMN video_codec TEXT").execute(pool).await;
     let _ = sqlx::query("ALTER TABLE active_sessions ADD COLUMN content_rating TEXT").execute(pool).await;
-
-    // Auto-backfill existing rewatches
-    let _ = sqlx::query(
-        r#"
-        UPDATE scrobbles SET is_rewatch = 1
-        WHERE id IN (
-            SELECT s1.id
-            FROM scrobbles s1
-            JOIN scrobbles s2 ON s1.user_id = s2.user_id
-              AND s1.media_type = s2.media_type
-              AND s1.watched_at > s2.watched_at
-              AND (
-                  (s1.media_type = 'movie' AND LOWER(TRIM(s1.title)) = LOWER(TRIM(s2.title)))
-                  OR (s1.media_type = 'episode' AND s1.grandparent_title = s2.grandparent_title AND s1.season_number = s2.season_number AND s1.episode_number = s2.episode_number)
-              )
-        )
-        "#
-    ).execute(pool).await;
 
     Ok(())
 }
