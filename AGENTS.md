@@ -256,6 +256,7 @@ Playwright tests in `web/tests/e2e.spec.js` (50 browser E2E tests) cover:
 - Server user fetching and multi-select filtering: Plex, Jellyfin, and Emby user fetch buttons (`btn-fetch-plex-setting-users`, `btn-fetch-jellyfin-setting-users`, `btn-fetch-emby-setting-users`), interactive multi-select user chips (`user-select-chip`) with selection checkmarks, select all / clear actions, and automatic sync with comma-separated inputs
 - Admin Services & API Keys card layout: split into dedicated cards per service (Metadata Provider, TheTVDB v4, TMDB, OpenID Connect SSO, Playback & Completion Threshold, and Save Action Card)
 - Live application log explorer: structured key-value tag syntax highlighting, service filtering, time range selector, result limit dropdown, log entry counter badge, one-click clipboard copying, and text log file downloads
+- Background maintenance workers (13 total): Stale Active Session Reaper (`session_reaper`), Orphaned Poster & Cache Pruning (`image_prune`), Auto Duplicate Scrobble Cleaner (`duplicate_pruner`), Metadata Backfill & Stale Rating Refresh (`metadata_backfill`), GitHub Release & Update Check (`version_check`), and Radarr & Sonarr Library Desync Audit (`library_audit`) with customizable schedules, manual run triggers, per-task log routing, and persistent database tracking
 
 
 ### Run the App Locally

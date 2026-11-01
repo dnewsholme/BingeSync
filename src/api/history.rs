@@ -1071,32 +1071,29 @@ pub async fn get_duplicates_handler(
     }))
 }
 
-pub async fn clean_duplicates_handler(
-    State(state): State<AppState>,
-    auth: AuthUser,
-    Json(payload): Json<CleanDuplicatesRequest>,
-) -> Result<Json<CleanDuplicatesResponse>, (StatusCode, Json<serde_json::Value>)> {
-    let strategy = payload.strategy.as_deref().unwrap_or("keep_oldest");
+pub async fn clean_duplicates_for_user(
+    pool: &sqlx::SqlitePool,
+    user_id: &str,
+    window_hours: i64,
+    strategy: &str,
+    delete_ids: Option<Vec<String>>,
+) -> Result<usize, String> {
     let mut to_delete_ids: Vec<String> = Vec::new();
 
-    if strategy == "custom" || (payload.delete_ids.is_some() && !payload.delete_ids.as_ref().unwrap().is_empty()) {
-        if let Some(ids) = payload.delete_ids {
+    if let Some(ids) = delete_ids {
+        if !ids.is_empty() {
             to_delete_ids = ids;
         }
-    } else {
-        let window_hours = payload.window_hours.unwrap_or(24).clamp(1, 720);
+    }
+
+    if to_delete_ids.is_empty() && strategy != "custom" {
         let all_scrobbles = sqlx::query_as::<_, Scrobble>(
             "SELECT * FROM scrobbles WHERE user_id = ? ORDER BY watched_at ASC, created_at ASC"
         )
-        .bind(&auth.user_id)
-        .fetch_all(&state.pool)
+        .bind(user_id)
+        .fetch_all(pool)
         .await
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({ "error": format!("Database error fetching scrobbles: {}", e) })),
-            )
-        })?;
+        .map_err(|e| format!("Database error fetching scrobbles: {}", e))?;
 
         let groups = find_duplicate_groups(&all_scrobbles, window_hours);
 
@@ -1106,7 +1103,6 @@ pub async fn clean_duplicates_handler(
             }
 
             if strategy == "keep_newest" {
-                // Keep the newest one (index 0 when reversed), delete the older duplicates
                 group.scrobbles.sort_by(|a, b| {
                     let t_a = parse_timestamp_epoch(&a.watched_at).unwrap_or(0);
                     let t_b = parse_timestamp_epoch(&b.watched_at).unwrap_or(0);
@@ -1116,7 +1112,6 @@ pub async fn clean_duplicates_handler(
                     to_delete_ids.push(s.id.clone());
                 }
             } else {
-                // Default: keep_oldest. Keep index 0, delete the newer duplicates
                 group.scrobbles.sort_by(|a, b| {
                     let t_a = parse_timestamp_epoch(&a.watched_at).unwrap_or(0);
                     let t_b = parse_timestamp_epoch(&b.watched_at).unwrap_or(0);
@@ -1130,24 +1125,53 @@ pub async fn clean_duplicates_handler(
     }
 
     if to_delete_ids.is_empty() {
+        return Ok(0);
+    }
+
+    let mut deleted_count: usize = 0;
+    for id in &to_delete_ids {
+        if let Ok(res) = sqlx::query("DELETE FROM scrobbles WHERE id = ? AND user_id = ?")
+            .bind(id)
+            .bind(user_id)
+            .execute(pool)
+            .await
+        {
+            deleted_count += res.rows_affected() as usize;
+        }
+    }
+
+    Ok(deleted_count)
+}
+
+pub async fn clean_duplicates_handler(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Json(payload): Json<CleanDuplicatesRequest>,
+) -> Result<Json<CleanDuplicatesResponse>, (StatusCode, Json<serde_json::Value>)> {
+    let strategy = payload.strategy.as_deref().unwrap_or("keep_oldest");
+    let window_hours = payload.window_hours.unwrap_or(24).clamp(1, 720);
+
+    let deleted_count = clean_duplicates_for_user(
+        &state.pool,
+        &auth.user_id,
+        window_hours,
+        strategy,
+        payload.delete_ids,
+    )
+    .await
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": e })),
+        )
+    })?;
+
+    if deleted_count == 0 {
         return Ok(Json(CleanDuplicatesResponse {
             success: true,
             deleted_count: 0,
             message: "No duplicates found to delete.".to_string(),
         }));
-    }
-
-    // Execute atomic deletion strictly scoped to auth.user_id
-    let mut deleted_count: usize = 0;
-    for id in &to_delete_ids {
-        if let Ok(res) = sqlx::query("DELETE FROM scrobbles WHERE id = ? AND user_id = ?")
-            .bind(id)
-            .bind(&auth.user_id)
-            .execute(&state.pool)
-            .await
-        {
-            deleted_count += res.rows_affected() as usize;
-        }
     }
 
     Ok(Json(CleanDuplicatesResponse {

@@ -82,6 +82,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         db_maintenance_notify: Arc::new(tokio::sync::Notify::new()),
         tautulli_sync_notify: Arc::new(tokio::sync::Notify::new()),
         media_sync_notify: Arc::new(tokio::sync::Notify::new()),
+        session_reaper_notify: Arc::new(tokio::sync::Notify::new()),
+        image_prune_notify: Arc::new(tokio::sync::Notify::new()),
+        duplicate_pruner_notify: Arc::new(tokio::sync::Notify::new()),
+        metadata_backfill_notify: Arc::new(tokio::sync::Notify::new()),
+        version_check_notify: Arc::new(tokio::sync::Notify::new()),
+        library_audit_notify: Arc::new(tokio::sync::Notify::new()),
         http_client: reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(15))
             .danger_accept_invalid_certs(true)
@@ -98,6 +104,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _db_maintenance_worker = bingesync::api::db_maintenance::start_db_maintenance_worker(state.clone());
     let _tautulli_sync_worker = bingesync::api::tautulli_sync::start_tautulli_sync_worker(state.clone());
     let _media_sync_worker = bingesync::api::media_writeback::start_media_sync_worker(state.clone());
+    let _session_reaper_worker = bingesync::api::maintenance_tasks::start_session_reaper_worker(state.clone());
+    let _image_prune_worker = bingesync::api::maintenance_tasks::start_image_prune_worker(state.clone());
+    let _duplicate_pruner_worker = bingesync::api::maintenance_tasks::start_duplicate_pruner_worker(state.clone());
+    let _metadata_backfill_worker = bingesync::api::maintenance_tasks::start_metadata_backfill_worker(state.clone());
+    let _version_check_worker = bingesync::api::maintenance_tasks::start_version_check_worker(state.clone());
+    let _library_audit_worker = bingesync::api::maintenance_tasks::start_library_audit_worker(state.clone());
 
     // 7. Router assembly
     let app = create_api_router(state)

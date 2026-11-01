@@ -769,28 +769,28 @@ pub async fn delete_from_sonarr(
     }
 }
 
-pub async fn get_cleanup_items(
-    State(state): State<AppState>,
-    auth: AuthUser,
-) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
+pub async fn fetch_cleanup_items_internal(
+    state: &AppState,
+    user_id: &str,
+) -> CleanupResponse {
     let client = &state.http_client;
 
     // 1. Resolve Radarr config
-    let user_radarr_url = crate::api::user_settings::get_user_setting(&state.pool, &auth.user_id, "radarr_url").await
+    let user_radarr_url = crate::api::user_settings::get_user_setting(&state.pool, user_id, "radarr_url").await
         .or_else(|| std::env::var("RADARR_URL").ok());
-    let user_radarr_key = crate::api::user_settings::get_user_setting(&state.pool, &auth.user_id, "radarr_api_key").await
+    let user_radarr_key = crate::api::user_settings::get_user_setting(&state.pool, user_id, "radarr_api_key").await
         .or_else(|| std::env::var("RADARR_API_KEY").ok());
     let radarr_configured = user_radarr_url.is_some() && user_radarr_key.is_some();
 
     // 2. Resolve Sonarr config
-    let user_sonarr_url = crate::api::user_settings::get_user_setting(&state.pool, &auth.user_id, "sonarr_url").await
+    let user_sonarr_url = crate::api::user_settings::get_user_setting(&state.pool, user_id, "sonarr_url").await
         .or_else(|| std::env::var("SONARR_URL").ok());
-    let user_sonarr_key = crate::api::user_settings::get_user_setting(&state.pool, &auth.user_id, "sonarr_api_key").await
+    let user_sonarr_key = crate::api::user_settings::get_user_setting(&state.pool, user_id, "sonarr_api_key").await
         .or_else(|| std::env::var("SONARR_API_KEY").ok());
     let sonarr_configured = user_sonarr_url.is_some() && user_sonarr_key.is_some();
 
     tracing::info!(
-        user_id = %auth.user_id,
+        user_id = %user_id,
         radarr_configured = radarr_configured,
         sonarr_configured = sonarr_configured,
         "Scanning library for watched cleanup candidates"
@@ -821,7 +821,7 @@ pub async fn get_cleanup_items(
                     GROUP BY LOWER(TRIM(title)), year
                     "#
                 )
-                .bind(&auth.user_id)
+                .bind(user_id)
                 .fetch_all(&state.pool)
                 .await
                 .unwrap_or_default();
@@ -900,7 +900,7 @@ pub async fn get_cleanup_items(
                                 }
                                 tracing::info!(
                                     service = "radarr",
-                                    user_id = %auth.user_id,
+                                    user_id = %user_id,
                                     fetched_movies = total_radarr_count,
                                     "Successfully scanned Radarr movies for cleanup"
                                 );
@@ -951,7 +951,7 @@ pub async fn get_cleanup_items(
                     ORDER BY watched_at DESC
                     "#
                 )
-                .bind(&auth.user_id)
+                .bind(user_id)
                 .fetch_all(&state.pool)
                 .await
                 .unwrap_or_default();
@@ -1052,7 +1052,7 @@ pub async fn get_cleanup_items(
                                 }
                                 tracing::info!(
                                     service = "sonarr",
-                                    user_id = %auth.user_id,
+                                    user_id = %user_id,
                                     fetched_series = total_sonarr_count,
                                     "Successfully scanned Sonarr series for cleanup"
                                 );
@@ -1090,13 +1090,13 @@ pub async fn get_cleanup_items(
     let total_items = items.len();
 
     tracing::info!(
-        user_id = %auth.user_id,
+        user_id = %user_id,
         cleanup_items_count = total_items,
         reclaimable_bytes = total_size_bytes,
         "Completed library cleanup scan"
     );
 
-    Ok(Json(serde_json::to_value(CleanupResponse {
+    CleanupResponse {
         radarr_configured,
         sonarr_configured,
         radarr_error,
@@ -1105,5 +1105,21 @@ pub async fn get_cleanup_items(
         total_size_bytes,
         total_size_formatted: format_bytes(total_size_bytes),
         items,
-    }).unwrap_or_default()))
+    }
+}
+
+pub async fn get_cleanup_items(
+    State(state): State<AppState>,
+    auth: AuthUser,
+) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
+    let resp = fetch_cleanup_items_internal(&state, &auth.user_id).await;
+    Ok(Json(serde_json::to_value(resp).unwrap_or_default()))
+}
+
+pub async fn perform_library_audit_for_user(state: &AppState, user_id: &str) -> Result<(usize, u64), String> {
+    let resp = fetch_cleanup_items_internal(state, user_id).await;
+    if !resp.radarr_configured && !resp.sonarr_configured {
+        return Ok((0, 0));
+    }
+    Ok((resp.total_items, resp.total_size_bytes as u64))
 }

@@ -76,6 +76,48 @@ pub struct BackgroundTaskTracker {
     pub media_sync_last_success: RwLock<Option<String>>,
     pub media_sync_next_run: RwLock<Option<String>>,
     pub media_sync_last_message: RwLock<Option<String>>,
+
+    pub session_reaper_status: RwLock<String>,
+    pub session_reaper_processed: AtomicUsize,
+    pub session_reaper_last_run: RwLock<Option<String>>,
+    pub session_reaper_last_success: RwLock<Option<String>>,
+    pub session_reaper_next_run: RwLock<Option<String>>,
+    pub session_reaper_last_message: RwLock<Option<String>>,
+
+    pub image_prune_status: RwLock<String>,
+    pub image_prune_processed: AtomicUsize,
+    pub image_prune_last_run: RwLock<Option<String>>,
+    pub image_prune_last_success: RwLock<Option<String>>,
+    pub image_prune_next_run: RwLock<Option<String>>,
+    pub image_prune_last_message: RwLock<Option<String>>,
+
+    pub duplicate_pruner_status: RwLock<String>,
+    pub duplicate_pruner_processed: AtomicUsize,
+    pub duplicate_pruner_last_run: RwLock<Option<String>>,
+    pub duplicate_pruner_last_success: RwLock<Option<String>>,
+    pub duplicate_pruner_next_run: RwLock<Option<String>>,
+    pub duplicate_pruner_last_message: RwLock<Option<String>>,
+
+    pub metadata_backfill_status: RwLock<String>,
+    pub metadata_backfill_processed: AtomicUsize,
+    pub metadata_backfill_last_run: RwLock<Option<String>>,
+    pub metadata_backfill_last_success: RwLock<Option<String>>,
+    pub metadata_backfill_next_run: RwLock<Option<String>>,
+    pub metadata_backfill_last_message: RwLock<Option<String>>,
+
+    pub version_check_status: RwLock<String>,
+    pub version_check_processed: AtomicUsize,
+    pub version_check_last_run: RwLock<Option<String>>,
+    pub version_check_last_success: RwLock<Option<String>>,
+    pub version_check_next_run: RwLock<Option<String>>,
+    pub version_check_last_message: RwLock<Option<String>>,
+
+    pub library_audit_status: RwLock<String>,
+    pub library_audit_processed: AtomicUsize,
+    pub library_audit_last_run: RwLock<Option<String>>,
+    pub library_audit_last_success: RwLock<Option<String>>,
+    pub library_audit_next_run: RwLock<Option<String>>,
+    pub library_audit_last_message: RwLock<Option<String>>,
 }
 
 impl Default for BackgroundTaskTracker {
@@ -140,6 +182,48 @@ impl BackgroundTaskTracker {
             media_sync_last_success: RwLock::new(None),
             media_sync_next_run: RwLock::new(Some(initial_next.to_rfc3339())),
             media_sync_last_message: RwLock::new(Some("Worker initialized. Ready to sync watch history to media servers.".to_string())),
+
+            session_reaper_status: RwLock::new("idle".to_string()),
+            session_reaper_processed: AtomicUsize::new(0),
+            session_reaper_last_run: RwLock::new(None),
+            session_reaper_last_success: RwLock::new(None),
+            session_reaper_next_run: RwLock::new(Some((chrono::Utc::now() + chrono::Duration::hours(1)).to_rfc3339())),
+            session_reaper_last_message: RwLock::new(Some("Worker initialized. Ready to sweep stale sessions.".to_string())),
+
+            image_prune_status: RwLock::new("idle".to_string()),
+            image_prune_processed: AtomicUsize::new(0),
+            image_prune_last_run: RwLock::new(None),
+            image_prune_last_success: RwLock::new(None),
+            image_prune_next_run: RwLock::new(Some((chrono::Utc::now() + chrono::Duration::hours(24)).to_rfc3339())),
+            image_prune_last_message: RwLock::new(Some("Worker initialized. Ready to prune orphaned posters.".to_string())),
+
+            duplicate_pruner_status: RwLock::new("idle".to_string()),
+            duplicate_pruner_processed: AtomicUsize::new(0),
+            duplicate_pruner_last_run: RwLock::new(None),
+            duplicate_pruner_last_success: RwLock::new(None),
+            duplicate_pruner_next_run: RwLock::new(Some((chrono::Utc::now() + chrono::Duration::hours(24)).to_rfc3339())),
+            duplicate_pruner_last_message: RwLock::new(Some("Worker initialized. Ready to clean duplicate scrobbles.".to_string())),
+
+            metadata_backfill_status: RwLock::new("idle".to_string()),
+            metadata_backfill_processed: AtomicUsize::new(0),
+            metadata_backfill_last_run: RwLock::new(None),
+            metadata_backfill_last_success: RwLock::new(None),
+            metadata_backfill_next_run: RwLock::new(Some((chrono::Utc::now() + chrono::Duration::hours(24)).to_rfc3339())),
+            metadata_backfill_last_message: RwLock::new(Some("Worker initialized. Ready to backfill metadata & refresh ratings.".to_string())),
+
+            version_check_status: RwLock::new("idle".to_string()),
+            version_check_processed: AtomicUsize::new(0),
+            version_check_last_run: RwLock::new(None),
+            version_check_last_success: RwLock::new(None),
+            version_check_next_run: RwLock::new(Some((chrono::Utc::now() + chrono::Duration::hours(24)).to_rfc3339())),
+            version_check_last_message: RwLock::new(Some("Worker initialized. Ready to check for release updates.".to_string())),
+
+            library_audit_status: RwLock::new("idle".to_string()),
+            library_audit_processed: AtomicUsize::new(0),
+            library_audit_last_run: RwLock::new(None),
+            library_audit_last_success: RwLock::new(None),
+            library_audit_next_run: RwLock::new(Some((chrono::Utc::now() + chrono::Duration::hours(24)).to_rfc3339())),
+            library_audit_last_message: RwLock::new(Some("Worker initialized. Ready to audit connected Radarr & Sonarr libraries.".to_string())),
         }
     }
 
@@ -325,6 +409,156 @@ impl BackgroundTaskTracker {
 
     pub async fn set_media_sync_next_run(&self, next_run: Option<String>) {
         *self.media_sync_next_run.write().await = next_run;
+    }
+
+    pub async fn set_session_reaper_running(&self, pool: Option<&sqlx::SqlitePool>, message: &str) {
+        let now = chrono::Utc::now().to_rfc3339();
+        *self.session_reaper_status.write().await = "running".to_string();
+        *self.session_reaper_last_run.write().await = Some(now.clone());
+        *self.session_reaper_last_message.write().await = Some(message.to_string());
+        if let Some(p) = pool {
+            let _ = crate::api::settings::set_db_setting(p, "task_last_run:session_reaper", &now).await;
+        }
+    }
+
+    pub async fn set_session_reaper_idle(&self, pool: Option<&sqlx::SqlitePool>, processed: usize, message: &str) {
+        let now = chrono::Utc::now().to_rfc3339();
+        *self.session_reaper_status.write().await = "idle".to_string();
+        self.session_reaper_processed.fetch_add(processed, Ordering::Relaxed);
+        *self.session_reaper_last_success.write().await = Some(now.clone());
+        *self.session_reaper_last_message.write().await = Some(message.to_string());
+        if let Some(p) = pool {
+            let _ = crate::api::settings::set_db_setting(p, "task_last_success:session_reaper", &now).await;
+        }
+    }
+
+    pub async fn set_session_reaper_next_run(&self, next_run: Option<String>) {
+        *self.session_reaper_next_run.write().await = next_run;
+    }
+
+    pub async fn set_image_prune_running(&self, pool: Option<&sqlx::SqlitePool>, message: &str) {
+        let now = chrono::Utc::now().to_rfc3339();
+        *self.image_prune_status.write().await = "running".to_string();
+        *self.image_prune_last_run.write().await = Some(now.clone());
+        *self.image_prune_last_message.write().await = Some(message.to_string());
+        if let Some(p) = pool {
+            let _ = crate::api::settings::set_db_setting(p, "task_last_run:image_prune", &now).await;
+        }
+    }
+
+    pub async fn set_image_prune_idle(&self, pool: Option<&sqlx::SqlitePool>, processed: usize, message: &str) {
+        let now = chrono::Utc::now().to_rfc3339();
+        *self.image_prune_status.write().await = "idle".to_string();
+        self.image_prune_processed.fetch_add(processed, Ordering::Relaxed);
+        *self.image_prune_last_success.write().await = Some(now.clone());
+        *self.image_prune_last_message.write().await = Some(message.to_string());
+        if let Some(p) = pool {
+            let _ = crate::api::settings::set_db_setting(p, "task_last_success:image_prune", &now).await;
+        }
+    }
+
+    pub async fn set_image_prune_next_run(&self, next_run: Option<String>) {
+        *self.image_prune_next_run.write().await = next_run;
+    }
+
+    pub async fn set_duplicate_pruner_running(&self, pool: Option<&sqlx::SqlitePool>, message: &str) {
+        let now = chrono::Utc::now().to_rfc3339();
+        *self.duplicate_pruner_status.write().await = "running".to_string();
+        *self.duplicate_pruner_last_run.write().await = Some(now.clone());
+        *self.duplicate_pruner_last_message.write().await = Some(message.to_string());
+        if let Some(p) = pool {
+            let _ = crate::api::settings::set_db_setting(p, "task_last_run:duplicate_pruner", &now).await;
+        }
+    }
+
+    pub async fn set_duplicate_pruner_idle(&self, pool: Option<&sqlx::SqlitePool>, processed: usize, message: &str) {
+        let now = chrono::Utc::now().to_rfc3339();
+        *self.duplicate_pruner_status.write().await = "idle".to_string();
+        self.duplicate_pruner_processed.fetch_add(processed, Ordering::Relaxed);
+        *self.duplicate_pruner_last_success.write().await = Some(now.clone());
+        *self.duplicate_pruner_last_message.write().await = Some(message.to_string());
+        if let Some(p) = pool {
+            let _ = crate::api::settings::set_db_setting(p, "task_last_success:duplicate_pruner", &now).await;
+        }
+    }
+
+    pub async fn set_duplicate_pruner_next_run(&self, next_run: Option<String>) {
+        *self.duplicate_pruner_next_run.write().await = next_run;
+    }
+
+    pub async fn set_metadata_backfill_running(&self, pool: Option<&sqlx::SqlitePool>, message: &str) {
+        let now = chrono::Utc::now().to_rfc3339();
+        *self.metadata_backfill_status.write().await = "running".to_string();
+        *self.metadata_backfill_last_run.write().await = Some(now.clone());
+        *self.metadata_backfill_last_message.write().await = Some(message.to_string());
+        if let Some(p) = pool {
+            let _ = crate::api::settings::set_db_setting(p, "task_last_run:metadata_backfill", &now).await;
+        }
+    }
+
+    pub async fn set_metadata_backfill_idle(&self, pool: Option<&sqlx::SqlitePool>, processed: usize, message: &str) {
+        let now = chrono::Utc::now().to_rfc3339();
+        *self.metadata_backfill_status.write().await = "idle".to_string();
+        self.metadata_backfill_processed.fetch_add(processed, Ordering::Relaxed);
+        *self.metadata_backfill_last_success.write().await = Some(now.clone());
+        *self.metadata_backfill_last_message.write().await = Some(message.to_string());
+        if let Some(p) = pool {
+            let _ = crate::api::settings::set_db_setting(p, "task_last_success:metadata_backfill", &now).await;
+        }
+    }
+
+    pub async fn set_metadata_backfill_next_run(&self, next_run: Option<String>) {
+        *self.metadata_backfill_next_run.write().await = next_run;
+    }
+
+    pub async fn set_version_check_running(&self, pool: Option<&sqlx::SqlitePool>, message: &str) {
+        let now = chrono::Utc::now().to_rfc3339();
+        *self.version_check_status.write().await = "running".to_string();
+        *self.version_check_last_run.write().await = Some(now.clone());
+        *self.version_check_last_message.write().await = Some(message.to_string());
+        if let Some(p) = pool {
+            let _ = crate::api::settings::set_db_setting(p, "task_last_run:version_check", &now).await;
+        }
+    }
+
+    pub async fn set_version_check_idle(&self, pool: Option<&sqlx::SqlitePool>, processed: usize, message: &str) {
+        let now = chrono::Utc::now().to_rfc3339();
+        *self.version_check_status.write().await = "idle".to_string();
+        self.version_check_processed.fetch_add(processed, Ordering::Relaxed);
+        *self.version_check_last_success.write().await = Some(now.clone());
+        *self.version_check_last_message.write().await = Some(message.to_string());
+        if let Some(p) = pool {
+            let _ = crate::api::settings::set_db_setting(p, "task_last_success:version_check", &now).await;
+        }
+    }
+
+    pub async fn set_version_check_next_run(&self, next_run: Option<String>) {
+        *self.version_check_next_run.write().await = next_run;
+    }
+
+    pub async fn set_library_audit_running(&self, pool: Option<&sqlx::SqlitePool>, message: &str) {
+        let now = chrono::Utc::now().to_rfc3339();
+        *self.library_audit_status.write().await = "running".to_string();
+        *self.library_audit_last_run.write().await = Some(now.clone());
+        *self.library_audit_last_message.write().await = Some(message.to_string());
+        if let Some(p) = pool {
+            let _ = crate::api::settings::set_db_setting(p, "task_last_run:library_audit", &now).await;
+        }
+    }
+
+    pub async fn set_library_audit_idle(&self, pool: Option<&sqlx::SqlitePool>, processed: usize, message: &str) {
+        let now = chrono::Utc::now().to_rfc3339();
+        *self.library_audit_status.write().await = "idle".to_string();
+        self.library_audit_processed.fetch_add(processed, Ordering::Relaxed);
+        *self.library_audit_last_success.write().await = Some(now.clone());
+        *self.library_audit_last_message.write().await = Some(message.to_string());
+        if let Some(p) = pool {
+            let _ = crate::api::settings::set_db_setting(p, "task_last_success:library_audit", &now).await;
+        }
+    }
+
+    pub async fn set_library_audit_next_run(&self, next_run: Option<String>) {
+        *self.library_audit_next_run.write().await = next_run;
     }
 
     pub async fn get_tasks_summary(&self, state: &AppState, tvdb_configured: bool) -> Vec<BackgroundTaskInfo> {
@@ -627,7 +861,191 @@ impl BackgroundTaskTracker {
             last_message: self.media_sync_last_message.read().await.clone(),
         };
 
-        vec![image_task, tvdb_task, user_sync_task, tautulli_sync_task, media_sync_task, db_backup_task, db_maintenance_task]
+        let session_reaper_interval = state.get_task_interval_hours("session_reaper").await;
+        let session_reaper_sched_str = format!("Every {} hour{}", session_reaper_interval, if session_reaper_interval == 1 { "" } else { "s" });
+        let stale_sessions_count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM active_sessions WHERE updated_at < datetime('now', '-2 hours')"
+        )
+        .fetch_one(pool)
+        .await
+        .unwrap_or(0);
+
+        let session_reaper_last_run = match self.session_reaper_last_run.read().await.clone() {
+            Some(lr) => Some(lr),
+            None => crate::api::settings::get_db_setting(pool, "task_last_run:session_reaper").await,
+        };
+        let session_reaper_last_success = match self.session_reaper_last_success.read().await.clone() {
+            Some(ls) => Some(ls),
+            None => crate::api::settings::get_db_setting(pool, "task_last_success:session_reaper").await,
+        };
+
+        let session_reaper_task = BackgroundTaskInfo {
+            id: "session_reaper".to_string(),
+            name: "Stale Active Session Reaper".to_string(),
+            description: "Sweeps and cleans up abandoned active playback sessions that have had no heartbeat or playback updates in over 2 hours.".to_string(),
+            status: self.session_reaper_status.read().await.clone(),
+            schedule: session_reaper_sched_str,
+            interval_hours: session_reaper_interval,
+            items_processed: self.session_reaper_processed.load(Ordering::Relaxed),
+            items_pending: stale_sessions_count.max(0) as usize,
+            last_run_at: session_reaper_last_run,
+            last_success_at: session_reaper_last_success,
+            next_run_at: self.session_reaper_next_run.read().await.clone(),
+            last_message: self.session_reaper_last_message.read().await.clone(),
+        };
+
+        let image_prune_interval = state.get_task_interval_hours("image_prune").await;
+        let image_prune_sched_str = format!("Every {} hour{}", image_prune_interval, if image_prune_interval == 1 { "" } else { "s" });
+        let image_prune_last_run = match self.image_prune_last_run.read().await.clone() {
+            Some(lr) => Some(lr),
+            None => crate::api::settings::get_db_setting(pool, "task_last_run:image_prune").await,
+        };
+        let image_prune_last_success = match self.image_prune_last_success.read().await.clone() {
+            Some(ls) => Some(ls),
+            None => crate::api::settings::get_db_setting(pool, "task_last_success:image_prune").await,
+        };
+
+        let image_prune_task = BackgroundTaskInfo {
+            id: "image_prune".to_string(),
+            name: "Orphaned Poster & Cache Pruning".to_string(),
+            description: "Scans the disk-based image cache directory and deletes unreferenced or orphaned poster image files to reclaim storage.".to_string(),
+            status: self.image_prune_status.read().await.clone(),
+            schedule: image_prune_sched_str,
+            interval_hours: image_prune_interval,
+            items_processed: self.image_prune_processed.load(Ordering::Relaxed),
+            items_pending: 0,
+            last_run_at: image_prune_last_run,
+            last_success_at: image_prune_last_success,
+            next_run_at: self.image_prune_next_run.read().await.clone(),
+            last_message: self.image_prune_last_message.read().await.clone(),
+        };
+
+        let duplicate_pruner_interval = state.get_task_interval_hours("duplicate_pruner").await;
+        let duplicate_pruner_sched_str = format!("Every {} hour{}", duplicate_pruner_interval, if duplicate_pruner_interval == 1 { "" } else { "s" });
+        let duplicate_pruner_last_run = match self.duplicate_pruner_last_run.read().await.clone() {
+            Some(lr) => Some(lr),
+            None => crate::api::settings::get_db_setting(pool, "task_last_run:duplicate_pruner").await,
+        };
+        let duplicate_pruner_last_success = match self.duplicate_pruner_last_success.read().await.clone() {
+            Some(ls) => Some(ls),
+            None => crate::api::settings::get_db_setting(pool, "task_last_success:duplicate_pruner").await,
+        };
+
+        let duplicate_pruner_task = BackgroundTaskInfo {
+            id: "duplicate_pruner".to_string(),
+            name: "Auto Duplicate Scrobble Cleaner".to_string(),
+            description: "Scans watch histories across all accounts for rapid duplicate scrobbles (within 2-hour window) and safely removes duplicates.".to_string(),
+            status: self.duplicate_pruner_status.read().await.clone(),
+            schedule: duplicate_pruner_sched_str,
+            interval_hours: duplicate_pruner_interval,
+            items_processed: self.duplicate_pruner_processed.load(Ordering::Relaxed),
+            items_pending: 0,
+            last_run_at: duplicate_pruner_last_run,
+            last_success_at: duplicate_pruner_last_success,
+            next_run_at: self.duplicate_pruner_next_run.read().await.clone(),
+            last_message: self.duplicate_pruner_last_message.read().await.clone(),
+        };
+
+        let metadata_backfill_interval = state.get_task_interval_hours("metadata_backfill").await;
+        let metadata_backfill_sched_str = format!("Every {} hour{}", metadata_backfill_interval, if metadata_backfill_interval == 1 { "" } else { "s" });
+        let pending_backfill: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM scrobbles WHERE (overview IS NULL OR overview = '') OR (genres IS NULL OR genres = '') OR (actors IS NULL OR actors = '')"
+        )
+        .fetch_one(pool)
+        .await
+        .unwrap_or(0);
+
+        let metadata_backfill_last_run = match self.metadata_backfill_last_run.read().await.clone() {
+            Some(lr) => Some(lr),
+            None => crate::api::settings::get_db_setting(pool, "task_last_run:metadata_backfill").await,
+        };
+        let metadata_backfill_last_success = match self.metadata_backfill_last_success.read().await.clone() {
+            Some(ls) => Some(ls),
+            None => crate::api::settings::get_db_setting(pool, "task_last_success:metadata_backfill").await,
+        };
+
+        let metadata_backfill_task = BackgroundTaskInfo {
+            id: "metadata_backfill".to_string(),
+            name: "Metadata Backfill & Stale Rating Refresh".to_string(),
+            description: "Periodically re-evaluates scrobbles missing core metadata and refreshes community ratings for recently watched media.".to_string(),
+            status: self.metadata_backfill_status.read().await.clone(),
+            schedule: metadata_backfill_sched_str,
+            interval_hours: metadata_backfill_interval,
+            items_processed: self.metadata_backfill_processed.load(Ordering::Relaxed),
+            items_pending: pending_backfill.max(0) as usize,
+            last_run_at: metadata_backfill_last_run,
+            last_success_at: metadata_backfill_last_success,
+            next_run_at: self.metadata_backfill_next_run.read().await.clone(),
+            last_message: self.metadata_backfill_last_message.read().await.clone(),
+        };
+
+        let version_check_interval = state.get_task_interval_hours("version_check").await;
+        let version_check_sched_str = format!("Every {} hour{}", version_check_interval, if version_check_interval == 1 { "" } else { "s" });
+        let version_check_last_run = match self.version_check_last_run.read().await.clone() {
+            Some(lr) => Some(lr),
+            None => crate::api::settings::get_db_setting(pool, "task_last_run:version_check").await,
+        };
+        let version_check_last_success = match self.version_check_last_success.read().await.clone() {
+            Some(ls) => Some(ls),
+            None => crate::api::settings::get_db_setting(pool, "task_last_success:version_check").await,
+        };
+
+        let version_check_task = BackgroundTaskInfo {
+            id: "version_check".to_string(),
+            name: "GitHub Release & Update Check".to_string(),
+            description: "Periodically queries GitHub releases API for new BingeSync updates, caching the latest release tag and changelog notes.".to_string(),
+            status: self.version_check_status.read().await.clone(),
+            schedule: version_check_sched_str,
+            interval_hours: version_check_interval,
+            items_processed: self.version_check_processed.load(Ordering::Relaxed),
+            items_pending: 0,
+            last_run_at: version_check_last_run,
+            last_success_at: version_check_last_success,
+            next_run_at: self.version_check_next_run.read().await.clone(),
+            last_message: self.version_check_last_message.read().await.clone(),
+        };
+
+        let library_audit_interval = state.get_task_interval_hours("library_audit").await;
+        let library_audit_sched_str = format!("Every {} hour{}", library_audit_interval, if library_audit_interval == 1 { "" } else { "s" });
+        let library_audit_last_run = match self.library_audit_last_run.read().await.clone() {
+            Some(lr) => Some(lr),
+            None => crate::api::settings::get_db_setting(pool, "task_last_run:library_audit").await,
+        };
+        let library_audit_last_success = match self.library_audit_last_success.read().await.clone() {
+            Some(ls) => Some(ls),
+            None => crate::api::settings::get_db_setting(pool, "task_last_success:library_audit").await,
+        };
+
+        let library_audit_task = BackgroundTaskInfo {
+            id: "library_audit".to_string(),
+            name: "Radarr & Sonarr Library Desync Audit".to_string(),
+            description: "Cross-references watched history against connected Radarr and Sonarr libraries to audit reclaimable disk storage.".to_string(),
+            status: self.library_audit_status.read().await.clone(),
+            schedule: library_audit_sched_str,
+            interval_hours: library_audit_interval,
+            items_processed: self.library_audit_processed.load(Ordering::Relaxed),
+            items_pending: 0,
+            last_run_at: library_audit_last_run,
+            last_success_at: library_audit_last_success,
+            next_run_at: self.library_audit_next_run.read().await.clone(),
+            last_message: self.library_audit_last_message.read().await.clone(),
+        };
+
+        vec![
+            image_task,
+            tvdb_task,
+            user_sync_task,
+            tautulli_sync_task,
+            media_sync_task,
+            db_backup_task,
+            db_maintenance_task,
+            session_reaper_task,
+            image_prune_task,
+            duplicate_pruner_task,
+            metadata_backfill_task,
+            version_check_task,
+            library_audit_task,
+        ]
     }
 }
 
@@ -835,6 +1253,78 @@ pub async fn trigger_admin_task_handler(
                 "message": "Watch history sync worker has been signaled to run immediately"
             })))
         }
+        "session_reaper" | "reaper" => {
+            state.task_tracker.set_session_reaper_running(Some(&state.pool), "Manual reaper run triggered...").await;
+            state.session_reaper_notify.notify_waiters();
+            state.session_reaper_notify.notify_one();
+            state.log_buffer.push("INFO", "bingesync::tasks", "Manual run triggered for Stale Active Session Reaper");
+            Ok(Json(serde_json::json!({
+                "status": "triggered",
+                "task_id": "session_reaper",
+                "forced": false,
+                "message": "Session reaper worker has been signaled to sweep stale sessions immediately"
+            })))
+        }
+        "image_prune" | "prune_images" => {
+            state.task_tracker.set_image_prune_running(Some(&state.pool), "Manual image prune triggered...").await;
+            state.image_prune_notify.notify_waiters();
+            state.image_prune_notify.notify_one();
+            state.log_buffer.push("INFO", "bingesync::tasks", "Manual run triggered for Orphaned Poster Pruning worker");
+            Ok(Json(serde_json::json!({
+                "status": "triggered",
+                "task_id": "image_prune",
+                "forced": false,
+                "message": "Image pruner worker has been signaled to clean orphaned posters immediately"
+            })))
+        }
+        "duplicate_pruner" | "duplicates" | "dedupe" => {
+            state.task_tracker.set_duplicate_pruner_running(Some(&state.pool), "Manual duplicate cleanup triggered...").await;
+            state.duplicate_pruner_notify.notify_waiters();
+            state.duplicate_pruner_notify.notify_one();
+            state.log_buffer.push("INFO", "bingesync::tasks", "Manual run triggered for Duplicate Scrobble Cleaner");
+            Ok(Json(serde_json::json!({
+                "status": "triggered",
+                "task_id": "duplicate_pruner",
+                "forced": false,
+                "message": "Duplicate pruner worker has been signaled to run immediately"
+            })))
+        }
+        "metadata_backfill" | "backfill" => {
+            state.task_tracker.set_metadata_backfill_running(Some(&state.pool), "Manual metadata backfill triggered...").await;
+            state.metadata_backfill_notify.notify_waiters();
+            state.metadata_backfill_notify.notify_one();
+            state.log_buffer.push("INFO", "bingesync::tasks", "Manual run triggered for Metadata Backfill worker");
+            Ok(Json(serde_json::json!({
+                "status": "triggered",
+                "task_id": "metadata_backfill",
+                "forced": false,
+                "message": "Metadata backfill worker has been signaled to run immediately"
+            })))
+        }
+        "version_check" | "updates" | "check_updates" => {
+            state.task_tracker.set_version_check_running(Some(&state.pool), "Manual version check triggered...").await;
+            state.version_check_notify.notify_waiters();
+            state.version_check_notify.notify_one();
+            state.log_buffer.push("INFO", "bingesync::tasks", "Manual run triggered for GitHub Release Version Check");
+            Ok(Json(serde_json::json!({
+                "status": "triggered",
+                "task_id": "version_check",
+                "forced": false,
+                "message": "Version check worker has been signaled to run immediately"
+            })))
+        }
+        "library_audit" | "audit_libraries" | "arr_audit" => {
+            state.task_tracker.set_library_audit_running(Some(&state.pool), "Manual library audit triggered...").await;
+            state.library_audit_notify.notify_waiters();
+            state.library_audit_notify.notify_one();
+            state.log_buffer.push("INFO", "bingesync::tasks", "Manual run triggered for Radarr/Sonarr Library Audit");
+            Ok(Json(serde_json::json!({
+                "status": "triggered",
+                "task_id": "library_audit",
+                "forced": false,
+                "message": "Library audit worker has been signaled to run immediately"
+            })))
+        }
         _ => Err((
             StatusCode::NOT_FOUND,
             Json(serde_json::json!({ "error": format!("Unknown background task: {}", task_id) })),
@@ -1022,6 +1512,27 @@ pub async fn update_admin_task_schedule_handler(
         }
         "tautulli_sync" | "tautulli" => {
             state.task_tracker.set_tautulli_sync_next_run(Some(next_run.clone())).await;
+        }
+        "media_sync" | "media_writeback" | "writeback" => {
+            state.task_tracker.set_media_sync_next_run(Some(next_run.clone())).await;
+        }
+        "session_reaper" | "reaper" => {
+            state.task_tracker.set_session_reaper_next_run(Some(next_run.clone())).await;
+        }
+        "image_prune" | "prune_images" => {
+            state.task_tracker.set_image_prune_next_run(Some(next_run.clone())).await;
+        }
+        "duplicate_pruner" | "duplicates" | "dedupe" => {
+            state.task_tracker.set_duplicate_pruner_next_run(Some(next_run.clone())).await;
+        }
+        "metadata_backfill" | "backfill" => {
+            state.task_tracker.set_metadata_backfill_next_run(Some(next_run.clone())).await;
+        }
+        "version_check" | "updates" | "check_updates" => {
+            state.task_tracker.set_version_check_next_run(Some(next_run.clone())).await;
+        }
+        "library_audit" | "audit_libraries" | "arr_audit" => {
+            state.task_tracker.set_library_audit_next_run(Some(next_run.clone())).await;
         }
         _ => {}
     }

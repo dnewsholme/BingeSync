@@ -889,9 +889,9 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     await page.click('#admin-subnav-pills button[data-subview="admin-sub-tasks"]');
     await expect(page.locator('#admin-sub-tasks')).toBeVisible();
 
-    // Verify task cards exist (poster_cache, tvdb_metadata, user_sync, tautulli_sync, media_sync, db_backup, and db_maintenance)
+    // Verify task cards exist (13 tasks total across maintenance, sync, images, metadata, and audit)
     const taskCards = page.locator('.task-card');
-    await expect(taskCards).toHaveCount(7);
+    await expect(taskCards).toHaveCount(13);
     const posterCard = page.locator('.task-card', { hasText: 'Media Poster & Thumbnail Caching' });
     await expect(posterCard).toBeVisible();
     await expect(page.locator('.task-card', { hasText: /Metadata Enrichment/ })).toBeVisible();
@@ -903,6 +903,12 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     await expect(backupCard).toContainText('Backups Stored:');
     const maintenanceCard = page.locator('.task-card', { hasText: 'Database Maintenance' });
     await expect(maintenanceCard).toBeVisible();
+    await expect(page.locator('.task-card', { hasText: 'Stale Active Session Reaper' })).toBeVisible();
+    await expect(page.locator('.task-card', { hasText: 'Orphaned Poster & Cache Pruning' })).toBeVisible();
+    await expect(page.locator('.task-card', { hasText: 'Auto Duplicate Scrobble Cleaner' })).toBeVisible();
+    await expect(page.locator('.task-card', { hasText: 'Metadata Backfill & Stale Rating Refresh' })).toBeVisible();
+    await expect(page.locator('.task-card', { hasText: 'GitHub Release & Update Check' })).toBeVisible();
+    await expect(page.locator('.task-card', { hasText: 'Radarr & Sonarr Library Desync Audit' })).toBeVisible();
 
     // Verify View Logs button exists on each background task card
     await expect(posterCard.locator('.btn-task-logs')).toBeVisible();

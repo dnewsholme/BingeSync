@@ -28,6 +28,7 @@ pub mod overseerr;
 pub mod media_writeback;
 pub mod ssrf;
 pub mod rate_limit;
+pub mod maintenance_tasks;
 
 use axum::{
     routing::{delete, get, post, put},
@@ -53,6 +54,12 @@ pub struct AppState {
     pub db_maintenance_notify: Arc<tokio::sync::Notify>,
     pub tautulli_sync_notify: Arc<tokio::sync::Notify>,
     pub media_sync_notify: Arc<tokio::sync::Notify>,
+    pub session_reaper_notify: Arc<tokio::sync::Notify>,
+    pub image_prune_notify: Arc<tokio::sync::Notify>,
+    pub duplicate_pruner_notify: Arc<tokio::sync::Notify>,
+    pub metadata_backfill_notify: Arc<tokio::sync::Notify>,
+    pub version_check_notify: Arc<tokio::sync::Notify>,
+    pub library_audit_notify: Arc<tokio::sync::Notify>,
     pub http_client: reqwest::Client,
 }
 
@@ -71,6 +78,12 @@ impl AppState {
             db_maintenance_notify: Arc::new(tokio::sync::Notify::new()),
             tautulli_sync_notify: Arc::new(tokio::sync::Notify::new()),
             media_sync_notify: Arc::new(tokio::sync::Notify::new()),
+            session_reaper_notify: Arc::new(tokio::sync::Notify::new()),
+            image_prune_notify: Arc::new(tokio::sync::Notify::new()),
+            duplicate_pruner_notify: Arc::new(tokio::sync::Notify::new()),
+            metadata_backfill_notify: Arc::new(tokio::sync::Notify::new()),
+            version_check_notify: Arc::new(tokio::sync::Notify::new()),
+            library_audit_notify: Arc::new(tokio::sync::Notify::new()),
             http_client: reqwest::Client::builder()
                 .timeout(std::time::Duration::from_secs(15))
                 .danger_accept_invalid_certs(true)
@@ -230,6 +243,13 @@ impl AppState {
             "db_backup" | "backup" => ("task_db_backup_interval_hours", 24),
             "db_maintenance" | "maintenance" => ("task_db_maintenance_interval_hours", 168),
             "tautulli_sync" | "tautulli" => ("task_tautulli_sync_interval_hours", 1),
+            "media_sync" | "media_writeback" | "writeback" => ("task_media_sync_interval_hours", 4),
+            "session_reaper" | "reaper" => ("task_session_reaper_interval_hours", 1),
+            "image_prune" | "prune_images" => ("task_image_prune_interval_hours", 24),
+            "duplicate_pruner" | "duplicates" => ("task_duplicate_pruner_interval_hours", 24),
+            "metadata_backfill" | "backfill" => ("task_metadata_backfill_interval_hours", 24),
+            "version_check" | "version" => ("task_version_check_interval_hours", 24),
+            "library_audit" | "audit" => ("task_library_audit_interval_hours", 24),
             _ => return 4,
         };
         if let Some(val) = settings::get_db_setting(&self.pool, key).await {
@@ -250,6 +270,13 @@ impl AppState {
             "db_backup" | "backup" => "task_db_backup_interval_hours",
             "db_maintenance" | "maintenance" => "task_db_maintenance_interval_hours",
             "tautulli_sync" | "tautulli" => "task_tautulli_sync_interval_hours",
+            "media_sync" | "media_writeback" | "writeback" => "task_media_sync_interval_hours",
+            "session_reaper" | "reaper" => "task_session_reaper_interval_hours",
+            "image_prune" | "prune_images" => "task_image_prune_interval_hours",
+            "duplicate_pruner" | "duplicates" => "task_duplicate_pruner_interval_hours",
+            "metadata_backfill" | "backfill" => "task_metadata_backfill_interval_hours",
+            "version_check" | "version" => "task_version_check_interval_hours",
+            "library_audit" | "audit" => "task_library_audit_interval_hours",
             _ => return Ok(()),
         };
         let clamped = hours.clamp(1, 720);

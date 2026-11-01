@@ -2539,7 +2539,7 @@ async fn test_admin_settings_logs_and_tasks_management() {
     let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
     let tasks_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     let tasks = tasks_json["tasks"].as_array().unwrap();
-    assert_eq!(tasks.len(), 7);
+    assert_eq!(tasks.len(), 13);
     let image_task = tasks.iter().find(|t| t["id"] == "image_cache").unwrap();
     let tvdb_task = tasks.iter().find(|t| t["id"] == "tvdb_metadata").unwrap();
     let user_sync_task = tasks.iter().find(|t| t["id"] == "user_sync").unwrap();
@@ -2547,6 +2547,12 @@ async fn test_admin_settings_logs_and_tasks_management() {
     let media_sync_task = tasks.iter().find(|t| t["id"] == "media_sync").unwrap();
     let db_backup_task = tasks.iter().find(|t| t["id"] == "db_backup").unwrap();
     let db_maintenance_task = tasks.iter().find(|t| t["id"] == "db_maintenance").unwrap();
+    let session_reaper_task = tasks.iter().find(|t| t["id"] == "session_reaper").unwrap();
+    let image_prune_task = tasks.iter().find(|t| t["id"] == "image_prune").unwrap();
+    let duplicate_pruner_task = tasks.iter().find(|t| t["id"] == "duplicate_pruner").unwrap();
+    let metadata_backfill_task = tasks.iter().find(|t| t["id"] == "metadata_backfill").unwrap();
+    let version_check_task = tasks.iter().find(|t| t["id"] == "version_check").unwrap();
+    let library_audit_task = tasks.iter().find(|t| t["id"] == "library_audit").unwrap();
     assert_eq!(media_sync_task["name"], "Watch History Sync (Plex & Jellyfin)");
     assert_eq!(media_sync_task["interval_hours"], 4);
     assert!(media_sync_task["next_run_at"].is_string());
@@ -2566,6 +2572,14 @@ async fn test_admin_settings_logs_and_tasks_management() {
     assert_eq!(db_maintenance_task["interval_hours"], 168);
     assert_eq!(db_maintenance_task["schedule"], "Every 168 hours (Weekly)");
     assert!(db_maintenance_task["next_run_at"].is_string());
+    assert_eq!(session_reaper_task["interval_hours"], 1);
+    assert_eq!(session_reaper_task["schedule"], "Every 1 hour");
+    assert!(session_reaper_task["next_run_at"].is_string());
+    assert_eq!(image_prune_task["interval_hours"], 24);
+    assert_eq!(duplicate_pruner_task["interval_hours"], 24);
+    assert_eq!(metadata_backfill_task["interval_hours"], 24);
+    assert_eq!(version_check_task["interval_hours"], 24);
+    assert_eq!(library_audit_task["interval_hours"], 24);
 
     // 7. Test configuring background task schedule
     let req = Request::builder()
@@ -2618,6 +2632,18 @@ async fn test_admin_settings_logs_and_tasks_management() {
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
+
+    // 10. Test triggering newly added background tasks (session_reaper, duplicate_pruner, image_prune, metadata_backfill, version_check, library_audit)
+    for task_name in &["session_reaper", "duplicate_pruner", "image_prune", "metadata_backfill", "version_check", "library_audit"] {
+        let req = Request::builder()
+            .method("POST")
+            .uri(format!("/api/v1/admin/tasks/{}/run", task_name))
+            .header(header::AUTHORIZATION, format!("Bearer {}", admin_jwt))
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
 
     // 9. Test logs search filtering (for viewing logs specific to a background job)
     let req = Request::builder()

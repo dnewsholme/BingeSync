@@ -5505,6 +5505,30 @@ function renderAdminTasks(tasks) {
       icon = '🧹';
       iconColor = 'rgba(14, 165, 233, 0.15)';
       iconTextColor = '#38bdf8';
+    } else if (t.id === 'session_reaper') {
+      icon = '⏱️';
+      iconColor = 'rgba(239, 68, 68, 0.15)';
+      iconTextColor = '#f87171';
+    } else if (t.id === 'image_prune') {
+      icon = '🗑️';
+      iconColor = 'rgba(244, 63, 94, 0.15)';
+      iconTextColor = '#fb7185';
+    } else if (t.id === 'duplicate_pruner') {
+      icon = '✂️';
+      iconColor = 'rgba(245, 158, 11, 0.15)';
+      iconTextColor = '#fbbf24';
+    } else if (t.id === 'metadata_backfill') {
+      icon = '✨';
+      iconColor = 'rgba(139, 92, 246, 0.15)';
+      iconTextColor = '#a78bfa';
+    } else if (t.id === 'version_check') {
+      icon = '🚀';
+      iconColor = 'rgba(6, 182, 212, 0.15)';
+      iconTextColor = '#22d3ee';
+    } else if (t.id === 'library_audit') {
+      icon = '📦';
+      iconColor = 'rgba(34, 197, 94, 0.15)';
+      iconTextColor = '#4ade80';
     }
 
     const statLabel = t.id === 'db_backup' 
@@ -5513,6 +5537,18 @@ function renderAdminTasks(tasks) {
       ? 'Maintenance Runs:' 
       : (t.id === 'tautulli_sync' || t.id === 'tautulli') 
       ? 'Synced Watches:' 
+      : t.id === 'session_reaper'
+      ? 'Stale Sessions Reaped:'
+      : t.id === 'image_prune'
+      ? 'Orphan Posters Pruned:'
+      : t.id === 'duplicate_pruner'
+      ? 'Duplicates Cleaned:'
+      : t.id === 'metadata_backfill'
+      ? 'Scrobbles Enriched:'
+      : t.id === 'version_check'
+      ? 'Release Checks:'
+      : t.id === 'library_audit'
+      ? 'Items Audited:'
       : 'Processed Items:';
 
     const statValue = t.id === 'db_backup' 
@@ -5521,9 +5557,21 @@ function renderAdminTasks(tasks) {
       ? `${t.items_processed} run${t.items_processed === 1 ? '' : 's'} completed` 
       : (t.id === 'tautulli_sync' || t.id === 'tautulli') 
       ? `${t.items_processed} scrobbles synced` 
+      : t.id === 'session_reaper'
+      ? `${t.items_processed} reaped (${pending} pending)`
+      : t.id === 'image_prune'
+      ? `${t.items_processed} files deleted`
+      : t.id === 'duplicate_pruner'
+      ? `${t.items_processed} duplicates removed`
+      : t.id === 'metadata_backfill'
+      ? `${t.items_processed} refreshed (${pending} pending)`
+      : t.id === 'version_check'
+      ? `${t.items_processed} check${t.items_processed === 1 ? '' : 's'} performed`
+      : t.id === 'library_audit'
+      ? `${t.items_processed} items audited`
       : `${t.items_processed} processed (${pending} pending)`;
 
-    const hasForceRefresh = t.id !== 'db_backup' && t.id !== 'backup' && t.id !== 'db_maintenance' && t.id !== 'maintenance' && t.id !== 'tautulli_sync' && t.id !== 'tautulli';
+    const hasForceRefresh = t.id === 'image_cache' || t.id === 'tvdb_metadata' || t.id === 'user_sync';
 
     return `
       <div class="task-card" data-task-id="${t.id}">
@@ -5553,12 +5601,12 @@ function renderAdminTasks(tasks) {
             <div class="task-metric-label">Run Schedule:</div>
             <div class="task-metric-val">
               <select class="input-select task-schedule-select" data-task-id="${t.id}" style="padding: 2px 6px; font-size: 0.8rem; width: auto; background: var(--bg-card); color: var(--text-main); border: 1px solid var(--border-color); border-radius: 4px;">
-                <option value="1" ${intervalHours === 1 ? 'selected' : ''}>Every 1 hour${t.id === 'tautulli_sync' || t.id === 'tautulli' ? ' (Default)' : ''}</option>
+                <option value="1" ${intervalHours === 1 ? 'selected' : ''}>Every 1 hour${t.id === 'tautulli_sync' || t.id === 'tautulli' || t.id === 'session_reaper' ? ' (Default)' : ''}</option>
                 <option value="2" ${intervalHours === 2 ? 'selected' : ''}>Every 2 hours</option>
-                <option value="4" ${intervalHours === 4 ? 'selected' : ''}>Every 4 hours${t.id !== 'db_backup' && t.id !== 'db_maintenance' && t.id !== 'tautulli_sync' && t.id !== 'tautulli' ? ' (Default)' : ''}</option>
-                <option value="6" ${intervalHours === 6 ? 'selected' : ''}>Every 6 hours</option>
-                <option value="12" ${intervalHours === 12 ? 'selected' : ''}>Every 12 hours</option>
-                <option value="24" ${intervalHours === 24 ? 'selected' : ''}>Every 24 hours (Daily${t.id === 'db_backup' ? ' - Default' : ''})</option>
+                <option value="4" ${intervalHours === 4 ? 'selected' : ''}>Every 4 hours${t.id === 'image_cache' || t.id === 'tvdb_metadata' || t.id === 'user_sync' || t.id === 'media_sync' ? ' (Default)' : ''}</option>
+                <option value="6" ${intervalHours === 6 ? 'selected' : ''}>Every 6 hours${t.id === 'duplicate_pruner' ? ' (Default)' : ''}</option>
+                <option value="12" ${intervalHours === 12 ? 'selected' : ''}>Every 12 hours${t.id === 'metadata_backfill' ? ' (Default)' : ''}</option>
+                <option value="24" ${intervalHours === 24 ? 'selected' : ''}>Every 24 hours (Daily${t.id === 'db_backup' || t.id === 'image_prune' || t.id === 'version_check' || t.id === 'library_audit' ? ' - Default' : ''})</option>
                 <option value="168" ${intervalHours === 168 ? 'selected' : ''}>Every 168 hours (Weekly${t.id === 'db_maintenance' ? ' - Default' : ''})</option>
               </select>
               <span class="schedule-save-status" data-task-id="${t.id}" style="font-size: 0.72rem; color: #34d399;"></span>
