@@ -14,7 +14,9 @@ use std::sync::Arc;
 use tower::ServiceExt;
 
 async fn setup_test_app() -> (axum::Router, sqlx::SqlitePool, Arc<Config>) {
-    let pool = init_db("sqlite::memory:").await.expect("Failed to create in-memory sqlite db");
+    let pool = init_db("sqlite::memory:")
+        .await
+        .expect("Failed to create in-memory sqlite db");
     let mut config = Config::from_env();
     config.jwt_secret = "test-secret-key-12345".to_string();
     config.app_url = "http://localhost:8080".to_string();
@@ -48,10 +50,15 @@ async fn test_dev_login_and_me() {
     let res = app.clone().oneshot(login_req).await.unwrap();
     assert_eq!(res.status(), StatusCode::OK);
 
-    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let login_data: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
     let token = login_data["token"].as_str().unwrap().to_string();
-    let webhook_token = login_data["user"]["webhook_token"].as_str().unwrap().to_string();
+    let webhook_token = login_data["user"]["webhook_token"]
+        .as_str()
+        .unwrap()
+        .to_string();
     assert!(!token.is_empty());
     assert!(!webhook_token.is_empty());
 
@@ -66,7 +73,9 @@ async fn test_dev_login_and_me() {
     let res = app.oneshot(me_req).await.unwrap();
     assert_eq!(res.status(), StatusCode::OK);
 
-    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let user_resp: UserResponse = serde_json::from_slice(&body_bytes).unwrap();
     assert_eq!(user_resp.email, "tester@bingesync.local");
     assert_eq!(user_resp.display_name, "Test User");
@@ -160,7 +169,9 @@ async fn test_plex_webhook_scrobble_movie_and_episode() {
     let res3 = app.clone().oneshot(history_req).await.unwrap();
     assert_eq!(res3.status(), StatusCode::OK);
 
-    let body_bytes = axum::body::to_bytes(res3.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(res3.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let hist: HistoryResponse = serde_json::from_slice(&body_bytes).unwrap();
     assert_eq!(hist.total, 2);
     assert_eq!(hist.items.len(), 2);
@@ -174,7 +185,9 @@ async fn test_plex_webhook_scrobble_movie_and_episode() {
         .unwrap();
 
     let res4 = app.clone().oneshot(stats_req).await.unwrap();
-    let body_bytes = axum::body::to_bytes(res4.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(res4.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let stats: StatsSummary = serde_json::from_slice(&body_bytes).unwrap();
     assert_eq!(stats.total_scrobbles, 2);
     assert_eq!(stats.movies_watched, 1);
@@ -192,7 +205,9 @@ async fn test_plex_webhook_scrobble_movie_and_episode() {
         .unwrap();
 
     let res5 = app.oneshot(timeline_req).await.unwrap();
-    let body_bytes = axum::body::to_bytes(res5.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(res5.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let timeline: Vec<TimelineDay> = serde_json::from_slice(&body_bytes).unwrap();
     assert_eq!(timeline.len(), 1);
     assert_eq!(timeline[0].total_count, 2);
@@ -257,7 +272,9 @@ async fn test_multi_user_isolation() {
         .body(Body::empty())
         .unwrap();
     let res_a = app.clone().oneshot(req_a).await.unwrap();
-    let body_a = axum::body::to_bytes(res_a.into_body(), usize::MAX).await.unwrap();
+    let body_a = axum::body::to_bytes(res_a.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let hist_a: HistoryResponse = serde_json::from_slice(&body_a).unwrap();
     assert_eq!(hist_a.total, 1);
     assert_eq!(hist_a.items[0].title, "Interstellar");
@@ -271,7 +288,9 @@ async fn test_multi_user_isolation() {
         .body(Body::empty())
         .unwrap();
     let res_b = app.oneshot(req_b).await.unwrap();
-    let body_b = axum::body::to_bytes(res_b.into_body(), usize::MAX).await.unwrap();
+    let body_b = axum::body::to_bytes(res_b.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let hist_b: HistoryResponse = serde_json::from_slice(&body_b).unwrap();
     assert_eq!(hist_b.total, 0);
     assert_eq!(hist_b.items.len(), 0);
@@ -306,7 +325,9 @@ async fn test_webhook_token_regeneration() {
     let res = app.clone().oneshot(regen_req).await.unwrap();
     assert_eq!(res.status(), StatusCode::OK);
 
-    let body = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(res.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let regen_data: serde_json::Value = serde_json::from_slice(&body).unwrap();
     let new_token = regen_data["webhook_token"].as_str().unwrap().to_string();
     assert_ne!(old_token, new_token);
@@ -316,7 +337,9 @@ async fn test_webhook_token_regeneration() {
         .method("POST")
         .uri(format!("/api/v1/webhooks/plex/{}", old_token))
         .header(header::CONTENT_TYPE, "application/json")
-        .body(Body::from(json!({ "event": "media.scrobble", "Metadata": { "title": "Old" } }).to_string()))
+        .body(Body::from(
+            json!({ "event": "media.scrobble", "Metadata": { "title": "Old" } }).to_string(),
+        ))
         .unwrap();
 
     let res_old = app.clone().oneshot(old_webhook_req).await.unwrap();
@@ -327,7 +350,9 @@ async fn test_webhook_token_regeneration() {
         .method("POST")
         .uri(format!("/api/v1/webhooks/plex/{}", new_token))
         .header(header::CONTENT_TYPE, "application/json")
-        .body(Body::from(json!({ "event": "media.scrobble", "Metadata": { "title": "New" } }).to_string()))
+        .body(Body::from(
+            json!({ "event": "media.scrobble", "Metadata": { "title": "New" } }).to_string(),
+        ))
         .unwrap();
 
     let res_new = app.oneshot(new_webhook_req).await.unwrap();
@@ -385,7 +410,9 @@ async fn test_active_session_playback_state() {
     let res = app.clone().oneshot(now_playing_req).await.unwrap();
     assert_eq!(res.status(), StatusCode::OK);
 
-    let body = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(res.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let data: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(data["now_playing"]["title"], "Dune: Part Two");
     assert_eq!(data["now_playing"]["state"], "playing");
@@ -419,7 +446,9 @@ async fn test_active_session_playback_state() {
         .unwrap();
 
     let res = app.oneshot(now_playing_req2).await.unwrap();
-    let body = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(res.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let data: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert!(data["now_playing"].is_null());
 }
@@ -460,7 +489,9 @@ async fn test_manual_scrobble_filter_search_and_delete() {
 
     let res = app.clone().oneshot(req).await.unwrap();
     assert_eq!(res.status(), StatusCode::CREATED);
-    let body = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(res.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let created_movie: Scrobble = serde_json::from_slice(&body).unwrap();
 
     // 2. Manually create episode scrobble
@@ -495,7 +526,9 @@ async fn test_manual_scrobble_filter_search_and_delete() {
         .unwrap();
 
     let res_f = app.clone().oneshot(req_filter).await.unwrap();
-    let body_f = axum::body::to_bytes(res_f.into_body(), usize::MAX).await.unwrap();
+    let body_f = axum::body::to_bytes(res_f.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let hist_f: HistoryResponse = serde_json::from_slice(&body_f).unwrap();
     assert_eq!(hist_f.total, 1);
     assert_eq!(hist_f.items[0].title, "The Dark Knight");
@@ -509,10 +542,15 @@ async fn test_manual_scrobble_filter_search_and_delete() {
         .unwrap();
 
     let res_s = app.clone().oneshot(req_search).await.unwrap();
-    let body_s = axum::body::to_bytes(res_s.into_body(), usize::MAX).await.unwrap();
+    let body_s = axum::body::to_bytes(res_s.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let hist_s: HistoryResponse = serde_json::from_slice(&body_s).unwrap();
     assert_eq!(hist_s.total, 1);
-    assert_eq!(hist_s.items[0].grandparent_title.as_deref(), Some("Severance"));
+    assert_eq!(
+        hist_s.items[0].grandparent_title.as_deref(),
+        Some("Severance")
+    );
 
     // 5. Delete movie scrobble
     let del_req = Request::builder()
@@ -534,7 +572,9 @@ async fn test_manual_scrobble_filter_search_and_delete() {
         .unwrap();
 
     let res_a = app.oneshot(req_all).await.unwrap();
-    let body_a = axum::body::to_bytes(res_a.into_body(), usize::MAX).await.unwrap();
+    let body_a = axum::body::to_bytes(res_a.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let hist_a: HistoryResponse = serde_json::from_slice(&body_a).unwrap();
     assert_eq!(hist_a.total, 1);
     assert_eq!(hist_a.items[0].title, "Pilot");
@@ -563,7 +603,8 @@ async fn test_multipart_form_data_plex_webhook() {
             "year": 2024,
             "duration": 8880000
         }
-    }).to_string();
+    })
+    .to_string();
 
     let boundary = "---------------------------974767299852498929531610575";
     let body_str = format!(
@@ -594,7 +635,9 @@ async fn test_multipart_form_data_plex_webhook() {
 
     let res_h = app.oneshot(hist_req).await.unwrap();
     assert_eq!(res_h.status(), StatusCode::OK);
-    let body_h = axum::body::to_bytes(res_h.into_body(), usize::MAX).await.unwrap();
+    let body_h = axum::body::to_bytes(res_h.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let hist: HistoryResponse = serde_json::from_slice(&body_h).unwrap();
     assert_eq!(hist.total, 1);
     assert_eq!(hist.items[0].title, "Gladiator II");
@@ -657,7 +700,9 @@ async fn test_trakt_import_json_and_csv_preserves_timestamp_and_rating() {
     let res_json = app.clone().oneshot(req_json).await.unwrap();
     assert_eq!(res_json.status(), StatusCode::OK);
 
-    let body_res = axum::body::to_bytes(res_json.into_body(), usize::MAX).await.unwrap();
+    let body_res = axum::body::to_bytes(res_json.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let import_summary: serde_json::Value = serde_json::from_slice(&body_res).unwrap();
     assert_eq!(import_summary["imported"], 2);
 
@@ -684,20 +729,30 @@ async fn test_trakt_import_json_and_csv_preserves_timestamp_and_rating() {
         .unwrap();
 
     let res_l = app.clone().oneshot(list_req).await.unwrap();
-    let body_l = axum::body::to_bytes(res_l.into_body(), usize::MAX).await.unwrap();
+    let body_l = axum::body::to_bytes(res_l.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let history: HistoryResponse = serde_json::from_slice(&body_l).unwrap();
 
     assert_eq!(history.total, 3);
 
     // Find Blade Runner 2049
-    let movie = history.items.iter().find(|i| i.title == "Blade Runner 2049").unwrap();
+    let movie = history
+        .items
+        .iter()
+        .find(|i| i.title == "Blade Runner 2049")
+        .unwrap();
     assert_eq!(movie.media_type, "movie");
     assert_eq!(movie.year, Some(2017));
     assert_eq!(movie.user_rating, Some(9));
     assert_eq!(movie.watched_at, "2021-06-15T21:35:45+00:00");
 
     // Find Face Off episode
-    let episode = history.items.iter().find(|i| i.title == "Face Off").unwrap();
+    let episode = history
+        .items
+        .iter()
+        .find(|i| i.title == "Face Off")
+        .unwrap();
     assert_eq!(episode.media_type, "episode");
     assert_eq!(episode.grandparent_title.as_deref(), Some("Breaking Bad"));
     assert_eq!(episode.season_number, Some(4));
@@ -729,7 +784,9 @@ async fn test_trakt_import_json_and_csv_preserves_timestamp_and_rating() {
         .unwrap();
 
     let res_u = app.clone().oneshot(req_update).await.unwrap();
-    let body_u = axum::body::to_bytes(res_u.into_body(), usize::MAX).await.unwrap();
+    let body_u = axum::body::to_bytes(res_u.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let update_summary: serde_json::Value = serde_json::from_slice(&body_u).unwrap();
     assert_eq!(update_summary["updated"], 1);
     assert_eq!(update_summary["imported"], 0);
@@ -743,7 +800,9 @@ async fn test_trakt_import_json_and_csv_preserves_timestamp_and_rating() {
         .unwrap();
 
     let res_c = app.oneshot(check_req).await.unwrap();
-    let body_c = axum::body::to_bytes(res_c.into_body(), usize::MAX).await.unwrap();
+    let body_c = axum::body::to_bytes(res_c.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let c_hist: HistoryResponse = serde_json::from_slice(&body_c).unwrap();
     assert_eq!(c_hist.total, 1);
     assert_eq!(c_hist.items[0].user_rating, Some(10));
@@ -867,17 +926,33 @@ async fn test_trakt_import_zip_multi_file_and_automatic_sorting() {
         let options = zip::write::SimpleFileOptions::default()
             .compression_method(zip::CompressionMethod::Deflated);
 
-        zip_writer.start_file("ratings-movies-1.json", options).unwrap();
-        zip_writer.write_all(ratings_movies.to_string().as_bytes()).unwrap();
+        zip_writer
+            .start_file("ratings-movies-1.json", options)
+            .unwrap();
+        zip_writer
+            .write_all(ratings_movies.to_string().as_bytes())
+            .unwrap();
 
-        zip_writer.start_file("ratings-episodes-1.json", options).unwrap();
-        zip_writer.write_all(ratings_episodes.to_string().as_bytes()).unwrap();
+        zip_writer
+            .start_file("ratings-episodes-1.json", options)
+            .unwrap();
+        zip_writer
+            .write_all(ratings_episodes.to_string().as_bytes())
+            .unwrap();
 
-        zip_writer.start_file("watched-history-1.json", options).unwrap();
-        zip_writer.write_all(history_1.to_string().as_bytes()).unwrap();
+        zip_writer
+            .start_file("watched-history-1.json", options)
+            .unwrap();
+        zip_writer
+            .write_all(history_1.to_string().as_bytes())
+            .unwrap();
 
-        zip_writer.start_file("watched-history-2.json", options).unwrap();
-        zip_writer.write_all(history_2.to_string().as_bytes()).unwrap();
+        zip_writer
+            .start_file("watched-history-2.json", options)
+            .unwrap();
+        zip_writer
+            .write_all(history_2.to_string().as_bytes())
+            .unwrap();
 
         zip_writer.finish().unwrap();
     }
@@ -894,7 +969,9 @@ async fn test_trakt_import_zip_multi_file_and_automatic_sorting() {
     let res_zip = app.clone().oneshot(req_zip).await.unwrap();
     assert_eq!(res_zip.status(), StatusCode::OK);
 
-    let body_res = axum::body::to_bytes(res_zip.into_body(), usize::MAX).await.unwrap();
+    let body_res = axum::body::to_bytes(res_zip.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let import_summary: serde_json::Value = serde_json::from_slice(&body_res).unwrap();
     assert_eq!(import_summary["imported"], 4);
     assert_eq!(import_summary["skipped"], 0);
@@ -908,7 +985,9 @@ async fn test_trakt_import_zip_multi_file_and_automatic_sorting() {
         .unwrap();
 
     let res_l = app.clone().oneshot(list_req).await.unwrap();
-    let body_l = axum::body::to_bytes(res_l.into_body(), usize::MAX).await.unwrap();
+    let body_l = axum::body::to_bytes(res_l.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let history: HistoryResponse = serde_json::from_slice(&body_l).unwrap();
 
     assert_eq!(history.total, 4);
@@ -919,7 +998,10 @@ async fn test_trakt_import_zip_multi_file_and_automatic_sorting() {
 
     assert_eq!(history.items[1].title, "Ozymandias");
     assert_eq!(history.items[1].user_rating, Some(10));
-    assert_eq!(history.items[1].grandparent_title.as_deref(), Some("Breaking Bad"));
+    assert_eq!(
+        history.items[1].grandparent_title.as_deref(),
+        Some("Breaking Bad")
+    );
 
     assert_eq!(history.items[2].title, "Top Gun: Maverick");
     assert_eq!(history.items[2].user_rating, None);
@@ -938,7 +1020,9 @@ async fn test_trakt_import_zip_multi_file_and_automatic_sorting() {
 
     let res_re = app.clone().oneshot(req_reimport).await.unwrap();
     assert_eq!(res_re.status(), StatusCode::OK);
-    let body_re = axum::body::to_bytes(res_re.into_body(), usize::MAX).await.unwrap();
+    let body_re = axum::body::to_bytes(res_re.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let re_summary: serde_json::Value = serde_json::from_slice(&body_re).unwrap();
     assert_eq!(re_summary["imported"], 0);
     assert_eq!(re_summary["skipped"], 4);
@@ -968,7 +1052,9 @@ async fn test_trakt_import_zip_multi_file_and_automatic_sorting() {
 
         let real_res = app.clone().oneshot(real_req).await.unwrap();
         assert_eq!(real_res.status(), StatusCode::OK);
-        let real_body = axum::body::to_bytes(real_res.into_body(), usize::MAX).await.unwrap();
+        let real_body = axum::body::to_bytes(real_res.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let real_summary: serde_json::Value = serde_json::from_slice(&real_body).unwrap();
         assert_eq!(real_summary["status"], "success");
         assert_eq!(real_summary["imported"], 4792);
@@ -1046,7 +1132,9 @@ async fn test_delete_by_show_delete_batch_and_delete_by_date() {
             .unwrap();
         let res = app.clone().oneshot(req).await.unwrap();
         assert_eq!(res.status(), StatusCode::CREATED);
-        let b = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+        let b = axum::body::to_bytes(res.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let created: Scrobble = serde_json::from_slice(&b).unwrap();
         movie_ids.push(created.id);
     }
@@ -1059,7 +1147,9 @@ async fn test_delete_by_show_delete_batch_and_delete_by_date() {
         .body(Body::empty())
         .unwrap();
     let res = app.clone().oneshot(hist_req).await.unwrap();
-    let b = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let b = axum::body::to_bytes(res.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let hist: HistoryResponse = serde_json::from_slice(&b).unwrap();
     assert_eq!(hist.total, 5);
 
@@ -1072,7 +1162,9 @@ async fn test_delete_by_show_delete_batch_and_delete_by_date() {
         .unwrap();
     let res = app.clone().oneshot(del_show_req).await.unwrap();
     assert_eq!(res.status(), StatusCode::OK);
-    let b = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let b = axum::body::to_bytes(res.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let del_resp: serde_json::Value = serde_json::from_slice(&b).unwrap();
     assert_eq!(del_resp["deleted_count"], 3);
 
@@ -1086,7 +1178,9 @@ async fn test_delete_by_show_delete_batch_and_delete_by_date() {
         .unwrap();
     let res = app.clone().oneshot(del_batch_req).await.unwrap();
     assert_eq!(res.status(), StatusCode::OK);
-    let b = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let b = axum::body::to_bytes(res.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let del_batch_resp: serde_json::Value = serde_json::from_slice(&b).unwrap();
     assert_eq!(del_batch_resp["deleted_count"], 1);
 
@@ -1099,7 +1193,9 @@ async fn test_delete_by_show_delete_batch_and_delete_by_date() {
         .unwrap();
     let res = app.clone().oneshot(del_date_req).await.unwrap();
     assert_eq!(res.status(), StatusCode::OK);
-    let b = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let b = axum::body::to_bytes(res.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let del_date_resp: serde_json::Value = serde_json::from_slice(&b).unwrap();
     assert_eq!(del_date_resp["deleted_count"], 1);
 
@@ -1111,7 +1207,9 @@ async fn test_delete_by_show_delete_batch_and_delete_by_date() {
         .body(Body::empty())
         .unwrap();
     let res = app.oneshot(hist_final_req).await.unwrap();
-    let b = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let b = axum::body::to_bytes(res.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let final_hist: HistoryResponse = serde_json::from_slice(&b).unwrap();
     assert_eq!(final_hist.total, 0);
 }
@@ -1188,7 +1286,9 @@ async fn test_timeline_and_history_rich_filters() {
         .body(Body::empty())
         .unwrap();
     let res = app.clone().oneshot(req_genre).await.unwrap();
-    let b = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let b = axum::body::to_bytes(res.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let days: Vec<TimelineDay> = serde_json::from_slice(&b).unwrap();
     assert_eq!(days.len(), 1);
     assert_eq!(days[0].items[0].title, "Interstellar");
@@ -1201,7 +1301,9 @@ async fn test_timeline_and_history_rich_filters() {
         .body(Body::empty())
         .unwrap();
     let res = app.clone().oneshot(req_person).await.unwrap();
-    let b = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let b = axum::body::to_bytes(res.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let days: Vec<TimelineDay> = serde_json::from_slice(&b).unwrap();
     assert_eq!(days.len(), 1);
     assert_eq!(days[0].items[0].title, "Interstellar");
@@ -1214,7 +1316,9 @@ async fn test_timeline_and_history_rich_filters() {
         .body(Body::empty())
         .unwrap();
     let res = app.clone().oneshot(req_actor).await.unwrap();
-    let b = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let b = axum::body::to_bytes(res.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let days: Vec<TimelineDay> = serde_json::from_slice(&b).unwrap();
     assert_eq!(days.len(), 1);
     assert_eq!(days[0].items[0].title, "Superbad");
@@ -1227,7 +1331,9 @@ async fn test_timeline_and_history_rich_filters() {
         .body(Body::empty())
         .unwrap();
     let res = app.clone().oneshot(req_date).await.unwrap();
-    let b = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let b = axum::body::to_bytes(res.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let days: Vec<TimelineDay> = serde_json::from_slice(&b).unwrap();
     assert_eq!(days.len(), 1);
     assert_eq!(days[0].date, "2024-06-10");
@@ -1240,7 +1346,9 @@ async fn test_timeline_and_history_rich_filters() {
         .body(Body::empty())
         .unwrap();
     let res = app.clone().oneshot(req_rate).await.unwrap();
-    let b = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let b = axum::body::to_bytes(res.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let days: Vec<TimelineDay> = serde_json::from_slice(&b).unwrap();
     assert_eq!(days.len(), 1);
     assert_eq!(days[0].items[0].title, "Interstellar");
@@ -1253,7 +1361,9 @@ async fn test_timeline_and_history_rich_filters() {
         .body(Body::empty())
         .unwrap();
     let res = app.clone().oneshot(req_status).await.unwrap();
-    let b = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let b = axum::body::to_bytes(res.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let hist: HistoryResponse = serde_json::from_slice(&b).unwrap();
     assert_eq!(hist.total, 1);
     assert_eq!(hist.items[0].title, "Superbad");
@@ -1291,14 +1401,20 @@ async fn test_subpath_routing_and_assets() {
         .merge(app);
 
     // Request /bingesync (should redirect to /bingesync/)
-    let req = Request::builder().uri("/bingesync").body(Body::empty()).unwrap();
+    let req = Request::builder()
+        .uri("/bingesync")
+        .body(Body::empty())
+        .unwrap();
     let res = app.clone().oneshot(req).await.unwrap();
     println!("Status for /bingesync: {}", res.status());
     assert_eq!(res.status(), StatusCode::PERMANENT_REDIRECT);
     assert_eq!(res.headers().get("location").unwrap(), "/bingesync/");
 
     // Request /bingesync/ (should serve index.html with 200 OK and no-cache)
-    let req2 = Request::builder().uri("/bingesync/").body(Body::empty()).unwrap();
+    let req2 = Request::builder()
+        .uri("/bingesync/")
+        .body(Body::empty())
+        .unwrap();
     let res2 = app.clone().oneshot(req2).await.unwrap();
     println!("Status for /bingesync/: {}", res2.status());
     assert_eq!(res2.status(), StatusCode::OK);
@@ -1309,11 +1425,17 @@ async fn test_subpath_routing_and_assets() {
         .find(|p| p.starts_with("assets/") && p.ends_with(".css"))
         .map(|p| p.to_string())
         .unwrap_or_else(|| "assets/index-BdcyK8uk.css".to_string());
-    let req_asset = Request::builder().uri(format!("/bingesync/{}", asset_name)).body(Body::empty()).unwrap();
+    let req_asset = Request::builder()
+        .uri(format!("/bingesync/{}", asset_name))
+        .body(Body::empty())
+        .unwrap();
     let res_asset = app.clone().oneshot(req_asset).await.unwrap();
     println!("Status for asset: {}", res_asset.status());
     assert_eq!(res_asset.status(), StatusCode::OK);
-    assert_eq!(res_asset.headers().get("cache-control").unwrap(), "public, max-age=31536000, immutable");
+    assert_eq!(
+        res_asset.headers().get("cache-control").unwrap(),
+        "public, max-age=31536000, immutable"
+    );
 
     // Request with Accept-Encoding: gzip should receive Content-Encoding: gzip
     let req_gzip = Request::builder()
@@ -1356,21 +1478,28 @@ async fn test_admin_user_management_and_cascading_deletion() {
     assert_eq!(standard_user.role, "user");
 
     let admin_token = create_jwt(&admin_user.id, &admin_user.email, &config.jwt_secret).unwrap();
-    let standard_token = create_jwt(&standard_user.id, &standard_user.email, &config.jwt_secret).unwrap();
+    let standard_token =
+        create_jwt(&standard_user.id, &standard_user.email, &config.jwt_secret).unwrap();
 
     // 2. Standard user scrobbles an item
     let scrobble_req = Request::builder()
         .method("POST")
-        .uri(format!("/api/v1/webhooks/plex/{}", standard_user.webhook_token))
+        .uri(format!(
+            "/api/v1/webhooks/plex/{}",
+            standard_user.webhook_token
+        ))
         .header(header::CONTENT_TYPE, "application/json")
-        .body(Body::from(json!({
-            "event": "media.scrobble",
-            "Metadata": {
-                "type": "movie",
-                "title": "Inception",
-                "year": 2010
-            }
-        }).to_string()))
+        .body(Body::from(
+            json!({
+                "event": "media.scrobble",
+                "Metadata": {
+                    "type": "movie",
+                    "title": "Inception",
+                    "year": 2010
+                }
+            })
+            .to_string(),
+        ))
         .unwrap();
     let res_scrobble = app.clone().oneshot(scrobble_req).await.unwrap();
     assert_eq!(res_scrobble.status(), StatusCode::CREATED);
@@ -1378,14 +1507,20 @@ async fn test_admin_user_management_and_cascading_deletion() {
     // Standard user has an active session
     let play_req = Request::builder()
         .method("POST")
-        .uri(format!("/api/v1/webhooks/plex/{}", standard_user.webhook_token))
+        .uri(format!(
+            "/api/v1/webhooks/plex/{}",
+            standard_user.webhook_token
+        ))
         .header(header::CONTENT_TYPE, "application/json")
-        .body(Body::from(json!({
-            "event": "media.play",
-            "Player": { "title": "Living Room TV" },
-            "Metadata": { "type": "movie", "title": "Interstellar", "duration": 10000 },
-            "viewOffset": 2000
-        }).to_string()))
+        .body(Body::from(
+            json!({
+                "event": "media.play",
+                "Player": { "title": "Living Room TV" },
+                "Metadata": { "type": "movie", "title": "Interstellar", "duration": 10000 },
+                "viewOffset": 2000
+            })
+            .to_string(),
+        ))
         .unwrap();
     let res_play = app.clone().oneshot(play_req).await.unwrap();
     assert_eq!(res_play.status(), StatusCode::OK);
@@ -1410,11 +1545,16 @@ async fn test_admin_user_management_and_cascading_deletion() {
     let res_users = app.clone().oneshot(admin_list_req).await.unwrap();
     assert_eq!(res_users.status(), StatusCode::OK);
 
-    let body = axum::body::to_bytes(res_users.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(res_users.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let users_list: Vec<bingesync::models::AdminUserItem> = serde_json::from_slice(&body).unwrap();
     assert!(users_list.len() >= 2);
 
-    let found_standard = users_list.iter().find(|u| u.id == standard_user.id).unwrap();
+    let found_standard = users_list
+        .iter()
+        .find(|u| u.id == standard_user.id)
+        .unwrap();
     assert_eq!(found_standard.email, "standard@test.local");
     assert_eq!(found_standard.role, "user");
     // Standard user has 1 completed scrobble ("Inception") + 1 in-progress started scrobble ("Interstellar")
@@ -1448,11 +1588,12 @@ async fn test_admin_user_management_and_cascading_deletion() {
         .unwrap();
     assert_eq!(scrobble_count.0, 0);
 
-    let session_count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM active_sessions WHERE user_id = ?")
-        .bind(&standard_user.id)
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+    let session_count: (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM active_sessions WHERE user_id = ?")
+            .bind(&standard_user.id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
     assert_eq!(session_count.0, 0);
 
     let user_exists: Option<(String,)> = sqlx::query_as("SELECT id FROM users WHERE id = ?")
@@ -1501,7 +1642,8 @@ async fn test_oidc_backchannel_logout() {
     .unwrap();
 
     // 2. Issue a JWT for this user
-    let user_token = bingesync::auth::create_jwt(&user.id, &user.email, &config.jwt_secret).unwrap();
+    let user_token =
+        bingesync::auth::create_jwt(&user.id, &user.email, &config.jwt_secret).unwrap();
 
     // Verify token works on /api/v1/auth/me
     let me_req = Request::builder()
@@ -1552,7 +1694,9 @@ async fn test_oidc_backchannel_logout() {
         "no-cache"
     );
 
-    let body_bytes = axum::body::to_bytes(res_logout.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(res_logout.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let logout_res_json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
     assert_eq!(logout_res_json["status"], "ok");
     assert_eq!(logout_res_json["revoked"], true);
@@ -1612,7 +1756,9 @@ async fn test_oidc_backchannel_logout() {
         .method("POST")
         .uri("/api/v1/auth/backchannel-logout")
         .header(header::CONTENT_TYPE, "application/json")
-        .body(Body::from(json!({ "logout_token": no_event_token }).to_string()))
+        .body(Body::from(
+            json!({ "logout_token": no_event_token }).to_string(),
+        ))
         .unwrap();
     let res_no_event = app.clone().oneshot(no_event_req).await.unwrap();
     assert_eq!(res_no_event.status(), StatusCode::BAD_REQUEST);
@@ -1678,7 +1824,9 @@ async fn test_image_cache_serving_and_background_worker() {
         res.headers().get(header::CACHE_CONTROL).unwrap(),
         "public, max-age=31536000, immutable"
     );
-    let body = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(res.into_body(), usize::MAX)
+        .await
+        .unwrap();
     assert_eq!(body.to_vec(), test_bytes);
 
     // 3. Test 404 on nonexistent image
@@ -1807,9 +1955,7 @@ async fn test_sonarr_delete_options() {
                     ]
                 }))
             })
-            .put(|axum::Json(body): axum::Json<serde_json::Value>| async move {
-                axum::Json(body)
-            })
+            .put(|axum::Json(body): axum::Json<serde_json::Value>| async move { axum::Json(body) })
             .delete(|| async { StatusCode::OK }),
         )
         .route(
@@ -1851,13 +1997,29 @@ async fn test_sonarr_delete_options() {
         .unwrap();
     let res = app.clone().oneshot(login_req).await.unwrap();
     assert_eq!(res.status(), StatusCode::OK);
-    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let login_data: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
     let user_id = login_data["user"]["id"].as_str().unwrap();
     let token = login_data["token"].as_str().unwrap().to_string();
 
-    bingesync::api::user_settings::set_user_setting(&pool, user_id, "sonarr_url", &format!("http://{}", addr)).await.unwrap();
-    bingesync::api::user_settings::set_user_setting(&pool, user_id, "sonarr_api_key", "test_api_key").await.unwrap();
+    bingesync::api::user_settings::set_user_setting(
+        &pool,
+        user_id,
+        "sonarr_url",
+        &format!("http://{}", addr),
+    )
+    .await
+    .unwrap();
+    bingesync::api::user_settings::set_user_setting(
+        &pool,
+        user_id,
+        "sonarr_api_key",
+        "test_api_key",
+    )
+    .await
+    .unwrap();
 
     // 1. Test Option 1: delete_series (delete show and files)
     let req = Request::builder()
@@ -1876,7 +2038,9 @@ async fn test_sonarr_delete_options() {
         .unwrap();
     let res = app.clone().oneshot(req).await.unwrap();
     assert_eq!(res.status(), StatusCode::OK);
-    let b = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let b = axum::body::to_bytes(res.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let json: serde_json::Value = serde_json::from_slice(&b).unwrap();
     assert_eq!(json["action"], "delete_series");
     assert_eq!(json["status"], "deleted");
@@ -1898,7 +2062,9 @@ async fn test_sonarr_delete_options() {
         .unwrap();
     let res2 = app.clone().oneshot(req2).await.unwrap();
     assert_eq!(res2.status(), StatusCode::OK);
-    let b2 = axum::body::to_bytes(res2.into_body(), usize::MAX).await.unwrap();
+    let b2 = axum::body::to_bytes(res2.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let json2: serde_json::Value = serde_json::from_slice(&b2).unwrap();
     assert_eq!(json2["action"], "delete_season");
     assert_eq!(json2["season_number"], 1);
@@ -1920,7 +2086,9 @@ async fn test_sonarr_delete_options() {
         .unwrap();
     let res3 = app.clone().oneshot(req3).await.unwrap();
     assert_eq!(res3.status(), StatusCode::OK);
-    let b3 = axum::body::to_bytes(res3.into_body(), usize::MAX).await.unwrap();
+    let b3 = axum::body::to_bytes(res3.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let json3: serde_json::Value = serde_json::from_slice(&b3).unwrap();
     assert_eq!(json3["action"], "delete_all_files_unmonitor");
     assert_eq!(json3["deleted_files_count"], 3);
@@ -2049,7 +2217,7 @@ async fn test_tvdb_metadata_enrichment_worker() {
             ?, ?, ?, ?, ?,
             ?, ?, ?, ?, ?
         )
-        "#
+        "#,
     )
     .bind(&scrobble_id)
     .bind(user_id)
@@ -2083,7 +2251,10 @@ async fn test_tvdb_metadata_enrichment_worker() {
         .unwrap();
 
     assert_eq!(scrobble.genres.as_deref(), Some("Crime, Drama, Thriller"));
-    assert_eq!(scrobble.actors.as_deref(), Some("Bryan Cranston, Aaron Paul"));
+    assert_eq!(
+        scrobble.actors.as_deref(),
+        Some("Bryan Cranston, Aaron Paul")
+    );
     assert_eq!(scrobble.directors.as_deref(), Some("Vince Gilligan"));
     assert!(scrobble.overview.is_some());
     assert!(scrobble.overview.unwrap().contains("chemistry teacher"));
@@ -2207,7 +2378,7 @@ async fn test_movie_tvdb_metadata_fallback_and_refresh() {
             ?, ?, ?, 'movie', 2025, NULL, NULL, NULL, NULL,
             7200000, 8, 'completed', '2025-10-01T20:00:00Z', '2025-10-01T20:00:00Z'
         )
-        "#
+        "#,
     )
     .bind(&scrobble_id)
     .bind(user_id)
@@ -2218,7 +2389,10 @@ async fn test_movie_tvdb_metadata_fallback_and_refresh() {
 
     // 3. Run background metadata processor once
     let processed = bingesync::api::tvdb::process_missing_metadata_once(&state).await;
-    assert_eq!(processed, 1, "Obsession should be processed via year-fallback");
+    assert_eq!(
+        processed, 1,
+        "Obsession should be processed via year-fallback"
+    );
 
     // 4. Verify movie metadata enriched
     let scrobble = sqlx::query_as::<_, Scrobble>("SELECT * FROM scrobbles WHERE id = ?")
@@ -2232,7 +2406,10 @@ async fn test_movie_tvdb_metadata_fallback_and_refresh() {
     assert_eq!(scrobble.genres, Some("Thriller, Drama".to_string()));
     assert!(scrobble.actors.unwrap().contains("Richard Armitage"));
     assert_eq!(scrobble.directors, Some("Glenn Leyburn".to_string()));
-    assert_eq!(scrobble.thumb_url, Some("https://artworks.thetvdb.com/banners/movies/369536/posters/1.jpg".to_string()));
+    assert_eq!(
+        scrobble.thumb_url,
+        Some("https://artworks.thetvdb.com/banners/movies/369536/posters/1.jpg".to_string())
+    );
 
     // 5. Test manual refresh metadata endpoint
     let app = bingesync::api::create_api_router(state.clone());
@@ -2248,10 +2425,16 @@ async fn test_movie_tvdb_metadata_fallback_and_refresh() {
     assert_eq!(refresh_res.status(), StatusCode::OK);
 
     let refresh_body: serde_json::Value = serde_json::from_slice(
-        &axum::body::to_bytes(refresh_res.into_body(), usize::MAX).await.unwrap()
-    ).unwrap();
+        &axum::body::to_bytes(refresh_res.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
     assert_eq!(refresh_body["status"], "refreshed");
-    assert!(refresh_body["scrobble"]["overview"].as_str().unwrap().contains("suspense thriller"));
+    assert!(refresh_body["scrobble"]["overview"]
+        .as_str()
+        .unwrap()
+        .contains("suspense thriller"));
 
     // 6. Test query normalization
     let (clean, yr) = bingesync::api::tvdb::normalize_search_query("Obsession (1976)");
@@ -2331,26 +2514,136 @@ async fn test_item_other_watches_movies_and_exact_episodes() {
 
     // 2. Insert watches for User A
     // Inception (3 watches)
-    let incep_1 = insert_scrobble(&pool, user_a_id, "Inception", "movie", None, None, None, Some(2010), "2023-01-01T20:00:00Z").await;
-    let incep_2 = insert_scrobble(&pool, user_a_id, "Inception", "movie", None, None, None, Some(2010), "2023-06-15T21:00:00Z").await;
-    let incep_3 = insert_scrobble(&pool, user_a_id, "Inception", "movie", None, None, None, Some(2010), "2024-02-10T19:30:00Z").await;
+    let incep_1 = insert_scrobble(
+        &pool,
+        user_a_id,
+        "Inception",
+        "movie",
+        None,
+        None,
+        None,
+        Some(2010),
+        "2023-01-01T20:00:00Z",
+    )
+    .await;
+    let incep_2 = insert_scrobble(
+        &pool,
+        user_a_id,
+        "Inception",
+        "movie",
+        None,
+        None,
+        None,
+        Some(2010),
+        "2023-06-15T21:00:00Z",
+    )
+    .await;
+    let incep_3 = insert_scrobble(
+        &pool,
+        user_a_id,
+        "Inception",
+        "movie",
+        None,
+        None,
+        None,
+        Some(2010),
+        "2024-02-10T19:30:00Z",
+    )
+    .await;
 
     // Interstellar (1 watch)
-    let inter_1 = insert_scrobble(&pool, user_a_id, "Interstellar", "movie", None, None, None, Some(2014), "2023-03-01T20:00:00Z").await;
+    let inter_1 = insert_scrobble(
+        &pool,
+        user_a_id,
+        "Interstellar",
+        "movie",
+        None,
+        None,
+        None,
+        Some(2014),
+        "2023-03-01T20:00:00Z",
+    )
+    .await;
 
     // Breaking Bad S01E01 (2 watches)
-    let bb_s1e1_1 = insert_scrobble(&pool, user_a_id, "Pilot", "episode", Some("Breaking Bad"), Some(1), Some(1), Some(2008), "2023-04-01T20:00:00Z").await;
-    let bb_s1e1_2 = insert_scrobble(&pool, user_a_id, "Pilot", "episode", Some("Breaking Bad"), Some(1), Some(1), Some(2008), "2023-08-01T20:00:00Z").await;
+    let bb_s1e1_1 = insert_scrobble(
+        &pool,
+        user_a_id,
+        "Pilot",
+        "episode",
+        Some("Breaking Bad"),
+        Some(1),
+        Some(1),
+        Some(2008),
+        "2023-04-01T20:00:00Z",
+    )
+    .await;
+    let bb_s1e1_2 = insert_scrobble(
+        &pool,
+        user_a_id,
+        "Pilot",
+        "episode",
+        Some("Breaking Bad"),
+        Some(1),
+        Some(1),
+        Some(2008),
+        "2023-08-01T20:00:00Z",
+    )
+    .await;
 
     // Breaking Bad S01E02 (1 watch) - Different episode!
-    let bb_s1e2_1 = insert_scrobble(&pool, user_a_id, "Cat's in the Bag...", "episode", Some("Breaking Bad"), Some(1), Some(2), Some(2008), "2023-04-02T20:00:00Z").await;
+    let bb_s1e2_1 = insert_scrobble(
+        &pool,
+        user_a_id,
+        "Cat's in the Bag...",
+        "episode",
+        Some("Breaking Bad"),
+        Some(1),
+        Some(2),
+        Some(2008),
+        "2023-04-02T20:00:00Z",
+    )
+    .await;
 
     // Better Call Saul S01E01 (1 watch) - Different show!
-    let _bcs_s1e1_1 = insert_scrobble(&pool, user_a_id, "Uno", "episode", Some("Better Call Saul"), Some(1), Some(1), Some(2015), "2023-05-01T20:00:00Z").await;
+    let _bcs_s1e1_1 = insert_scrobble(
+        &pool,
+        user_a_id,
+        "Uno",
+        "episode",
+        Some("Better Call Saul"),
+        Some(1),
+        Some(1),
+        Some(2015),
+        "2023-05-01T20:00:00Z",
+    )
+    .await;
 
     // 3. Insert watches for User B (must NOT be visible to User A)
-    let _user_b_bb = insert_scrobble(&pool, user_b_id, "Pilot", "episode", Some("Breaking Bad"), Some(1), Some(1), Some(2008), "2023-09-01T20:00:00Z").await;
-    let _user_b_incep = insert_scrobble(&pool, user_b_id, "Inception", "movie", None, None, None, Some(2010), "2023-09-02T20:00:00Z").await;
+    let _user_b_bb = insert_scrobble(
+        &pool,
+        user_b_id,
+        "Pilot",
+        "episode",
+        Some("Breaking Bad"),
+        Some(1),
+        Some(1),
+        Some(2008),
+        "2023-09-01T20:00:00Z",
+    )
+    .await;
+    let _user_b_incep = insert_scrobble(
+        &pool,
+        user_b_id,
+        "Inception",
+        "movie",
+        None,
+        None,
+        None,
+        Some(2010),
+        "2023-09-02T20:00:00Z",
+    )
+    .await;
 
     // 4. Test User A querying Inception watch 1:
     let req = Request::builder()
@@ -2361,7 +2654,9 @@ async fn test_item_other_watches_movies_and_exact_episodes() {
 
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let res: bingesync::api::history::ItemWatchesResponse = serde_json::from_slice(&body).unwrap();
 
     assert_eq!(res.current_id, incep_1);
@@ -2381,7 +2676,9 @@ async fn test_item_other_watches_movies_and_exact_episodes() {
 
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let res: bingesync::api::history::ItemWatchesResponse = serde_json::from_slice(&body).unwrap();
 
     assert_eq!(res.current_id, bb_s1e1_1);
@@ -2401,7 +2698,9 @@ async fn test_item_other_watches_movies_and_exact_episodes() {
 
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let res: bingesync::api::history::ItemWatchesResponse = serde_json::from_slice(&body).unwrap();
 
     assert_eq!(res.current_id, bb_s1e2_1);
@@ -2417,7 +2716,9 @@ async fn test_item_other_watches_movies_and_exact_episodes() {
 
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let res: bingesync::api::history::ItemWatchesResponse = serde_json::from_slice(&body).unwrap();
     assert_eq!(res.total_watches, 1);
     assert_eq!(res.other_watches.len(), 0);
@@ -2506,13 +2807,24 @@ async fn test_admin_settings_logs_and_tasks_management() {
         .body(Body::empty())
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
-    let settings: bingesync::api::settings::SystemSettingsView = serde_json::from_slice(&body).unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let settings: bingesync::api::settings::SystemSettingsView =
+        serde_json::from_slice(&body).unwrap();
 
     assert!(settings.tvdb_api_key_configured);
     assert_eq!(settings.tvdb_pin.as_deref(), Some("1234"));
-    assert!(settings.tvdb_api_key_masked.as_deref().unwrap().starts_with("tv"));
-    assert!(settings.tvdb_api_key_masked.as_deref().unwrap().contains('•'));
+    assert!(settings
+        .tvdb_api_key_masked
+        .as_deref()
+        .unwrap()
+        .starts_with("tv"));
+    assert!(settings
+        .tvdb_api_key_masked
+        .as_deref()
+        .unwrap()
+        .contains('•'));
     assert!(settings.oidc_enabled);
     assert_eq!(settings.scrobble_threshold_percent, 85);
 
@@ -2524,7 +2836,9 @@ async fn test_admin_settings_logs_and_tasks_management() {
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let logs_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert!(logs_json["entries"].is_array());
 
@@ -2536,7 +2850,9 @@ async fn test_admin_settings_logs_and_tasks_management() {
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let tasks_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     let tasks = tasks_json["tasks"].as_array().unwrap();
     assert_eq!(tasks.len(), 13);
@@ -2549,11 +2865,20 @@ async fn test_admin_settings_logs_and_tasks_management() {
     let db_maintenance_task = tasks.iter().find(|t| t["id"] == "db_maintenance").unwrap();
     let session_reaper_task = tasks.iter().find(|t| t["id"] == "session_reaper").unwrap();
     let image_prune_task = tasks.iter().find(|t| t["id"] == "image_prune").unwrap();
-    let duplicate_pruner_task = tasks.iter().find(|t| t["id"] == "duplicate_pruner").unwrap();
-    let metadata_backfill_task = tasks.iter().find(|t| t["id"] == "metadata_backfill").unwrap();
+    let duplicate_pruner_task = tasks
+        .iter()
+        .find(|t| t["id"] == "duplicate_pruner")
+        .unwrap();
+    let metadata_backfill_task = tasks
+        .iter()
+        .find(|t| t["id"] == "metadata_backfill")
+        .unwrap();
     let version_check_task = tasks.iter().find(|t| t["id"] == "version_check").unwrap();
     let library_audit_task = tasks.iter().find(|t| t["id"] == "library_audit").unwrap();
-    assert_eq!(media_sync_task["name"], "Watch History Sync (Plex & Jellyfin)");
+    assert_eq!(
+        media_sync_task["name"],
+        "Watch History Sync (Plex & Jellyfin)"
+    );
     assert_eq!(media_sync_task["interval_hours"], 4);
     assert!(media_sync_task["next_run_at"].is_string());
     assert_eq!(tautulli_sync_task["interval_hours"], 1);
@@ -2576,8 +2901,8 @@ async fn test_admin_settings_logs_and_tasks_management() {
     assert_eq!(session_reaper_task["schedule"], "Every 1 hour");
     assert!(session_reaper_task["next_run_at"].is_string());
     assert_eq!(image_prune_task["interval_hours"], 24);
-    assert_eq!(duplicate_pruner_task["interval_hours"], 24);
-    assert_eq!(metadata_backfill_task["interval_hours"], 24);
+    assert_eq!(duplicate_pruner_task["interval_hours"], 6);
+    assert_eq!(metadata_backfill_task["interval_hours"], 12);
     assert_eq!(version_check_task["interval_hours"], 24);
     assert_eq!(library_audit_task["interval_hours"], 24);
 
@@ -2587,13 +2912,18 @@ async fn test_admin_settings_logs_and_tasks_management() {
         .uri("/api/v1/admin/tasks/image_cache/schedule")
         .header(header::AUTHORIZATION, format!("Bearer {}", admin_jwt))
         .header(header::CONTENT_TYPE, "application/json")
-        .body(Body::from(serde_json::to_string(&serde_json::json!({
-            "interval_hours": 6
-        })).unwrap()))
+        .body(Body::from(
+            serde_json::to_string(&serde_json::json!({
+                "interval_hours": 6
+            }))
+            .unwrap(),
+        ))
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let update_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(update_json["interval_hours"], 6);
     assert_eq!(update_json["schedule"], "Every 6 hours");
@@ -2607,9 +2937,16 @@ async fn test_admin_settings_logs_and_tasks_management() {
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let tasks_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-    let updated_image_task = tasks_json["tasks"].as_array().unwrap().iter().find(|t| t["id"] == "image_cache").unwrap();
+    let updated_image_task = tasks_json["tasks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|t| t["id"] == "image_cache")
+        .unwrap();
     assert_eq!(updated_image_task["interval_hours"], 6);
     assert_eq!(updated_image_task["schedule"], "Every 6 hours");
 
@@ -2634,7 +2971,14 @@ async fn test_admin_settings_logs_and_tasks_management() {
     assert_eq!(resp.status(), StatusCode::OK);
 
     // 10. Test triggering newly added background tasks (session_reaper, duplicate_pruner, image_prune, metadata_backfill, version_check, library_audit)
-    for task_name in &["session_reaper", "duplicate_pruner", "image_prune", "metadata_backfill", "version_check", "library_audit"] {
+    for task_name in &[
+        "session_reaper",
+        "duplicate_pruner",
+        "image_prune",
+        "metadata_backfill",
+        "version_check",
+        "library_audit",
+    ] {
         let req = Request::builder()
             .method("POST")
             .uri(format!("/api/v1/admin/tasks/{}/run", task_name))
@@ -2653,7 +2997,9 @@ async fn test_admin_settings_logs_and_tasks_management() {
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let filtered_logs: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert!(filtered_logs["entries"].as_array().unwrap().len() > 0);
 
@@ -2664,7 +3010,9 @@ async fn test_admin_settings_logs_and_tasks_management() {
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let empty_logs: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(empty_logs["entries"].as_array().unwrap().len(), 0);
 
@@ -2676,7 +3024,9 @@ async fn test_admin_settings_logs_and_tasks_management() {
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let image_logs: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert!(image_logs["entries"].as_array().unwrap().len() <= 5);
 
@@ -2697,7 +3047,9 @@ async fn test_admin_settings_logs_and_tasks_management() {
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let trigger_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(trigger_json["status"], "triggered");
     assert_eq!(trigger_json["task_id"], "db_maintenance");
@@ -2710,9 +3062,18 @@ async fn test_admin_settings_logs_and_tasks_management() {
         .unwrap();
     let mut state_with_fake = bingesync::api::AppState::new(pool.clone(), config.clone(), None);
     state_with_fake.task_tracker = std::sync::Arc::new(fake_tracker);
-    let restored_tasks = state_with_fake.task_tracker.get_tasks_summary(&state_with_fake, true).await;
-    let restored_tvdb = restored_tasks.iter().find(|t| t.id == "tvdb_metadata").unwrap();
-    assert_eq!(restored_tvdb.last_success_at.as_deref(), Some("2026-10-30T10:00:00Z"));
+    let restored_tasks = state_with_fake
+        .task_tracker
+        .get_tasks_summary(&state_with_fake, true)
+        .await;
+    let restored_tvdb = restored_tasks
+        .iter()
+        .find(|t| t.id == "tvdb_metadata")
+        .unwrap();
+    assert_eq!(
+        restored_tvdb.last_success_at.as_deref(),
+        Some("2026-10-30T10:00:00Z")
+    );
 }
 
 #[tokio::test]
@@ -2758,7 +3119,9 @@ async fn test_stats_top_movies() {
         .unwrap();
     let resp = app.oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let stats: StatsSummary = serde_json::from_slice(&body).unwrap();
 
     assert_eq!(stats.movies_watched, 4);
@@ -2784,7 +3147,9 @@ async fn test_stats_filters_and_extended_metrics() {
         .await
         .unwrap();
 
-    let token = bingesync::auth::jwt::create_jwt(user_id, "stats_ext@test.local", &config.jwt_secret).unwrap();
+    let token =
+        bingesync::auth::jwt::create_jwt(user_id, "stats_ext@test.local", &config.jwt_secret)
+            .unwrap();
 
     let now_utc = chrono::Utc::now();
     let d0 = now_utc.to_rfc3339();
@@ -2832,7 +3197,9 @@ async fn test_stats_filters_and_extended_metrics() {
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let stats: StatsSummary = serde_json::from_slice(&body).unwrap();
 
     assert_eq!(stats.total_scrobbles, 4);
@@ -2857,7 +3224,9 @@ async fn test_stats_filters_and_extended_metrics() {
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let stats_movies: StatsSummary = serde_json::from_slice(&body).unwrap();
 
     assert_eq!(stats_movies.total_scrobbles, 2);
@@ -2874,7 +3243,9 @@ async fn test_stats_filters_and_extended_metrics() {
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let stats_7d: StatsSummary = serde_json::from_slice(&body).unwrap();
 
     assert_eq!(stats_7d.total_scrobbles, 3);
@@ -2920,17 +3291,24 @@ async fn test_scrobble_progress_threshold_and_deduplication() {
 
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body: serde_json::Value = serde_json::from_slice(&axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let body: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
     assert_eq!(body["status"], "session_updated");
     assert_eq!(body["watch_status"], "in_progress");
     assert_eq!(body["progress_percent"], 30);
 
     // Verify 1 scrobble in DB
-    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE user_id = ? AND title = 'The Matrix'")
-        .bind(user_id)
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+    let count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM scrobbles WHERE user_id = ? AND title = 'The Matrix'",
+    )
+    .bind(user_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
     assert_eq!(count, 1);
 
     // 2. Play movie at 85% progress on same day (exceeds 80% threshold -> marked completed and deduplicated)
@@ -2954,16 +3332,23 @@ async fn test_scrobble_progress_threshold_and_deduplication() {
 
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body: serde_json::Value = serde_json::from_slice(&axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let body: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
     assert_eq!(body["watch_status"], "completed");
     assert_eq!(body["progress_percent"], 85);
 
     // Verify SAME-DAY DEDUPLICATION: Still exactly 1 record in DB!
-    let count_after: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE user_id = ? AND title = 'The Matrix'")
-        .bind(user_id)
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+    let count_after: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM scrobbles WHERE user_id = ? AND title = 'The Matrix'",
+    )
+    .bind(user_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
     assert_eq!(count_after, 1);
 
     // 3. Dynamically reconfigure completion threshold to 90% via admin settings
@@ -2972,9 +3357,12 @@ async fn test_scrobble_progress_threshold_and_deduplication() {
         .uri("/api/v1/admin/settings")
         .header(header::AUTHORIZATION, format!("Bearer {}", admin_jwt))
         .header(header::CONTENT_TYPE, "application/json")
-        .body(Body::from(serde_json::to_vec(&serde_json::json!({
-            "scrobble_threshold_percent": 90
-        })).unwrap()))
+        .body(Body::from(
+            serde_json::to_vec(&serde_json::json!({
+                "scrobble_threshold_percent": 90
+            }))
+            .unwrap(),
+        ))
         .unwrap();
 
     let resp = app.clone().oneshot(update_settings_req).await.unwrap();
@@ -2996,12 +3384,19 @@ async fn test_scrobble_progress_threshold_and_deduplication() {
         .method("POST")
         .uri(format!("/api/v1/webhooks/plex?token={}", webhook_token))
         .header(header::CONTENT_TYPE, "application/json")
-        .body(Body::from(serde_json::to_vec(&payload_inception_85).unwrap()))
+        .body(Body::from(
+            serde_json::to_vec(&payload_inception_85).unwrap(),
+        ))
         .unwrap();
 
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body: serde_json::Value = serde_json::from_slice(&axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let body: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
     assert_eq!(body["watch_status"], "in_progress");
     assert_eq!(body["progress_percent"], 85);
 
@@ -3021,21 +3416,30 @@ async fn test_scrobble_progress_threshold_and_deduplication() {
         .method("POST")
         .uri(format!("/api/v1/webhooks/plex?token={}", webhook_token))
         .header(header::CONTENT_TYPE, "application/json")
-        .body(Body::from(serde_json::to_vec(&payload_inception_95).unwrap()))
+        .body(Body::from(
+            serde_json::to_vec(&payload_inception_95).unwrap(),
+        ))
         .unwrap();
 
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body: serde_json::Value = serde_json::from_slice(&axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let body: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
     assert_eq!(body["watch_status"], "completed");
     assert_eq!(body["progress_percent"], 95);
 
     // Verify deduplication: exactly 1 Inception scrobble
-    let count_inception: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE user_id = ? AND title = 'Inception'")
-        .bind(user_id)
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+    let count_inception: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM scrobbles WHERE user_id = ? AND title = 'Inception'",
+    )
+    .bind(user_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
     assert_eq!(count_inception, 1);
 }
 
@@ -3066,7 +3470,12 @@ async fn test_tautulli_import_and_deduplication() {
         .unwrap();
     let me_resp = app.clone().oneshot(me_req).await.unwrap();
     assert_eq!(me_resp.status(), StatusCode::OK);
-    let me_body: serde_json::Value = serde_json::from_slice(&axum::body::to_bytes(me_resp.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let me_body: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(me_resp.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
     assert_eq!(me_body["preferred_username"], "daryl_tautulli");
 
     // 2. Import Tautulli JSON content containing 2 items for "daryl_tautulli" and 1 item for "stranger"
@@ -3117,15 +3526,23 @@ async fn test_tautulli_import_and_deduplication() {
         .uri("/api/v1/import/tautulli")
         .header(header::AUTHORIZATION, format!("Bearer {}", token))
         .header(header::CONTENT_TYPE, "application/json")
-        .body(Body::from(serde_json::to_vec(&serde_json::json!({
-            "username": "daryl_tautulli",
-            "content": tautulli_json.to_string(),
-        })).unwrap()))
+        .body(Body::from(
+            serde_json::to_vec(&serde_json::json!({
+                "username": "daryl_tautulli",
+                "content": tautulli_json.to_string(),
+            }))
+            .unwrap(),
+        ))
         .unwrap();
 
     let import_resp = app.clone().oneshot(import_req).await.unwrap();
     assert_eq!(import_resp.status(), StatusCode::OK);
-    let import_body: serde_json::Value = serde_json::from_slice(&axum::body::to_bytes(import_resp.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let import_body: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(import_resp.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
 
     // 2 imported for daryl_tautulli, 0 skipped, stranger's movie was filtered out!
     assert_eq!(import_body["status"], "success");
@@ -3141,11 +3558,13 @@ async fn test_tautulli_import_and_deduplication() {
     assert_eq!(count, 2);
 
     // Verify "Fight Club" is NOT in DB
-    let fc_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE user_id = ? AND title = 'Fight Club'")
-        .bind(user_id)
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+    let fc_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM scrobbles WHERE user_id = ? AND title = 'Fight Club'",
+    )
+    .bind(user_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
     assert_eq!(fc_count, 0);
 
     // 3. Re-import the exact same data -> DEDUPLICATION MUST SKIP THEM ALL!
@@ -3154,15 +3573,23 @@ async fn test_tautulli_import_and_deduplication() {
         .uri("/api/v1/import/tautulli")
         .header(header::AUTHORIZATION, format!("Bearer {}", token))
         .header(header::CONTENT_TYPE, "application/json")
-        .body(Body::from(serde_json::to_vec(&serde_json::json!({
-            "username": "daryl_tautulli",
-            "content": tautulli_json.to_string(),
-        })).unwrap()))
+        .body(Body::from(
+            serde_json::to_vec(&serde_json::json!({
+                "username": "daryl_tautulli",
+                "content": tautulli_json.to_string(),
+            }))
+            .unwrap(),
+        ))
         .unwrap();
 
     let reimport_resp = app.clone().oneshot(reimport_req).await.unwrap();
     assert_eq!(reimport_resp.status(), StatusCode::OK);
-    let reimport_body: serde_json::Value = serde_json::from_slice(&axum::body::to_bytes(reimport_resp.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let reimport_body: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(reimport_resp.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
 
     // 0 imported, 2 skipped
     assert_eq!(reimport_body["imported"], 0);
@@ -3184,15 +3611,23 @@ async fn test_tautulli_import_and_deduplication() {
         .uri("/api/v1/import/tautulli")
         .header(header::AUTHORIZATION, format!("Bearer {}", token))
         .header(header::CONTENT_TYPE, "application/json")
-        .body(Body::from(serde_json::to_vec(&serde_json::json!({
-            "username": "daryl_tautulli",
-            "content": tautulli_csv,
-        })).unwrap()))
+        .body(Body::from(
+            serde_json::to_vec(&serde_json::json!({
+                "username": "daryl_tautulli",
+                "content": tautulli_csv,
+            }))
+            .unwrap(),
+        ))
         .unwrap();
 
     let csv_resp = app.clone().oneshot(csv_req).await.unwrap();
     assert_eq!(csv_resp.status(), StatusCode::OK);
-    let csv_body: serde_json::Value = serde_json::from_slice(&axum::body::to_bytes(csv_resp.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let csv_body: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(csv_resp.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
     assert_eq!(csv_body["imported"], 1);
     assert_eq!(csv_body["skipped"], 0);
 
@@ -3239,7 +3674,12 @@ async fn test_rate_watched_item() {
     )
     .await
     .unwrap();
-    let token_a = create_jwt(&user_a.id, "rater_a@bingesync.local", "test-secret-key-12345").unwrap();
+    let token_a = create_jwt(
+        &user_a.id,
+        "rater_a@bingesync.local",
+        "test-secret-key-12345",
+    )
+    .unwrap();
 
     // Create User B
     let user_b = bingesync::api::auth::get_or_create_user(
@@ -3252,7 +3692,12 @@ async fn test_rate_watched_item() {
     )
     .await
     .unwrap();
-    let token_b = create_jwt(&user_b.id, "rater_b@bingesync.local", "test-secret-key-12345").unwrap();
+    let token_b = create_jwt(
+        &user_b.id,
+        "rater_b@bingesync.local",
+        "test-secret-key-12345",
+    )
+    .unwrap();
 
     // 1. Create a scrobble for User A
     let create_req = Request::builder()
@@ -3273,7 +3718,12 @@ async fn test_rate_watched_item() {
 
     let res = app.clone().oneshot(create_req).await.unwrap();
     assert_eq!(res.status(), StatusCode::CREATED);
-    let created: serde_json::Value = serde_json::from_slice(&axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let created: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(res.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
     let scrobble_id = created["id"].as_str().unwrap().to_string();
 
     // 2. User A rates the item 9/10
@@ -3287,16 +3737,22 @@ async fn test_rate_watched_item() {
 
     let res = app.clone().oneshot(rate_req).await.unwrap();
     assert_eq!(res.status(), StatusCode::OK);
-    let body: serde_json::Value = serde_json::from_slice(&axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let body: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(res.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
     assert_eq!(body["status"], "success");
     assert_eq!(body["rating"], 9);
 
     // Verify rating in DB
-    let db_rating: Option<i32> = sqlx::query_scalar("SELECT user_rating FROM scrobbles WHERE id = ?")
-        .bind(&scrobble_id)
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+    let db_rating: Option<i32> =
+        sqlx::query_scalar("SELECT user_rating FROM scrobbles WHERE id = ?")
+            .bind(&scrobble_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
     assert_eq!(db_rating, Some(9));
 
     // 3. User A updates rating to 10/10 via PUT
@@ -3311,11 +3767,12 @@ async fn test_rate_watched_item() {
     let res = app.clone().oneshot(put_req).await.unwrap();
     assert_eq!(res.status(), StatusCode::OK);
 
-    let db_rating: Option<i32> = sqlx::query_scalar("SELECT user_rating FROM scrobbles WHERE id = ?")
-        .bind(&scrobble_id)
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+    let db_rating: Option<i32> =
+        sqlx::query_scalar("SELECT user_rating FROM scrobbles WHERE id = ?")
+            .bind(&scrobble_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
     assert_eq!(db_rating, Some(10));
 
     // 4. Invalid rating (> 10) returns 400 Bad Request
@@ -3366,11 +3823,12 @@ async fn test_rate_watched_item() {
     let res = app.clone().oneshot(clear_req).await.unwrap();
     assert_eq!(res.status(), StatusCode::OK);
 
-    let db_rating: Option<i32> = sqlx::query_scalar("SELECT user_rating FROM scrobbles WHERE id = ?")
-        .bind(&scrobble_id)
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+    let db_rating: Option<i32> =
+        sqlx::query_scalar("SELECT user_rating FROM scrobbles WHERE id = ?")
+            .bind(&scrobble_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
     assert_eq!(db_rating, None);
 }
 
@@ -3392,8 +3850,11 @@ async fn test_openapi_spec_and_swagger_ui() {
         "application/json; charset=utf-8"
     );
 
-    let spec_bytes = axum::body::to_bytes(spec_res.into_body(), usize::MAX).await.unwrap();
-    let spec_json: serde_json::Value = serde_json::from_slice(&spec_bytes).expect("Valid OpenAPI JSON");
+    let spec_bytes = axum::body::to_bytes(spec_res.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let spec_json: serde_json::Value =
+        serde_json::from_slice(&spec_bytes).expect("Valid OpenAPI JSON");
     assert_eq!(spec_json["openapi"], "3.0.3");
     assert_eq!(spec_json["info"]["title"], "BingeSync API");
     assert!(spec_json["paths"]["/api/v1/history/{id}/rate"].is_object());
@@ -3409,13 +3870,22 @@ async fn test_openapi_spec_and_swagger_ui() {
 
     let docs_res = app.clone().oneshot(docs_req).await.unwrap();
     assert_eq!(docs_res.status(), StatusCode::OK);
-    let csp = docs_res.headers().get("content-security-policy").unwrap().to_str().unwrap();
+    let csp = docs_res
+        .headers()
+        .get("content-security-policy")
+        .unwrap()
+        .to_str()
+        .unwrap();
     assert!(csp.contains("cdn.jsdelivr.net"));
     assert!(csp.contains("cdnjs.cloudflare.com"));
     assert!(csp.contains("unpkg.com"));
     let docs_body = String::from_utf8(
-        axum::body::to_bytes(docs_res.into_body(), usize::MAX).await.unwrap().to_vec()
-    ).unwrap();
+        axum::body::to_bytes(docs_res.into_body(), usize::MAX)
+            .await
+            .unwrap()
+            .to_vec(),
+    )
+    .unwrap();
     assert!(docs_body.contains("Swagger UI"));
     assert!(docs_body.contains("BingeSync API"));
     assert!(docs_body.contains("swagger-ui"));
@@ -3431,8 +3901,12 @@ async fn test_openapi_spec_and_swagger_ui() {
     let swagger_res = app.oneshot(swagger_req).await.unwrap();
     assert_eq!(swagger_res.status(), StatusCode::OK);
     let swagger_body = String::from_utf8(
-        axum::body::to_bytes(swagger_res.into_body(), usize::MAX).await.unwrap().to_vec()
-    ).unwrap();
+        axum::body::to_bytes(swagger_res.into_body(), usize::MAX)
+            .await
+            .unwrap()
+            .to_vec(),
+    )
+    .unwrap();
     assert!(swagger_body.contains("Swagger UI"));
 }
 
@@ -3505,8 +3979,11 @@ async fn test_plex_webhook_internal_thumb_and_refresh_metadata_endpoint() {
     assert_eq!(refresh_res.status(), StatusCode::OK);
 
     let refresh_body: serde_json::Value = serde_json::from_slice(
-        &axum::body::to_bytes(refresh_res.into_body(), usize::MAX).await.unwrap()
-    ).unwrap();
+        &axum::body::to_bytes(refresh_res.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
     assert_eq!(refresh_body["status"], "refreshed");
     assert!(refresh_body["scrobble"]["metadata_updated_at"].is_string());
 
@@ -3591,19 +4068,39 @@ async fn test_user_settings_isolation_and_credentials() {
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
-    let settings_a: bingesync::api::user_settings::UserSettingsView = serde_json::from_slice(&body).unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let settings_a: bingesync::api::user_settings::UserSettingsView =
+        serde_json::from_slice(&body).unwrap();
 
-    assert_eq!(settings_a.radarr_url.as_deref(), Some("http://user-a-radarr:7878"));
+    assert_eq!(
+        settings_a.radarr_url.as_deref(),
+        Some("http://user-a-radarr:7878")
+    );
     assert!(settings_a.radarr_api_key_configured);
-    assert!(settings_a.radarr_api_key_masked.as_deref().unwrap().starts_with("us"));
-    assert!(settings_a.radarr_api_key_masked.as_deref().unwrap().contains('•'));
+    assert!(settings_a
+        .radarr_api_key_masked
+        .as_deref()
+        .unwrap()
+        .starts_with("us"));
+    assert!(settings_a
+        .radarr_api_key_masked
+        .as_deref()
+        .unwrap()
+        .contains('•'));
     assert!(settings_a.radarr_api_key.is_none());
 
-    assert_eq!(settings_a.sonarr_url.as_deref(), Some("http://user-a-sonarr:8989"));
+    assert_eq!(
+        settings_a.sonarr_url.as_deref(),
+        Some("http://user-a-sonarr:8989")
+    );
     assert!(settings_a.sonarr_api_key_configured);
 
-    assert_eq!(settings_a.tautulli_url.as_deref(), Some("http://user-a-tautulli:8181/api/v2"));
+    assert_eq!(
+        settings_a.tautulli_url.as_deref(),
+        Some("http://user-a-tautulli:8181/api/v2")
+    );
     assert!(settings_a.tautulli_api_key_configured);
 
     // 3. User B retrieves settings - should be completely empty (Multi-user isolation!)
@@ -3614,8 +4111,11 @@ async fn test_user_settings_isolation_and_credentials() {
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
-    let settings_b: bingesync::api::user_settings::UserSettingsView = serde_json::from_slice(&body).unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let settings_b: bingesync::api::user_settings::UserSettingsView =
+        serde_json::from_slice(&body).unwrap();
 
     assert!(settings_b.radarr_url.is_none());
     assert!(!settings_b.radarr_api_key_configured);
@@ -3632,7 +4132,9 @@ async fn test_user_settings_isolation_and_credentials() {
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let status_a: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(status_a["radarr_configured"], true);
     assert_eq!(status_a["sonarr_configured"], true);
@@ -3645,7 +4147,9 @@ async fn test_user_settings_isolation_and_credentials() {
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let status_b: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(status_b["radarr_configured"], false);
     assert_eq!(status_b["sonarr_configured"], false);
@@ -3693,18 +4197,21 @@ async fn test_plex_webhook_username_filtering() {
 
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let resp_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(resp_json["status"], "ignored");
     assert_eq!(resp_json["reason"], "username_mismatch");
     assert_eq!(resp_json["account"], "other_plex_user");
 
     // Verify no scrobbles exist in database
-    let scrobble_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE user_id = ?")
-        .bind(&user.id)
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+    let scrobble_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE user_id = ?")
+            .bind(&user.id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
     assert_eq!(scrobble_count, 0);
 
     // Also verify playback session is ignored for other user
@@ -3727,11 +4234,12 @@ async fn test_plex_webhook_username_filtering() {
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let session_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM active_sessions WHERE user_id = ?")
-        .bind(&user.id)
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+    let session_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM active_sessions WHERE user_id = ?")
+            .bind(&user.id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
     assert_eq!(session_count, 0);
 
     // 3. Webhook from matching user ("tester_plex")
@@ -3757,11 +4265,12 @@ async fn test_plex_webhook_username_filtering() {
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::CREATED);
 
-    let scrobble_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE user_id = ?")
-        .bind(&user.id)
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+    let scrobble_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE user_id = ?")
+            .bind(&user.id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
     assert_eq!(scrobble_count, 1);
 
     // 4. Update user settings with custom comma-separated plex_username filter: "custom_plex, living_room"
@@ -3770,9 +4279,12 @@ async fn test_plex_webhook_username_filtering() {
         .uri("/api/v1/user/settings")
         .header(header::AUTHORIZATION, format!("Bearer {}", token))
         .header(header::CONTENT_TYPE, "application/json")
-        .body(Body::from(json!({
-            "plex_username": "custom_plex, living_room"
-        }).to_string()))
+        .body(Body::from(
+            json!({
+                "plex_username": "custom_plex, living_room"
+            })
+            .to_string(),
+        ))
         .unwrap();
     let resp = app.clone().oneshot(update_req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
@@ -3786,7 +4298,9 @@ async fn test_plex_webhook_username_filtering() {
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let resp_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(resp_json["status"], "ignored");
 
@@ -3831,11 +4345,12 @@ async fn test_plex_webhook_username_filtering() {
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::CREATED);
 
-    let final_scrobble_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE user_id = ?")
-        .bind(&user.id)
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+    let final_scrobble_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE user_id = ?")
+            .bind(&user.id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
     assert_eq!(final_scrobble_count, 3);
 
     // 5. Test Plex user ID enumeration and database caching
@@ -3889,16 +4404,19 @@ async fn test_plex_webhook_username_filtering() {
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let resp_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(resp_json["status"], "ignored");
     assert_eq!(resp_json["reason"], "username_mismatch");
 
-    let post_cache_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE user_id = ?")
-        .bind(&user.id)
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+    let post_cache_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE user_id = ?")
+            .bind(&user.id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
     assert_eq!(post_cache_count, 4);
 }
 
@@ -3916,7 +4434,9 @@ async fn test_search_all_history_regardless_of_date_and_return_all_results() {
         .await
         .unwrap();
 
-    let token = bingesync::auth::jwt::create_jwt(user_id, "search_all@test.local", &config.jwt_secret).unwrap();
+    let token =
+        bingesync::auth::jwt::create_jwt(user_id, "search_all@test.local", &config.jwt_secret)
+            .unwrap();
 
     // Insert Matrix movies in three different years/months
     // 1. The Matrix in 2021-06-15
@@ -3940,8 +4460,11 @@ async fn test_search_all_history_regardless_of_date_and_return_all_results() {
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
-    let days: Vec<bingesync::models::scrobble::TimelineDay> = serde_json::from_slice(&body).unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let days: Vec<bingesync::models::scrobble::TimelineDay> =
+        serde_json::from_slice(&body).unwrap();
     assert_eq!(days.len(), 1);
     assert_eq!(days[0].items.len(), 1);
     assert_eq!(days[0].items[0].title, "The Matrix Revolutions");
@@ -3954,11 +4477,25 @@ async fn test_search_all_history_regardless_of_date_and_return_all_results() {
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
-    let all_days: Vec<bingesync::models::scrobble::TimelineDay> = serde_json::from_slice(&body).unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let all_days: Vec<bingesync::models::scrobble::TimelineDay> =
+        serde_json::from_slice(&body).unwrap();
     assert_eq!(all_days.len(), 3);
-    let all_titles: Vec<String> = all_days.into_iter().flat_map(|d| d.items).map(|i| i.title).collect();
-    assert_eq!(all_titles, vec!["The Matrix Revolutions", "The Matrix Reloaded", "The Matrix"]);
+    let all_titles: Vec<String> = all_days
+        .into_iter()
+        .flat_map(|d| d.items)
+        .map(|i| i.title)
+        .collect();
+    assert_eq!(
+        all_titles,
+        vec![
+            "The Matrix Revolutions",
+            "The Matrix Reloaded",
+            "The Matrix"
+        ]
+    );
 
     // 3. History endpoint with all=true returns all results without page clamping
     let req = Request::builder()
@@ -3968,7 +4505,9 @@ async fn test_search_all_history_regardless_of_date_and_return_all_results() {
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let history: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(history["total"], 3);
     assert_eq!(history["items"].as_array().unwrap().len(), 3);
@@ -3993,7 +4532,9 @@ async fn test_jellyfin_webhook_scrobble_movie_episode_session_and_filtering() {
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let val: serde_json::Value = serde_json::from_slice(&body).unwrap();
     let token = val["token"].as_str().unwrap().to_string();
     let webhook_token = val["user"]["webhook_token"].as_str().unwrap().to_string();
@@ -4058,7 +4599,9 @@ async fn test_jellyfin_webhook_scrobble_movie_episode_session_and_filtering() {
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let history: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(history["total"], 2);
 
@@ -4097,7 +4640,9 @@ async fn test_jellyfin_webhook_scrobble_movie_episode_session_and_filtering() {
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let now_playing: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(now_playing["now_playing"]["title"], "Dune: Part Two");
     assert_eq!(now_playing["now_playing"]["state"], "playing");
@@ -4133,7 +4678,9 @@ async fn test_jellyfin_webhook_scrobble_movie_episode_session_and_filtering() {
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let ignored_resp: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(ignored_resp["status"], "ignored");
     assert_eq!(ignored_resp["reason"], "username_mismatch");
@@ -4175,11 +4722,13 @@ async fn test_user_cache_background_sync_and_jellyfin_id_resolution() {
         .unwrap();
 
     // User configured jellyfin_username = "sarah"
-    sqlx::query("INSERT INTO user_settings (user_id, key, value) VALUES (?, 'jellyfin_username', 'sarah')")
-        .bind(user_id)
-        .execute(&pool)
-        .await
-        .unwrap();
+    sqlx::query(
+        "INSERT INTO user_settings (user_id, key, value) VALUES (?, 'jellyfin_username', 'sarah')",
+    )
+    .bind(user_id)
+    .execute(&pool)
+    .await
+    .unwrap();
 
     // Pre-seed plex_user_cache with Jellyfin mapping: id "999888-uuid" -> "sarah"
     sqlx::query("INSERT INTO plex_user_cache (plex_id, username, friendly_name, source) VALUES ('999888-uuid', 'sarah', 'sarah', 'jellyfin')")
@@ -4208,11 +4757,13 @@ async fn test_user_cache_background_sync_and_jellyfin_id_resolution() {
     assert_eq!(resp.status(), StatusCode::CREATED);
 
     // Verify scrobble created
-    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE user_id = ? AND title = 'Interstellar'")
-        .bind(user_id)
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+    let count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM scrobbles WHERE user_id = ? AND title = 'Interstellar'",
+    )
+    .bind(user_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
     assert_eq!(count, 1);
 
     // Test running sync_user_cache_once
@@ -4243,7 +4794,9 @@ async fn test_specific_director_and_cinematographer_fields() {
 
     let res = app.clone().oneshot(login_req).await.unwrap();
     assert_eq!(res.status(), StatusCode::OK);
-    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let login_data: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
     let token = login_data["token"].as_str().unwrap().to_string();
 
@@ -4268,7 +4821,9 @@ async fn test_specific_director_and_cinematographer_fields() {
 
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::CREATED);
-    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let created: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
 
     assert_eq!(created["director"], "Christopher Nolan");
@@ -4283,7 +4838,9 @@ async fn test_specific_director_and_cinematographer_fields() {
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let list: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
     assert_eq!(list["items"].as_array().unwrap().len(), 1);
     assert_eq!(list["items"][0]["title"], "Oppenheimer");
@@ -4297,7 +4854,9 @@ async fn test_specific_director_and_cinematographer_fields() {
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let list: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
     assert_eq!(list["items"].as_array().unwrap().len(), 1);
     assert_eq!(list["items"][0]["cinematographer"], "Hoyte van Hoytema");
@@ -4311,7 +4870,9 @@ async fn test_specific_director_and_cinematographer_fields() {
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let list: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
     assert_eq!(list["items"].as_array().unwrap().len(), 1);
 
@@ -4324,7 +4885,9 @@ async fn test_specific_director_and_cinematographer_fields() {
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let list: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
     assert_eq!(list["items"].as_array().unwrap().len(), 0);
 }
@@ -4374,10 +4937,11 @@ async fn test_force_refresh_all_metadata_option() {
     }
 
     // Verify 3 records have metadata_updated_at set
-    let count_set: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE metadata_updated_at IS NOT NULL")
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+    let count_set: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE metadata_updated_at IS NOT NULL")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
     assert_eq!(count_set, 3);
 
     // 3. Test non-admin user forbidden
@@ -4400,17 +4964,20 @@ async fn test_force_refresh_all_metadata_option() {
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
 
-    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let res: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
     assert_eq!(res["status"], "triggered");
     assert_eq!(res["forced"], true);
     assert_eq!(res["records_reset"], 3);
 
     // Verify all records now have metadata_updated_at IS NULL
-    let count_null: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE metadata_updated_at IS NULL")
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+    let count_null: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE metadata_updated_at IS NULL")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
     assert_eq!(count_null, 3);
 
     // 5. Test triggering via admin task runner with ?force=true
@@ -4429,15 +4996,18 @@ async fn test_force_refresh_all_metadata_option() {
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
 
-    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let res: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
     assert_eq!(res["status"], "triggered");
     assert_eq!(res["forced"], true);
 
-    let count_null_after_task: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE metadata_updated_at IS NULL")
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+    let count_null_after_task: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE metadata_updated_at IS NULL")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
     assert_eq!(count_null_after_task, 3);
 }
 
@@ -4502,9 +5072,12 @@ async fn test_fix_incorrect_match_with_tvdb_id() {
         .uri(format!("/api/v1/history/{}/fix-match", scrobble_e1))
         .header(header::AUTHORIZATION, format!("Bearer {}", token_b))
         .header(header::CONTENT_TYPE, "application/json")
-        .body(Body::from(serde_json::to_vec(&serde_json::json!({
-            "tvdb_id": "81189"
-        })).unwrap()))
+        .body(Body::from(
+            serde_json::to_vec(&serde_json::json!({
+                "tvdb_id": "81189"
+            }))
+            .unwrap(),
+        ))
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
@@ -4515,9 +5088,12 @@ async fn test_fix_incorrect_match_with_tvdb_id() {
         .uri(format!("/api/v1/history/{}/fix-match", scrobble_e1))
         .header(header::AUTHORIZATION, format!("Bearer {}", token_a))
         .header(header::CONTENT_TYPE, "application/json")
-        .body(Body::from(serde_json::to_vec(&serde_json::json!({
-            "tvdb_id": "   "
-        })).unwrap()))
+        .body(Body::from(
+            serde_json::to_vec(&serde_json::json!({
+                "tvdb_id": "   "
+            }))
+            .unwrap(),
+        ))
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
@@ -4528,25 +5104,31 @@ async fn test_fix_incorrect_match_with_tvdb_id() {
         .uri(format!("/api/v1/history/{}/fix-match", scrobble_e1))
         .header(header::AUTHORIZATION, format!("Bearer {}", token_a))
         .header(header::CONTENT_TYPE, "application/json")
-        .body(Body::from(serde_json::to_vec(&serde_json::json!({
-            "tvdb_id": "series-81189"
-        })).unwrap()))
+        .body(Body::from(
+            serde_json::to_vec(&serde_json::json!({
+                "tvdb_id": "series-81189"
+            }))
+            .unwrap(),
+        ))
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
 
-    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let res: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
     assert_eq!(res["status"], "fixed");
     assert_eq!(res["tvdb_id"], "81189");
     assert_eq!(res["scrobble"]["tvdb_id"], "81189");
 
     // 6. Verify that sibling episode also had its tvdb_id updated for the same show
-    let sibling_tvdb_id: Option<String> = sqlx::query_scalar("SELECT tvdb_id FROM scrobbles WHERE id = ?")
-        .bind(scrobble_e2)
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+    let sibling_tvdb_id: Option<String> =
+        sqlx::query_scalar("SELECT tvdb_id FROM scrobbles WHERE id = ?")
+            .bind(scrobble_e2)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
     assert_eq!(sibling_tvdb_id.as_deref(), Some("81189"));
 
     // 7. Verify GET /api/v1/history returns the tvdb_id field
@@ -4558,10 +5140,14 @@ async fn test_fix_incorrect_match_with_tvdb_id() {
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let list: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
     let items = list["items"].as_array().unwrap();
-    assert!(items.iter().any(|it| it["id"] == scrobble_e1 && it["tvdb_id"] == "81189"));
+    assert!(items
+        .iter()
+        .any(|it| it["id"] == scrobble_e1 && it["tvdb_id"] == "81189"));
 }
 
 #[tokio::test]
@@ -4605,10 +5191,11 @@ async fn test_force_refresh_posters_and_user_cache() {
         .unwrap();
     }
 
-    let count_posters: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE thumb_url IS NOT NULL")
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+    let count_posters: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE thumb_url IS NOT NULL")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
     assert_eq!(count_posters, 2);
 
     // 3. Insert user cache rows
@@ -4659,16 +5246,19 @@ async fn test_force_refresh_posters_and_user_cache() {
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let res: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
     assert_eq!(res["status"], "triggered");
     assert_eq!(res["forced"], true);
     assert_eq!(res["records_reset"], 2);
 
-    let count_posters_null: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE thumb_url IS NULL")
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+    let count_posters_null: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE thumb_url IS NULL")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
     assert_eq!(count_posters_null, 2);
 
     // 7. Admin triggers force refresh posters via /admin/tasks/image_cache/run?force=true
@@ -4685,15 +5275,18 @@ async fn test_force_refresh_posters_and_user_cache() {
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let res: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
     assert_eq!(res["status"], "triggered");
     assert_eq!(res["forced"], true);
 
-    let count_posters_null2: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE thumb_url IS NULL")
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+    let count_posters_null2: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE thumb_url IS NULL")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
     assert_eq!(count_posters_null2, 2);
 
     // 8. Admin triggers force refresh user cache via /admin/users-cache/force-refresh
@@ -4705,7 +5298,9 @@ async fn test_force_refresh_posters_and_user_cache() {
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let res: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
     assert_eq!(res["status"], "triggered");
     assert_eq!(res["forced"], true);
@@ -4731,7 +5326,9 @@ async fn test_force_refresh_posters_and_user_cache() {
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let res: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
     assert_eq!(res["status"], "triggered");
     assert_eq!(res["forced"], true);
@@ -4778,7 +5375,9 @@ async fn test_library_cleanup_endpoint() {
     let radarr_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let radarr_addr = radarr_listener.local_addr().unwrap();
     tokio::spawn(async move {
-        axum::serve(radarr_listener, mock_radarr_router).await.unwrap();
+        axum::serve(radarr_listener, mock_radarr_router)
+            .await
+            .unwrap();
     });
 
     // 2. Setup mock Sonarr server
@@ -4831,7 +5430,9 @@ async fn test_library_cleanup_endpoint() {
     let sonarr_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let sonarr_addr = sonarr_listener.local_addr().unwrap();
     tokio::spawn(async move {
-        axum::serve(sonarr_listener, mock_sonarr_router).await.unwrap();
+        axum::serve(sonarr_listener, mock_sonarr_router)
+            .await
+            .unwrap();
     });
 
     // 3. Create User A and User B
@@ -4858,10 +5459,38 @@ async fn test_library_cleanup_endpoint() {
         .unwrap();
 
     // 4. Configure Radarr and Sonarr for User A
-    bingesync::api::user_settings::set_user_setting(&pool, user_a_id, "radarr_url", &format!("http://{}", radarr_addr)).await.unwrap();
-    bingesync::api::user_settings::set_user_setting(&pool, user_a_id, "radarr_api_key", "mock_radarr_key").await.unwrap();
-    bingesync::api::user_settings::set_user_setting(&pool, user_a_id, "sonarr_url", &format!("http://{}", sonarr_addr)).await.unwrap();
-    bingesync::api::user_settings::set_user_setting(&pool, user_a_id, "sonarr_api_key", "mock_sonarr_key").await.unwrap();
+    bingesync::api::user_settings::set_user_setting(
+        &pool,
+        user_a_id,
+        "radarr_url",
+        &format!("http://{}", radarr_addr),
+    )
+    .await
+    .unwrap();
+    bingesync::api::user_settings::set_user_setting(
+        &pool,
+        user_a_id,
+        "radarr_api_key",
+        "mock_radarr_key",
+    )
+    .await
+    .unwrap();
+    bingesync::api::user_settings::set_user_setting(
+        &pool,
+        user_a_id,
+        "sonarr_url",
+        &format!("http://{}", sonarr_addr),
+    )
+    .await
+    .unwrap();
+    bingesync::api::user_settings::set_user_setting(
+        &pool,
+        user_a_id,
+        "sonarr_api_key",
+        "mock_sonarr_key",
+    )
+    .await
+    .unwrap();
 
     // 5. Insert scrobbles for User A (watched Inception and Breaking Bad S01)
     sqlx::query(
@@ -4889,7 +5518,9 @@ async fn test_library_cleanup_endpoint() {
         .unwrap();
     let resp_b = app.clone().oneshot(req_b).await.unwrap();
     assert_eq!(resp_b.status(), StatusCode::OK);
-    let body_bytes_b = axum::body::to_bytes(resp_b.into_body(), usize::MAX).await.unwrap();
+    let body_bytes_b = axum::body::to_bytes(resp_b.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let json_b: serde_json::Value = serde_json::from_slice(&body_bytes_b).unwrap();
     assert_eq!(json_b["radarr_configured"], false);
     assert_eq!(json_b["sonarr_configured"], false);
@@ -4905,7 +5536,9 @@ async fn test_library_cleanup_endpoint() {
         .unwrap();
     let resp_a = app.clone().oneshot(req_a).await.unwrap();
     assert_eq!(resp_a.status(), StatusCode::OK);
-    let body_bytes_a = axum::body::to_bytes(resp_a.into_body(), usize::MAX).await.unwrap();
+    let body_bytes_a = axum::body::to_bytes(resp_a.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let json_a: serde_json::Value = serde_json::from_slice(&body_bytes_a).unwrap();
 
     assert_eq!(json_a["radarr_configured"], true);
@@ -5000,23 +5633,29 @@ async fn test_delete_by_media_endpoint() {
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let res: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
     assert_eq!(res["deleted_count"], 1);
 
     // Verify User A has no Matrix, but User B still does
-    let count_a_matrix: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE user_id = ? AND title = 'The Matrix'")
-        .bind(user_a_id)
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+    let count_a_matrix: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM scrobbles WHERE user_id = ? AND title = 'The Matrix'",
+    )
+    .bind(user_a_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
     assert_eq!(count_a_matrix, 0);
 
-    let count_b_matrix: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE user_id = ? AND title = 'The Matrix'")
-        .bind(user_b_id)
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+    let count_b_matrix: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM scrobbles WHERE user_id = ? AND title = 'The Matrix'",
+    )
+    .bind(user_b_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
     assert_eq!(count_b_matrix, 1);
 
     // 4. User A deletes series "Breaking Bad"
@@ -5028,22 +5667,28 @@ async fn test_delete_by_media_endpoint() {
         .unwrap();
     let resp2 = app.clone().oneshot(req2).await.unwrap();
     assert_eq!(resp2.status(), StatusCode::OK);
-    let body_bytes2 = axum::body::to_bytes(resp2.into_body(), usize::MAX).await.unwrap();
+    let body_bytes2 = axum::body::to_bytes(resp2.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let res2: serde_json::Value = serde_json::from_slice(&body_bytes2).unwrap();
     assert_eq!(res2["deleted_count"], 1);
 
-    let count_a_bb: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE user_id = ? AND grandparent_title = 'Breaking Bad'")
-        .bind(user_a_id)
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+    let count_a_bb: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM scrobbles WHERE user_id = ? AND grandparent_title = 'Breaking Bad'",
+    )
+    .bind(user_a_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
     assert_eq!(count_a_bb, 0);
 
-    let count_b_bb: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE user_id = ? AND grandparent_title = 'Breaking Bad'")
-        .bind(user_b_id)
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+    let count_b_bb: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM scrobbles WHERE user_id = ? AND grandparent_title = 'Breaking Bad'",
+    )
+    .bind(user_b_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
     assert_eq!(count_b_bb, 1);
 }
 
@@ -5150,7 +5795,7 @@ async fn test_tmdb_metadata_enrichment_worker() {
             ?, ?, ?, ?, ?,
             ?, ?, ?, ?, ?
         )
-        "#
+        "#,
     )
     .bind(&scrobble_id)
     .bind(user_id)
@@ -5184,7 +5829,10 @@ async fn test_tmdb_metadata_enrichment_worker() {
         .unwrap();
 
     assert_eq!(scrobble.genres.as_deref(), Some("Drama, Sci-Fi & Fantasy"));
-    assert_eq!(scrobble.actors.as_deref(), Some("Millie Bobby Brown, Winona Ryder"));
+    assert_eq!(
+        scrobble.actors.as_deref(),
+        Some("Millie Bobby Brown, Winona Ryder")
+    );
     assert_eq!(scrobble.directors.as_deref(), Some("The Duffer Brothers"));
     assert_eq!(scrobble.cinematographer.as_deref(), Some("Tim Ives"));
     assert!(scrobble.overview.is_some());
@@ -5244,26 +5892,42 @@ async fn test_admin_settings_metadata_source_and_tmdb() {
 
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let settings: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
 
     assert_eq!(settings["metadata_source"], "tmdb");
     assert_eq!(settings["tmdb_api_key_configured"], true);
-    assert!(settings["tmdb_api_key_masked"].as_str().unwrap().starts_with("my"));
-    assert!(settings["tmdb_api_key_masked"].as_str().unwrap().contains('•'));
+    assert!(settings["tmdb_api_key_masked"]
+        .as_str()
+        .unwrap()
+        .starts_with("my"));
+    assert!(settings["tmdb_api_key_masked"]
+        .as_str()
+        .unwrap()
+        .contains('•'));
 
     // 3. Verify task tracker displays Metadata Enrichment and active provider description
     let tasks_summary = state.task_tracker.get_tasks_summary(&state, false).await;
-    let meta_task = tasks_summary.iter().find(|t| t.id == "tvdb_metadata").unwrap();
+    let meta_task = tasks_summary
+        .iter()
+        .find(|t| t.id == "tvdb_metadata")
+        .unwrap();
     assert_eq!(meta_task.name, "Metadata Enrichment");
-    assert!(meta_task.description.contains("TMDB") || meta_task.description.contains("The Movie Database"));
+    assert!(
+        meta_task.description.contains("TMDB")
+            || meta_task.description.contains("The Movie Database")
+    );
 }
 
 #[tokio::test]
 async fn test_admin_database_backup_and_restore() {
     let test_id = uuid::Uuid::new_v4();
     let db_file = std::env::temp_dir().join(format!("bingesync_test_backup_src_{}.db", test_id));
-    let pool = init_db(&format!("sqlite://{}?mode=rwc", db_file.to_string_lossy())).await.unwrap();
+    let pool = init_db(&format!("sqlite://{}?mode=rwc", db_file.to_string_lossy()))
+        .await
+        .unwrap();
     let mut config_val = Config::from_env();
     let temp_backup_dir = std::env::temp_dir().join(format!("bingesync_test_backup_{}", test_id));
     config_val.backup_dir = temp_backup_dir.to_string_lossy().to_string();
@@ -5293,20 +5957,24 @@ async fn test_admin_database_backup_and_restore() {
         .await
         .unwrap();
 
-    let admin_jwt = create_jwt(admin_id, "backup_admin@bingesync.local", &config.jwt_secret).unwrap();
-    let regular_jwt = create_jwt(regular_id, "regular@bingesync.local", &config.jwt_secret).unwrap();
+    let admin_jwt =
+        create_jwt(admin_id, "backup_admin@bingesync.local", &config.jwt_secret).unwrap();
+    let regular_jwt =
+        create_jwt(regular_id, "regular@bingesync.local", &config.jwt_secret).unwrap();
 
     // Insert an initial scrobble
     let initial_scrobble_id = "scrobble_snapshot_1";
-    sqlx::query("INSERT INTO scrobbles (id, user_id, title, media_type, year) VALUES (?, ?, ?, ?, ?)")
-        .bind(initial_scrobble_id)
-        .bind(admin_id)
-        .bind("The Matrix")
-        .bind("movie")
-        .bind(1999)
-        .execute(&pool)
-        .await
-        .unwrap();
+    sqlx::query(
+        "INSERT INTO scrobbles (id, user_id, title, media_type, year) VALUES (?, ?, ?, ?, ?)",
+    )
+    .bind(initial_scrobble_id)
+    .bind(admin_id)
+    .bind("The Matrix")
+    .bind("movie")
+    .bind(1999)
+    .execute(&pool)
+    .await
+    .unwrap();
 
     // 2. Verify non-admin gets 403 Forbidden
     let req = Request::builder()
@@ -5327,7 +5995,9 @@ async fn test_admin_database_backup_and_restore() {
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let list_json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
     assert_eq!(list_json["backups"].as_array().unwrap().len(), 0);
 
@@ -5340,9 +6010,14 @@ async fn test_admin_database_backup_and_restore() {
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let create_json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
-    let created_filename = create_json["backup"]["filename"].as_str().unwrap().to_string();
+    let created_filename = create_json["backup"]["filename"]
+        .as_str()
+        .unwrap()
+        .to_string();
     assert!(created_filename.starts_with("bingesync_backup_"));
     assert!(created_filename.ends_with(".db"));
     assert!(create_json["backup"]["size_bytes"].as_u64().unwrap() > 0);
@@ -5356,7 +6031,9 @@ async fn test_admin_database_backup_and_restore() {
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let list_json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
     assert_eq!(list_json["backups"].as_array().unwrap().len(), 1);
     assert_eq!(list_json["backups"][0]["filename"], created_filename);
@@ -5372,26 +6049,29 @@ async fn test_admin_database_backup_and_restore() {
 
     // 7. Mutate current database: add a second movie and delete the first movie
     let second_scrobble_id = "scrobble_mutated_2";
-    sqlx::query("INSERT INTO scrobbles (id, user_id, title, media_type, year) VALUES (?, ?, ?, ?, ?)")
-        .bind(second_scrobble_id)
-        .bind(admin_id)
-        .bind("Inception")
-        .bind("movie")
-        .bind(2010)
-        .execute(&pool)
-        .await
-        .unwrap();
+    sqlx::query(
+        "INSERT INTO scrobbles (id, user_id, title, media_type, year) VALUES (?, ?, ?, ?, ?)",
+    )
+    .bind(second_scrobble_id)
+    .bind(admin_id)
+    .bind("Inception")
+    .bind("movie")
+    .bind(2010)
+    .execute(&pool)
+    .await
+    .unwrap();
     sqlx::query("DELETE FROM scrobbles WHERE id = ?")
         .bind(initial_scrobble_id)
         .execute(&pool)
         .await
         .unwrap();
 
-    let count_before_restore: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE id = ?")
-        .bind(initial_scrobble_id)
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+    let count_before_restore: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE id = ?")
+            .bind(initial_scrobble_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
     assert_eq!(count_before_restore, 0);
 
     // 8. Test restore path traversal rejection
@@ -5417,23 +6097,27 @@ async fn test_admin_database_backup_and_restore() {
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let restore_json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
     assert_eq!(restore_json["status"], "restored");
 
     // 10. Verify database contents were restored to the snapshot
-    let count_after_restore: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE id = ?")
-        .bind(initial_scrobble_id)
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+    let count_after_restore: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE id = ?")
+            .bind(initial_scrobble_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
     assert_eq!(count_after_restore, 1);
 
-    let count_second_after_restore: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE id = ?")
-        .bind(second_scrobble_id)
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+    let count_second_after_restore: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE id = ?")
+            .bind(second_scrobble_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
     assert_eq!(count_second_after_restore, 0);
 
     // 11. Test background task trigger endpoint /api/v1/admin/tasks/db_backup/run
@@ -5517,16 +6201,20 @@ async fn test_emby_webhook_scrobble_movie_episode_and_filtering() {
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::CREATED);
-    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let res_json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
     assert_eq!(res_json["status"], "scrobbled");
 
     // Verify scrobble in database
-    let scrobble_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE user_id = ? AND title = 'Interstellar'")
-        .bind(user_id)
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+    let scrobble_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM scrobbles WHERE user_id = ? AND title = 'Interstellar'",
+    )
+    .bind(user_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
     assert_eq!(scrobble_count, 1);
 
     // 2. Send Emby webhook via query parameter: /api/v1/webhooks/emby?token=emby_wh_token_123 (TV Episode)
@@ -5554,19 +6242,25 @@ async fn test_emby_webhook_scrobble_movie_episode_and_filtering() {
         .method("POST")
         .uri("/api/v1/webhooks/emby?token=emby_wh_token_123")
         .header(header::CONTENT_TYPE, "application/json")
-        .body(Body::from(serde_json::to_vec(&emby_episode_payload).unwrap()))
+        .body(Body::from(
+            serde_json::to_vec(&emby_episode_payload).unwrap(),
+        ))
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::CREATED);
-    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let res_json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
     assert_eq!(res_json["status"], "scrobbled");
 
-    let ep_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE user_id = ? AND grandparent_title = 'Breaking Bad'")
-        .bind(user_id)
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+    let ep_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM scrobbles WHERE user_id = ? AND grandparent_title = 'Breaking Bad'",
+    )
+    .bind(user_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
     assert_eq!(ep_count, 1);
 
     // 3. Send Emby webhook for mismatched username -> should be ignored
@@ -5589,11 +6283,15 @@ async fn test_emby_webhook_scrobble_movie_episode_and_filtering() {
         .method("POST")
         .uri("/api/v1/webhooks/emby/emby_wh_token_123")
         .header(header::CONTENT_TYPE, "application/json")
-        .body(Body::from(serde_json::to_vec(&emby_mismatched_payload).unwrap()))
+        .body(Body::from(
+            serde_json::to_vec(&emby_mismatched_payload).unwrap(),
+        ))
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let res_json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
     assert_eq!(res_json["status"], "ignored");
     assert_eq!(res_json["reason"], "username_mismatch");
@@ -5643,9 +6341,14 @@ async fn test_user_data_export_zip() {
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    assert_eq!(resp.headers().get(header::CONTENT_TYPE).unwrap(), "application/zip");
+    assert_eq!(
+        resp.headers().get(header::CONTENT_TYPE).unwrap(),
+        "application/zip"
+    );
 
-    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     assert!(!body_bytes.is_empty());
 
     // Validate that the ZIP contains the 4 expected files
@@ -5708,14 +6411,20 @@ async fn test_weekly_heatmap_matrix_and_wrapped_endpoint() {
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let stats_json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
 
-    let heatmap = stats_json["weekly_heatmap"].as_array().expect("weekly_heatmap array");
+    let heatmap = stats_json["weekly_heatmap"]
+        .as_array()
+        .expect("weekly_heatmap array");
     assert_eq!(heatmap.len(), 168);
 
     // Find cell for Monday (1) hour 14
-    let target_cell = heatmap.iter().find(|c| (c["day_index"] == 1 || c["day_of_week"] == 1) && c["hour"] == 14);
+    let target_cell = heatmap
+        .iter()
+        .find(|c| (c["day_index"] == 1 || c["day_of_week"] == 1) && c["hour"] == 14);
     assert!(target_cell.is_some());
     let cell = target_cell.unwrap();
     assert_eq!(cell["count"], 2);
@@ -5729,7 +6438,9 @@ async fn test_weekly_heatmap_matrix_and_wrapped_endpoint() {
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let wrapped_json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
 
     assert_eq!(wrapped_json["year"], 2026);
@@ -5770,7 +6481,9 @@ async fn test_overseerr_endpoints() {
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let status_json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
     assert_eq!(status_json["configured"], false);
 
@@ -5795,7 +6508,9 @@ async fn test_overseerr_endpoints() {
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let status_json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
     assert_eq!(status_json["configured"], true);
 }
@@ -5851,12 +6566,17 @@ async fn test_outbound_webhook_test_and_user_settings() {
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let settings_json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
 
     assert_eq!(settings_json["emby_username"], "emby_superfan");
     assert_eq!(settings_json["outbound_webhook_type"], "generic");
-    assert_eq!(settings_json["outbound_webhook_url"], "https://example.com/webhook");
+    assert_eq!(
+        settings_json["outbound_webhook_url"],
+        "https://example.com/webhook"
+    );
     assert_eq!(settings_json["outbound_notify_scrobble"], true);
     assert_eq!(settings_json["outbound_notify_play"], true);
     assert_eq!(settings_json["outbound_notify_stop"], false);
@@ -5917,7 +6637,9 @@ async fn test_outbound_webhook_categories_and_triggers() {
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let settings_json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
     assert_eq!(settings_json["outbound_notify_play"], true);
     assert_eq!(settings_json["outbound_notify_stop"], false);
@@ -5987,7 +6709,9 @@ async fn test_history_and_timeline_missing_metadata_filter() {
         .body(Body::empty())
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
-    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
     assert_eq!(json["total"], 2);
 
@@ -5999,7 +6723,9 @@ async fn test_history_and_timeline_missing_metadata_filter() {
         .body(Body::empty())
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
-    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
     assert_eq!(json["total"], 1);
     assert_eq!(json["items"][0]["title"], "Unmatched Mystery Movie");
@@ -6012,7 +6738,9 @@ async fn test_history_and_timeline_missing_metadata_filter() {
         .body(Body::empty())
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
-    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
     assert_eq!(json["total"], 1);
     assert_eq!(json["items"][0]["title"], "Unmatched Mystery Movie");
@@ -6025,7 +6753,9 @@ async fn test_history_and_timeline_missing_metadata_filter() {
         .body(Body::empty())
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
-    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let days: Vec<serde_json::Value> = serde_json::from_slice(&body_bytes).unwrap();
     assert_eq!(days.len(), 1);
     assert_eq!(days[0]["items"].as_array().unwrap().len(), 1);
@@ -6088,7 +6818,10 @@ async fn test_fix_match_with_tmdb_id_and_search() {
     // 1. User B tries to search match for User A's scrobble -> 404 Not Found
     let req = Request::builder()
         .method("GET")
-        .uri(format!("/api/v1/history/{}/match-search?query=Game+of+Thrones", scrobble_1))
+        .uri(format!(
+            "/api/v1/history/{}/match-search?query=Game+of+Thrones",
+            scrobble_1
+        ))
         .header(header::AUTHORIZATION, format!("Bearer {}", token_b))
         .body(Body::empty())
         .unwrap();
@@ -6098,13 +6831,18 @@ async fn test_fix_match_with_tmdb_id_and_search() {
     // 2. User A searches match -> 200 OK (returns query and candidates array)
     let req = Request::builder()
         .method("GET")
-        .uri(format!("/api/v1/history/{}/match-search?query=Game+of+Thrones&provider=tmdb", scrobble_1))
+        .uri(format!(
+            "/api/v1/history/{}/match-search?query=Game+of+Thrones&provider=tmdb",
+            scrobble_1
+        ))
         .header(header::AUTHORIZATION, format!("Bearer {}", token_a))
         .body(Body::empty())
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let res: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
     assert_eq!(res["query"], "Game of Thrones");
     assert!(res["results"].is_array());
@@ -6115,10 +6853,13 @@ async fn test_fix_match_with_tmdb_id_and_search() {
         .uri(format!("/api/v1/history/{}/fix-match", scrobble_1))
         .header(header::AUTHORIZATION, format!("Bearer {}", token_b))
         .header(header::CONTENT_TYPE, "application/json")
-        .body(Body::from(serde_json::to_vec(&serde_json::json!({
-            "tmdb_id": "1399",
-            "provider": "tmdb"
-        })).unwrap()))
+        .body(Body::from(
+            serde_json::to_vec(&serde_json::json!({
+                "tmdb_id": "1399",
+                "provider": "tmdb"
+            }))
+            .unwrap(),
+        ))
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
@@ -6129,14 +6870,19 @@ async fn test_fix_match_with_tmdb_id_and_search() {
         .uri(format!("/api/v1/history/{}/fix-match", scrobble_1))
         .header(header::AUTHORIZATION, format!("Bearer {}", token_a))
         .header(header::CONTENT_TYPE, "application/json")
-        .body(Body::from(serde_json::to_vec(&serde_json::json!({
-            "tmdb_id": "1399",
-            "provider": "tmdb"
-        })).unwrap()))
+        .body(Body::from(
+            serde_json::to_vec(&serde_json::json!({
+                "tmdb_id": "1399",
+                "provider": "tmdb"
+            }))
+            .unwrap(),
+        ))
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let res: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
     assert_eq!(res["status"], "fixed");
     assert_eq!(res["tmdb_id"], "1399");
@@ -6144,11 +6890,12 @@ async fn test_fix_match_with_tmdb_id_and_search() {
     assert_eq!(res["scrobble"]["tmdb_id"], "1399");
 
     // 5. Verify sibling episode also has tmdb_id set
-    let sibling_tmdb_id: Option<String> = sqlx::query_scalar("SELECT tmdb_id FROM scrobbles WHERE id = ?")
-        .bind(scrobble_2)
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+    let sibling_tmdb_id: Option<String> =
+        sqlx::query_scalar("SELECT tmdb_id FROM scrobbles WHERE id = ?")
+            .bind(scrobble_2)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
     assert_eq!(sibling_tmdb_id.as_deref(), Some("1399"));
 }
 
@@ -6188,7 +6935,9 @@ async fn test_metadata_enrichment_worker_supports_tmdb_and_resolves_missing() {
         .body(Body::empty())
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
-    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
     assert_eq!(json["total"], 1);
 
@@ -6198,10 +6947,13 @@ async fn test_metadata_enrichment_worker_supports_tmdb_and_resolves_missing() {
         .uri(format!("/api/v1/history/{}/fix-match", scrobble_id))
         .header(header::AUTHORIZATION, format!("Bearer {}", token))
         .header(header::CONTENT_TYPE, "application/json")
-        .body(Body::from(serde_json::to_vec(&serde_json::json!({
-            "id": "27205",
-            "provider": "tmdb"
-        })).unwrap()))
+        .body(Body::from(
+            serde_json::to_vec(&serde_json::json!({
+                "id": "27205",
+                "provider": "tmdb"
+            }))
+            .unwrap(),
+        ))
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
@@ -6230,7 +6982,9 @@ async fn test_metadata_enrichment_worker_supports_tmdb_and_resolves_missing() {
         .body(Body::empty())
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
-    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
     assert_eq!(json["total"], 0);
 }
@@ -6317,7 +7071,7 @@ async fn test_tmdb_fix_match_cinematographer_filtering() {
         r#"
         INSERT INTO scrobbles (id, user_id, title, media_type, watched_at)
         VALUES (?, ?, 'Blade Runner 2049', 'movie', datetime('now'))
-        "#
+        "#,
     )
     .bind(scrobble_id)
     .bind(user_id)
@@ -6331,10 +7085,13 @@ async fn test_tmdb_fix_match_cinematographer_filtering() {
         .uri(format!("/api/v1/history/{}/fix-match", scrobble_id))
         .header(header::AUTHORIZATION, format!("Bearer {}", token))
         .header(header::CONTENT_TYPE, "application/json")
-        .body(Body::from(serde_json::to_string(&serde_json::json!({
-            "tvdb_id": "99999",
-            "provider": "tmdb"
-        })).unwrap()))
+        .body(Body::from(
+            serde_json::to_string(&serde_json::json!({
+                "tvdb_id": "99999",
+                "provider": "tmdb"
+            }))
+            .unwrap(),
+        ))
         .unwrap();
 
     let resp = app.clone().oneshot(req).await.unwrap();
@@ -6399,7 +7156,9 @@ async fn test_plex_and_jellyfin_non_playback_events_ignored() {
 
     let res = app.clone().oneshot(req).await.unwrap();
     assert_eq!(res.status(), StatusCode::OK);
-    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let resp_json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
     assert_eq!(resp_json["status"], "ignored");
     assert_eq!(resp_json["reason"], "non_playback_event");
@@ -6434,7 +7193,9 @@ async fn test_plex_and_jellyfin_non_playback_events_ignored() {
 
     let res = app.clone().oneshot(req).await.unwrap();
     assert_eq!(res.status(), StatusCode::OK);
-    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let resp_json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
     assert_eq!(resp_json["status"], "ignored");
     assert_eq!(resp_json["reason"], "non_playback_event");
@@ -6463,7 +7224,9 @@ async fn test_plex_and_jellyfin_non_playback_events_ignored() {
 
     let res = app.clone().oneshot(req).await.unwrap();
     assert_eq!(res.status(), StatusCode::OK);
-    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let resp_json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
     assert_eq!(resp_json["status"], "ignored");
     assert_eq!(resp_json["reason"], "non_playback_event");
@@ -6554,10 +7317,15 @@ async fn test_scrobble_tags_and_notes_crud_and_filtering() {
 
     let res = app.clone().oneshot(req).await.unwrap();
     assert_eq!(res.status(), StatusCode::CREATED);
-    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let created: Scrobble = serde_json::from_slice(&body_bytes).unwrap();
     assert_eq!(created.tags.as_deref(), Some("Plane Movie, Rewatch"));
-    assert_eq!(created.notes.as_deref(), Some("Spectacular aerial photography in IMAX!"));
+    assert_eq!(
+        created.notes.as_deref(),
+        Some("Spectacular aerial photography in IMAX!")
+    );
 
     let scrobble_id = created.id;
 
@@ -6592,7 +7360,9 @@ async fn test_scrobble_tags_and_notes_crud_and_filtering() {
 
     let res = app.clone().oneshot(req).await.unwrap();
     assert_eq!(res.status(), StatusCode::OK);
-    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let updated_res: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
     assert_eq!(updated_res["tags"], "Plane Movie, Watched with Daryl");
     assert_eq!(updated_res["notes"], "Enjoyed with Daryl on a long flight.");
@@ -6607,11 +7377,16 @@ async fn test_scrobble_tags_and_notes_crud_and_filtering() {
 
     let res = app.clone().oneshot(req).await.unwrap();
     assert_eq!(res.status(), StatusCode::OK);
-    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let history_json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
     assert_eq!(history_json["total"], 1);
     assert_eq!(history_json["items"][0]["title"], "Top Gun: Maverick");
-    assert_eq!(history_json["items"][0]["tags"], "Plane Movie, Watched with Daryl");
+    assert_eq!(
+        history_json["items"][0]["tags"],
+        "Plane Movie, Watched with Daryl"
+    );
 
     // 5. Query history with non-existent tag -> 0 items
     let req = Request::builder()
@@ -6623,7 +7398,9 @@ async fn test_scrobble_tags_and_notes_crud_and_filtering() {
 
     let res = app.clone().oneshot(req).await.unwrap();
     assert_eq!(res.status(), StatusCode::OK);
-    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let history_json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
     assert_eq!(history_json["total"], 0);
 
@@ -6637,7 +7414,9 @@ async fn test_scrobble_tags_and_notes_crud_and_filtering() {
 
     let res = app.clone().oneshot(req).await.unwrap();
     assert_eq!(res.status(), StatusCode::OK);
-    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let history_json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
     assert_eq!(history_json["total"], 1);
     assert_eq!(history_json["items"][0]["title"], "Top Gun: Maverick");
@@ -6652,7 +7431,9 @@ async fn test_scrobble_tags_and_notes_crud_and_filtering() {
 
     let res = app.clone().oneshot(req).await.unwrap();
     assert_eq!(res.status(), StatusCode::OK);
-    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let history_json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
     assert_eq!(history_json["total"], 0);
 }
@@ -6722,7 +7503,9 @@ async fn test_duplicate_watch_detector_and_cleanup() {
 
     let res = app.clone().oneshot(req).await.unwrap();
     assert_eq!(res.status(), StatusCode::OK);
-    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let dup_json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
 
     assert_eq!(dup_json["total_duplicate_groups"], 2);
@@ -6739,7 +7522,9 @@ async fn test_duplicate_watch_detector_and_cleanup() {
 
     let res = app.clone().oneshot(req).await.unwrap();
     assert_eq!(res.status(), StatusCode::OK);
-    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let dup_json_b: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
     assert_eq!(dup_json_b["total_duplicate_groups"], 0);
 
@@ -6749,15 +7534,20 @@ async fn test_duplicate_watch_detector_and_cleanup() {
         .uri("/api/v1/history/duplicates/clean")
         .header(header::AUTHORIZATION, format!("Bearer {}", token_a))
         .header(header::CONTENT_TYPE, "application/json")
-        .body(Body::from(serde_json::to_string(&serde_json::json!({
-            "strategy": "keep_oldest",
-            "window_hours": 24
-        })).unwrap()))
+        .body(Body::from(
+            serde_json::to_string(&serde_json::json!({
+                "strategy": "keep_oldest",
+                "window_hours": 24
+            }))
+            .unwrap(),
+        ))
         .unwrap();
 
     let res = app.clone().oneshot(req).await.unwrap();
     assert_eq!(res.status(), StatusCode::OK);
-    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let clean_json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
     assert_eq!(clean_json["success"], true);
     assert_eq!(clean_json["deleted_count"], 2);
@@ -6766,21 +7556,45 @@ async fn test_duplicate_watch_detector_and_cleanup() {
     // incep_1 (oldest) exists, incep_2 (newer) is deleted
     // bb_1 (oldest) exists, bb_2 (newer) is deleted
     // dk_1 exists
-    let incep_1_row = sqlx::query("SELECT id FROM scrobbles WHERE id = ?").bind(&incep_1).fetch_optional(&pool).await.unwrap();
+    let incep_1_row = sqlx::query("SELECT id FROM scrobbles WHERE id = ?")
+        .bind(&incep_1)
+        .fetch_optional(&pool)
+        .await
+        .unwrap();
     assert!(incep_1_row.is_some());
-    let incep_2_row = sqlx::query("SELECT id FROM scrobbles WHERE id = ?").bind(&incep_2).fetch_optional(&pool).await.unwrap();
+    let incep_2_row = sqlx::query("SELECT id FROM scrobbles WHERE id = ?")
+        .bind(&incep_2)
+        .fetch_optional(&pool)
+        .await
+        .unwrap();
     assert!(incep_2_row.is_none());
 
-    let bb_1_row = sqlx::query("SELECT id FROM scrobbles WHERE id = ?").bind(&bb_1).fetch_optional(&pool).await.unwrap();
+    let bb_1_row = sqlx::query("SELECT id FROM scrobbles WHERE id = ?")
+        .bind(&bb_1)
+        .fetch_optional(&pool)
+        .await
+        .unwrap();
     assert!(bb_1_row.is_some());
-    let bb_2_row = sqlx::query("SELECT id FROM scrobbles WHERE id = ?").bind(&bb_2).fetch_optional(&pool).await.unwrap();
+    let bb_2_row = sqlx::query("SELECT id FROM scrobbles WHERE id = ?")
+        .bind(&bb_2)
+        .fetch_optional(&pool)
+        .await
+        .unwrap();
     assert!(bb_2_row.is_none());
 
-    let dk_1_row = sqlx::query("SELECT id FROM scrobbles WHERE id = ?").bind(&dk_1).fetch_optional(&pool).await.unwrap();
+    let dk_1_row = sqlx::query("SELECT id FROM scrobbles WHERE id = ?")
+        .bind(&dk_1)
+        .fetch_optional(&pool)
+        .await
+        .unwrap();
     assert!(dk_1_row.is_some());
 
     // User B's scrobble is completely untouched
-    let incep_b_row = sqlx::query("SELECT id FROM scrobbles WHERE id = ?").bind(&incep_b).fetch_optional(&pool).await.unwrap();
+    let incep_b_row = sqlx::query("SELECT id FROM scrobbles WHERE id = ?")
+        .bind(&incep_b)
+        .fetch_optional(&pool)
+        .await
+        .unwrap();
     assert!(incep_b_row.is_some());
 
     // 7. Verify scanning duplicates now returns 0 groups for User A
@@ -6793,7 +7607,9 @@ async fn test_duplicate_watch_detector_and_cleanup() {
 
     let res = app.clone().oneshot(req).await.unwrap();
     assert_eq!(res.status(), StatusCode::OK);
-    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let dup_json_after: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
     assert_eq!(dup_json_after["total_duplicate_groups"], 0);
     assert_eq!(dup_json_after["total_redundant_scrobbles"], 0);
@@ -6948,7 +7764,9 @@ async fn test_history_rating_threshold_filter() {
 
     let res = app.clone().oneshot(req).await.unwrap();
     assert_eq!(res.status(), StatusCode::OK);
-    let bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let hist: HistoryResponse = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(hist.total, 3);
     let titles: Vec<&str> = hist.items.iter().map(|s| s.title.as_str()).collect();
@@ -6967,7 +7785,9 @@ async fn test_history_rating_threshold_filter() {
 
     let res = app.clone().oneshot(req).await.unwrap();
     assert_eq!(res.status(), StatusCode::OK);
-    let bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let hist: HistoryResponse = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(hist.total, 2);
     let movie_titles: Vec<&str> = hist.items.iter().map(|s| s.title.as_str()).collect();
@@ -6983,7 +7803,9 @@ async fn test_history_rating_threshold_filter() {
 
     let res = app.clone().oneshot(req).await.unwrap();
     assert_eq!(res.status(), StatusCode::OK);
-    let bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let hist: HistoryResponse = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(hist.total, 1);
     assert_eq!(hist.items[0].title, "Ozymandias");
@@ -6998,7 +7820,9 @@ async fn test_history_rating_threshold_filter() {
 
     let res = app.clone().oneshot(req).await.unwrap();
     assert_eq!(res.status(), StatusCode::OK);
-    let bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let hist: HistoryResponse = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(hist.total, 6);
 
@@ -7012,7 +7836,9 @@ async fn test_history_rating_threshold_filter() {
 
     let res = app.clone().oneshot(req).await.unwrap();
     assert_eq!(res.status(), StatusCode::OK);
-    let bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let hist: HistoryResponse = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(hist.total, 1);
     assert_eq!(hist.items[0].title, "The Dark Knight");
@@ -7027,7 +7853,9 @@ async fn test_history_rating_threshold_filter() {
 
     let res = app.clone().oneshot(req).await.unwrap();
     assert_eq!(res.status(), StatusCode::OK);
-    let bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let hist: HistoryResponse = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(hist.total, 1);
     assert_eq!(hist.items[0].title, "Unrated Movie");
@@ -7042,7 +7870,9 @@ async fn test_history_rating_threshold_filter() {
 
     let res = app.clone().oneshot(req).await.unwrap();
     assert_eq!(res.status(), StatusCode::OK);
-    let bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let hist: HistoryResponse = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(hist.total, 6);
 }
@@ -7085,9 +7915,15 @@ async fn test_oidc_admin_group_configuration_and_evaluation() {
         .body(Body::empty())
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
-    let settings: bingesync::api::settings::SystemSettingsView = serde_json::from_slice(&body).unwrap();
-    assert_eq!(settings.oidc_admin_group.as_deref(), Some("pocketid-admins, bingesync-moderators"));
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let settings: bingesync::api::settings::SystemSettingsView =
+        serde_json::from_slice(&body).unwrap();
+    assert_eq!(
+        settings.oidc_admin_group.as_deref(),
+        Some("pocketid-admins, bingesync-moderators")
+    );
 
     // 4. Test OidcUserInfo.is_admin with various group claim formats and custom_admin_group
     let custom_group_setting = Some("pocketid-admins, bingesync-moderators");
@@ -7097,7 +7933,8 @@ async fn test_oidc_admin_group_configuration_and_evaluation() {
         "sub": "sub-123",
         "email": "user_a@example.com",
         "groups": ["pocketid-admins", "regular-users"]
-    })).unwrap();
+    }))
+    .unwrap();
     assert!(user_a.is_admin(custom_group_setting));
 
     // Case B: Case insensitivity and leading slash "/PocketId-Admins" -> should be admin
@@ -7105,7 +7942,8 @@ async fn test_oidc_admin_group_configuration_and_evaluation() {
         "sub": "sub-456",
         "email": "user_b@example.com",
         "groups": ["/PocketID-Admins"]
-    })).unwrap();
+    }))
+    .unwrap();
     assert!(user_b.is_admin(custom_group_setting));
 
     // Case C: Standard default group "administrator" still recognized -> should be admin
@@ -7113,7 +7951,8 @@ async fn test_oidc_admin_group_configuration_and_evaluation() {
         "sub": "sub-789",
         "email": "user_c@example.com",
         "groups": ["administrator"]
-    })).unwrap();
+    }))
+    .unwrap();
     assert!(user_c.is_admin(custom_group_setting));
 
     // Case D: User in object-based group list [{"name": "bingesync-moderators"}] -> should be admin
@@ -7121,7 +7960,8 @@ async fn test_oidc_admin_group_configuration_and_evaluation() {
         "sub": "sub-101",
         "email": "user_d@example.com",
         "groups": [{"slug": "bingesync-moderators"}]
-    })).unwrap();
+    }))
+    .unwrap();
     assert!(user_d.is_admin(custom_group_setting));
 
     // Case E: User with memberOf claim alias -> should be admin
@@ -7129,7 +7969,8 @@ async fn test_oidc_admin_group_configuration_and_evaluation() {
         "sub": "sub-102",
         "email": "user_e@example.com",
         "memberOf": ["bingesync-moderators"]
-    })).unwrap();
+    }))
+    .unwrap();
     assert!(user_e.is_admin(custom_group_setting));
 
     // Case F: Regular user in "viewers" only -> should NOT be admin
@@ -7137,7 +7978,8 @@ async fn test_oidc_admin_group_configuration_and_evaluation() {
         "sub": "sub-103",
         "email": "user_f@example.com",
         "groups": ["viewers", "family"]
-    })).unwrap();
+    }))
+    .unwrap();
     assert!(!user_f.is_admin(custom_group_setting));
     assert!(!user_f.is_admin(None));
 }
@@ -7155,23 +7997,34 @@ async fn test_first_run_setup_flow_and_initial_admin_promotion() {
 
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let status: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(status["needs_setup"], true);
     assert_eq!(status["completed"], false);
     assert_eq!(status["user_count"], 0);
-    assert_eq!(status["redirect_url"], "http://localhost:8080/api/v1/auth/callback");
-    assert_eq!(status["backchannel_logout_url"], "http://localhost:8080/api/v1/auth/backchannel-logout");
+    assert_eq!(
+        status["redirect_url"],
+        "http://localhost:8080/api/v1/auth/callback"
+    );
+    assert_eq!(
+        status["backchannel_logout_url"],
+        "http://localhost:8080/api/v1/auth/backchannel-logout"
+    );
 
     // 2. Validate save requires issuer_url and client_id
     let req_invalid = Request::builder()
         .method("POST")
         .uri("/api/v1/setup/save")
         .header(header::CONTENT_TYPE, "application/json")
-        .body(Body::from(json!({
-            "oidc_issuer_url": "",
-            "oidc_client_id": ""
-        }).to_string()))
+        .body(Body::from(
+            json!({
+                "oidc_issuer_url": "",
+                "oidc_client_id": ""
+            })
+            .to_string(),
+        ))
         .unwrap();
 
     let resp = app.clone().oneshot(req_invalid).await.unwrap();
@@ -7182,12 +8035,15 @@ async fn test_first_run_setup_flow_and_initial_admin_promotion() {
         .method("POST")
         .uri("/api/v1/setup/save")
         .header(header::CONTENT_TYPE, "application/json")
-        .body(Body::from(json!({
-            "oidc_issuer_url": "https://auth.example.com",
-            "oidc_client_id": "bingesync-client",
-            "oidc_client_secret": "super-secret-key-xyz",
-            "oidc_admin_group": "my-idp-admins"
-        }).to_string()))
+        .body(Body::from(
+            json!({
+                "oidc_issuer_url": "https://auth.example.com",
+                "oidc_client_id": "bingesync-client",
+                "oidc_client_secret": "super-secret-key-xyz",
+                "oidc_admin_group": "my-idp-admins"
+            })
+            .to_string(),
+        ))
         .unwrap();
 
     let resp = app.clone().oneshot(req_save).await.unwrap();
@@ -7217,7 +8073,9 @@ async fn test_first_run_setup_flow_and_initial_admin_promotion() {
         None,
         Some("firstuser"),
         false, // not specified as admin
-    ).await.unwrap();
+    )
+    .await
+    .unwrap();
 
     assert_eq!(user1.role, "admin");
 
@@ -7231,7 +8089,9 @@ async fn test_first_run_setup_flow_and_initial_admin_promotion() {
         None,
         Some("seconduser"),
         false,
-    ).await.unwrap();
+    )
+    .await
+    .unwrap();
 
     assert_eq!(user2.role, "user");
 
@@ -7244,7 +8104,9 @@ async fn test_first_run_setup_flow_and_initial_admin_promotion() {
 
     let resp = app.clone().oneshot(req_status2).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let status2: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(status2["needs_setup"], false);
     assert_eq!(status2["completed"], true);
@@ -7255,10 +8117,13 @@ async fn test_first_run_setup_flow_and_initial_admin_promotion() {
         .method("POST")
         .uri("/api/v1/setup/save")
         .header(header::CONTENT_TYPE, "application/json")
-        .body(Body::from(json!({
-            "oidc_issuer_url": "https://attacker.example.com",
-            "oidc_client_id": "malicious"
-        }).to_string()))
+        .body(Body::from(
+            json!({
+                "oidc_issuer_url": "https://attacker.example.com",
+                "oidc_client_id": "malicious"
+            })
+            .to_string(),
+        ))
         .unwrap();
 
     let resp = app.clone().oneshot(req_save_forbidden).await.unwrap();
@@ -7312,7 +8177,9 @@ async fn test_user_api_keys_crud_scoping_and_authentication() {
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let keys: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap();
     assert!(keys.is_empty());
 
@@ -7326,13 +8193,18 @@ async fn test_user_api_keys_crud_scoping_and_authentication() {
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::CREATED);
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let created: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(created["name"], "Home Assistant");
     let full_api_key_a = created["api_key"].as_str().unwrap().to_string();
     let key_id_a = created["id"].as_str().unwrap().to_string();
     assert!(full_api_key_a.starts_with("bs_live_"));
-    assert!(created["key_prefix"].as_str().unwrap().starts_with("bs_live_"));
+    assert!(created["key_prefix"]
+        .as_str()
+        .unwrap()
+        .starts_with("bs_live_"));
 
     // 4. User A lists API keys -> 1 key present
     let req = Request::builder()
@@ -7343,7 +8215,9 @@ async fn test_user_api_keys_crud_scoping_and_authentication() {
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let keys: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap();
     assert_eq!(keys.len(), 1);
     assert_eq!(keys[0]["id"], key_id_a);
@@ -7358,7 +8232,9 @@ async fn test_user_api_keys_crud_scoping_and_authentication() {
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let keys_b: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap();
     assert!(keys_b.is_empty());
 
@@ -7381,7 +8257,9 @@ async fn test_user_api_keys_crud_scoping_and_authentication() {
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let me: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(me["id"], user_a_id);
     assert_eq!(me["email"], "user_a@test.local");
@@ -7429,7 +8307,9 @@ async fn test_user_api_keys_crud_scoping_and_authentication() {
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let hist: serde_json::Value = serde_json::from_slice(&body).unwrap();
     let items = hist["items"].as_array().unwrap();
     assert_eq!(items.len(), 1);
@@ -7441,20 +8321,24 @@ async fn test_user_api_keys_crud_scoping_and_authentication() {
         .uri("/api/v1/history")
         .header("x-api-key", &full_api_key_a)
         .header(header::CONTENT_TYPE, "application/json")
-        .body(Body::from(json!({
-            "title": "Interstellar",
-            "media_type": "movie",
-            "year": 2014
-        }).to_string()))
+        .body(Body::from(
+            json!({
+                "title": "Interstellar",
+                "media_type": "movie",
+                "year": 2014
+            })
+            .to_string(),
+        ))
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::CREATED);
 
     // Verify scrobble created under User A
-    let scrobble_owner: String = sqlx::query_scalar("SELECT user_id FROM scrobbles WHERE title = 'Interstellar'")
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+    let scrobble_owner: String =
+        sqlx::query_scalar("SELECT user_id FROM scrobbles WHERE title = 'Interstellar'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
     assert_eq!(scrobble_owner, user_a_id);
 
     // 10. Role Permission Scoping:
@@ -7474,11 +8358,15 @@ async fn test_user_api_keys_crud_scoping_and_authentication() {
         .uri("/api/v1/user/api-keys")
         .header(header::AUTHORIZATION, format!("Bearer {}", admin_jwt))
         .header(header::CONTENT_TYPE, "application/json")
-        .body(Body::from(json!({ "name": "Admin Script Key" }).to_string()))
+        .body(Body::from(
+            json!({ "name": "Admin Script Key" }).to_string(),
+        ))
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::CREATED);
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let admin_key_resp: serde_json::Value = serde_json::from_slice(&body).unwrap();
     let admin_api_key = admin_key_resp["api_key"].as_str().unwrap();
 
@@ -7533,11 +8421,12 @@ async fn test_user_api_keys_crud_scoping_and_authentication() {
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::CREATED);
 
-    let key_count_b: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM user_api_keys WHERE user_id = ?")
-        .bind(user_b_id)
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+    let key_count_b: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM user_api_keys WHERE user_id = ?")
+            .bind(user_b_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
     assert_eq!(key_count_b, 1);
 
     // Admin deletes User B
@@ -7551,11 +8440,12 @@ async fn test_user_api_keys_crud_scoping_and_authentication() {
     assert_eq!(resp.status(), StatusCode::OK);
 
     // Verify User B's API keys were cascade-deleted
-    let key_count_b_after: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM user_api_keys WHERE user_id = ?")
-        .bind(user_b_id)
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+    let key_count_b_after: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM user_api_keys WHERE user_id = ?")
+            .bind(user_b_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
     assert_eq!(key_count_b_after, 0);
 }
 
@@ -7582,7 +8472,9 @@ async fn test_admin_version_and_oidc_user_group_configuration() {
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let ver_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert!(ver_json["current_version"].is_string());
     assert!(ver_json["docker_base_image"].is_string());
@@ -7594,13 +8486,25 @@ async fn test_admin_version_and_oidc_user_group_configuration() {
     assert!(comps.iter().any(|c| c["name"] == "SQLite Engine"));
     assert!(comps.iter().any(|c| c["name"] == "Rust Toolchain"));
 
-    let axum_comp = comps.iter().find(|c| c["name"] == "Axum Web Framework").expect("Axum component");
+    let axum_comp = comps
+        .iter()
+        .find(|c| c["name"] == "Axum Web Framework")
+        .expect("Axum component");
     assert!(axum_comp["version"].as_str().unwrap().starts_with("v0.8"));
-    let tokio_comp = comps.iter().find(|c| c["name"] == "Tokio Async Runtime").expect("Tokio component");
+    let tokio_comp = comps
+        .iter()
+        .find(|c| c["name"] == "Tokio Async Runtime")
+        .expect("Tokio component");
     assert!(tokio_comp["version"].as_str().unwrap().starts_with("v1."));
-    let sqlx_comp = comps.iter().find(|c| c["name"] == "SQLx Database Toolkit").expect("SQLx component");
+    let sqlx_comp = comps
+        .iter()
+        .find(|c| c["name"] == "SQLx Database Toolkit")
+        .expect("SQLx component");
     assert!(sqlx_comp["version"].as_str().unwrap().starts_with("v0.9"));
-    let web_comp = comps.iter().find(|c| c["name"] == "Web Interface").expect("Web Interface component");
+    let web_comp = comps
+        .iter()
+        .find(|c| c["name"] == "Web Interface")
+        .expect("Web Interface component");
     assert!(web_comp["version"].as_str().unwrap().contains("Vite 8"));
 
     let req = Request::builder()
@@ -7613,9 +8517,15 @@ async fn test_admin_version_and_oidc_user_group_configuration() {
 
     // 2. Test is_version_newer helper
     assert!(bingesync::api::settings::is_version_newer("0.2.0", "0.1.0"));
-    assert!(bingesync::api::settings::is_version_newer("v0.1.1", "0.1.0"));
-    assert!(!bingesync::api::settings::is_version_newer("0.1.0", "0.1.0"));
-    assert!(!bingesync::api::settings::is_version_newer("0.0.9", "0.1.0"));
+    assert!(bingesync::api::settings::is_version_newer(
+        "v0.1.1", "0.1.0"
+    ));
+    assert!(!bingesync::api::settings::is_version_newer(
+        "0.1.0", "0.1.0"
+    ));
+    assert!(!bingesync::api::settings::is_version_newer(
+        "0.0.9", "0.1.0"
+    ));
 
     // 3. Test saving oidc_user_group in admin settings
     let update_body = json!({
@@ -7639,9 +8549,15 @@ async fn test_admin_version_and_oidc_user_group_configuration() {
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
-    let settings: bingesync::api::settings::SystemSettingsView = serde_json::from_slice(&body).unwrap();
-    assert_eq!(settings.oidc_user_group.as_deref(), Some("bingesync-viewers, family-members"));
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let settings: bingesync::api::settings::SystemSettingsView =
+        serde_json::from_slice(&body).unwrap();
+    assert_eq!(
+        settings.oidc_user_group.as_deref(),
+        Some("bingesync-viewers, family-members")
+    );
     assert_eq!(settings.app_version, bingesync::api::settings::APP_VERSION);
 
     // 4. Test OidcUserInfo.has_group with various formats
@@ -7651,21 +8567,24 @@ async fn test_admin_version_and_oidc_user_group_configuration() {
         "sub": "sub-user-allowed",
         "email": "allowed@example.com",
         "groups": ["bingesync-viewers"]
-    })).unwrap();
+    }))
+    .unwrap();
     assert!(allowed_user.has_group(required_user_group));
 
     let case_insensitive_user: bingesync::auth::OidcUserInfo = serde_json::from_value(json!({
         "sub": "sub-user-case",
         "email": "case@example.com",
         "groups": ["/Family-Members"]
-    })).unwrap();
+    }))
+    .unwrap();
     assert!(case_insensitive_user.has_group(required_user_group));
 
     let forbidden_user: bingesync::auth::OidcUserInfo = serde_json::from_value(json!({
         "sub": "sub-user-forbidden",
         "email": "forbidden@example.com",
         "groups": ["strangers", "guests"]
-    })).unwrap();
+    }))
+    .unwrap();
     assert!(!forbidden_user.has_group(required_user_group));
 }
 
@@ -7684,10 +8603,26 @@ async fn test_security_headers_and_secure_cookie() {
     let headers = resp.headers();
     assert_eq!(headers.get("x-content-type-options").unwrap(), "nosniff");
     assert_eq!(headers.get("x-frame-options").unwrap(), "SAMEORIGIN");
-    assert_eq!(headers.get("referrer-policy").unwrap(), "strict-origin-when-cross-origin");
-    assert_eq!(headers.get("cross-origin-opener-policy").unwrap(), "same-origin");
-    assert!(headers.get("permissions-policy").unwrap().to_str().unwrap().contains("camera=()"));
-    assert!(headers.get("content-security-policy").unwrap().to_str().unwrap().contains("default-src 'self'"));
+    assert_eq!(
+        headers.get("referrer-policy").unwrap(),
+        "strict-origin-when-cross-origin"
+    );
+    assert_eq!(
+        headers.get("cross-origin-opener-policy").unwrap(),
+        "same-origin"
+    );
+    assert!(headers
+        .get("permissions-policy")
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .contains("camera=()"));
+    assert!(headers
+        .get("content-security-policy")
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .contains("default-src 'self'"));
     // HSTS should not be sent on plain HTTP without x-forwarded-proto: https
     assert!(headers.get("strict-transport-security").is_none());
 
@@ -7699,8 +8634,17 @@ async fn test_security_headers_and_secure_cookie() {
         .unwrap();
     let resp_https = app.clone().oneshot(req_https).await.unwrap();
     assert_eq!(resp_https.status(), StatusCode::OK);
-    assert!(resp_https.headers().get("strict-transport-security").is_some());
-    assert!(resp_https.headers().get("strict-transport-security").unwrap().to_str().unwrap().contains("max-age="));
+    assert!(resp_https
+        .headers()
+        .get("strict-transport-security")
+        .is_some());
+    assert!(resp_https
+        .headers()
+        .get("strict-transport-security")
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .contains("max-age="));
 
     // 3. Test dev login under HTTPS marks cookie with Secure;
     let login_req = Request::builder()
@@ -7708,14 +8652,22 @@ async fn test_security_headers_and_secure_cookie() {
         .uri("/api/v1/auth/dev-login")
         .header("x-forwarded-proto", "https")
         .header(header::CONTENT_TYPE, "application/json")
-        .body(Body::from(serde_json::to_string(&json!({
-            "email": "secure_user@example.com",
-            "display_name": "Secure User"
-        })).unwrap()))
+        .body(Body::from(
+            serde_json::to_string(&json!({
+                "email": "secure_user@example.com",
+                "display_name": "Secure User"
+            }))
+            .unwrap(),
+        ))
         .unwrap();
     let login_resp = app.clone().oneshot(login_req).await.unwrap();
     assert_eq!(login_resp.status(), StatusCode::OK);
-    let cookie_header = login_resp.headers().get("set-cookie").unwrap().to_str().unwrap();
+    let cookie_header = login_resp
+        .headers()
+        .get("set-cookie")
+        .unwrap()
+        .to_str()
+        .unwrap();
     assert!(cookie_header.contains("bingesync_token="));
     assert!(cookie_header.contains("HttpOnly"));
     assert!(cookie_header.contains("SameSite=Lax"));
@@ -7731,29 +8683,42 @@ async fn test_tautulli_continuous_sync_and_settings() {
         .method("POST")
         .uri("/api/v1/auth/dev-login")
         .header(header::CONTENT_TYPE, "application/json")
-        .body(Body::from(serde_json::to_string(&json!({
-            "email": "admin_tautulli@example.com",
-            "display_name": "Tautulli Admin"
-        })).unwrap()))
+        .body(Body::from(
+            serde_json::to_string(&json!({
+                "email": "admin_tautulli@example.com",
+                "display_name": "Tautulli Admin"
+            }))
+            .unwrap(),
+        ))
         .unwrap();
     let resp = app.clone().oneshot(admin_login).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
-    let admin_jwt = serde_json::from_slice::<serde_json::Value>(&body).unwrap()["token"].as_str().unwrap().to_string();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let admin_jwt = serde_json::from_slice::<serde_json::Value>(&body).unwrap()["token"]
+        .as_str()
+        .unwrap()
+        .to_string();
 
     // 2. Log in standard user
     let user_login = Request::builder()
         .method("POST")
         .uri("/api/v1/auth/dev-login")
         .header(header::CONTENT_TYPE, "application/json")
-        .body(Body::from(serde_json::to_string(&json!({
-            "email": "sync_fan@example.com",
-            "display_name": "Sync Fan"
-        })).unwrap()))
+        .body(Body::from(
+            serde_json::to_string(&json!({
+                "email": "sync_fan@example.com",
+                "display_name": "Sync Fan"
+            }))
+            .unwrap(),
+        ))
         .unwrap();
     let resp = app.clone().oneshot(user_login).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let user_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     let user_jwt = user_json["token"].as_str().unwrap().to_string();
     let user_id = user_json["user"]["id"].as_str().unwrap().to_string();
@@ -7764,12 +8729,15 @@ async fn test_tautulli_continuous_sync_and_settings() {
         .uri("/api/v1/user/settings")
         .header(header::AUTHORIZATION, format!("Bearer {}", user_jwt))
         .header(header::CONTENT_TYPE, "application/json")
-        .body(Body::from(serde_json::to_string(&json!({
-            "tautulli_url": "http://127.0.0.1:8181",
-            "tautulli_api_key": "sec_key_123456",
-            "tautulli_user": "plex_fan_1",
-            "tautulli_sync_enabled": true
-        })).unwrap()))
+        .body(Body::from(
+            serde_json::to_string(&json!({
+                "tautulli_url": "http://127.0.0.1:8181",
+                "tautulli_api_key": "sec_key_123456",
+                "tautulli_user": "plex_fan_1",
+                "tautulli_sync_enabled": true
+            }))
+            .unwrap(),
+        ))
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
@@ -7782,7 +8750,9 @@ async fn test_tautulli_continuous_sync_and_settings() {
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let settings_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(settings_json["tautulli_user"], "plex_fan_1");
     assert_eq!(settings_json["tautulli_sync_enabled"], true);
@@ -7797,9 +8767,16 @@ async fn test_tautulli_continuous_sync_and_settings() {
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let tasks_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-    let t_task = tasks_json["tasks"].as_array().unwrap().iter().find(|t| t["id"] == "tautulli_sync").unwrap();
+    let t_task = tasks_json["tasks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|t| t["id"] == "tautulli_sync")
+        .unwrap();
     assert_eq!(t_task["interval_hours"], 1);
     assert_eq!(t_task["schedule"], "Every 1 hour");
     assert_eq!(t_task["name"], "Tautulli Continuous 1-Way Sync");
@@ -7810,13 +8787,18 @@ async fn test_tautulli_continuous_sync_and_settings() {
         .uri("/api/v1/admin/tasks/tautulli_sync/schedule")
         .header(header::AUTHORIZATION, format!("Bearer {}", admin_jwt))
         .header(header::CONTENT_TYPE, "application/json")
-        .body(Body::from(serde_json::to_string(&json!({
-            "interval_hours": 2
-        })).unwrap()))
+        .body(Body::from(
+            serde_json::to_string(&json!({
+                "interval_hours": 2
+            }))
+            .unwrap(),
+        ))
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let sched_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(sched_json["interval_hours"], 2);
     assert_eq!(sched_json["schedule"], "Every 2 hours");
@@ -7830,7 +8812,9 @@ async fn test_tautulli_continuous_sync_and_settings() {
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let trig_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(trig_json["status"], "triggered");
     assert_eq!(trig_json["task_id"], "tautulli_sync");
@@ -7873,12 +8857,16 @@ async fn test_tautulli_continuous_sync_and_settings() {
         },
     ];
 
-    let (imported, skipped) = insert_tautulli_watch_items(&pool, &user_id, &sample_items, None).await.unwrap();
+    let (imported, skipped) = insert_tautulli_watch_items(&pool, &user_id, &sample_items, None)
+        .await
+        .unwrap();
     assert_eq!(imported, 2);
     assert_eq!(skipped, 0);
 
     // Re-inserting the exact same items should be skipped due to deduplication
-    let (imported2, skipped2) = insert_tautulli_watch_items(&pool, &user_id, &sample_items, None).await.unwrap();
+    let (imported2, skipped2) = insert_tautulli_watch_items(&pool, &user_id, &sample_items, None)
+        .await
+        .unwrap();
     assert_eq!(imported2, 0);
     assert_eq!(skipped2, 2);
 
@@ -7897,15 +8885,17 @@ async fn test_user_settings_bidirectional_sync_and_plex_config() {
 
     // Create user
     let user_id = "test-user-sync-bidirectional".to_string();
-    sqlx::query("INSERT INTO users (id, email, display_name, webhook_token, role) VALUES (?, ?, ?, ?, ?)")
-        .bind(&user_id)
-        .bind("sync_test@bingesync.local")
-        .bind("Sync Tester")
-        .bind("token-bidirectional-test")
-        .bind("user")
-        .execute(&pool)
-        .await
-        .unwrap();
+    sqlx::query(
+        "INSERT INTO users (id, email, display_name, webhook_token, role) VALUES (?, ?, ?, ?, ?)",
+    )
+    .bind(&user_id)
+    .bind("sync_test@bingesync.local")
+    .bind("Sync Tester")
+    .bind("token-bidirectional-test")
+    .bind("user")
+    .execute(&pool)
+    .await
+    .unwrap();
 
     let token = create_jwt(&user_id, "sync_test@bingesync.local", &config.jwt_secret).unwrap();
 
@@ -7918,7 +8908,9 @@ async fn test_user_settings_bidirectional_sync_and_plex_config() {
 
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let settings: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
 
     assert_eq!(settings["bidirectional_sync_enabled"], false);
@@ -7952,7 +8944,9 @@ async fn test_user_settings_bidirectional_sync_and_plex_config() {
 
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let settings: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
 
     assert_eq!(settings["plex_url"], "http://192.168.1.100:32400");
@@ -7968,17 +8962,24 @@ async fn test_media_writeback_endpoints_and_trigger() {
     let (app, pool, config) = setup_test_app().await;
 
     let user_id = "test-user-writeback".to_string();
-    sqlx::query("INSERT INTO users (id, email, display_name, webhook_token, role) VALUES (?, ?, ?, ?, ?)")
-        .bind(&user_id)
-        .bind("writeback_user@bingesync.local")
-        .bind("Writeback Tester")
-        .bind("token-writeback-test")
-        .bind("user")
-        .execute(&pool)
-        .await
-        .unwrap();
+    sqlx::query(
+        "INSERT INTO users (id, email, display_name, webhook_token, role) VALUES (?, ?, ?, ?, ?)",
+    )
+    .bind(&user_id)
+    .bind("writeback_user@bingesync.local")
+    .bind("Writeback Tester")
+    .bind("token-writeback-test")
+    .bind("user")
+    .execute(&pool)
+    .await
+    .unwrap();
 
-    let token = create_jwt(&user_id, "writeback_user@bingesync.local", &config.jwt_secret).unwrap();
+    let token = create_jwt(
+        &user_id,
+        "writeback_user@bingesync.local",
+        &config.jwt_secret,
+    )
+    .unwrap();
 
     // 1. Calling writeback without media server configured should return 400
     let req = Request::builder()
@@ -7998,7 +8999,9 @@ async fn test_media_writeback_endpoints_and_trigger() {
         .uri("/api/v1/user/settings/test-plex")
         .header(header::AUTHORIZATION, format!("Bearer {}", token))
         .header(header::CONTENT_TYPE, "application/json")
-        .body(Body::from(json!({ "plex_url": "http://192.168.1.100:32400" }).to_string()))
+        .body(Body::from(
+            json!({ "plex_url": "http://192.168.1.100:32400" }).to_string(),
+        ))
         .unwrap();
 
     let resp = app.clone().oneshot(req).await.unwrap();
@@ -8010,15 +9013,31 @@ async fn test_media_writeback_endpoints_and_trigger() {
         .uri("/api/v1/user/settings/test-jellyfin")
         .header(header::AUTHORIZATION, format!("Bearer {}", token))
         .header(header::CONTENT_TYPE, "application/json")
-        .body(Body::from(json!({ "jellyfin_url": "http://192.168.1.100:8096" }).to_string()))
+        .body(Body::from(
+            json!({ "jellyfin_url": "http://192.168.1.100:8096" }).to_string(),
+        ))
         .unwrap();
 
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 
     // 4. Configure dummy Plex settings and insert a completed scrobble
-    bingesync::api::user_settings::set_user_setting(&pool, &user_id, "plex_url", "http://127.0.0.1:9").await.unwrap();
-    bingesync::api::user_settings::set_user_setting(&pool, &user_id, "plex_api_key", "dummy-plex-token").await.unwrap();
+    bingesync::api::user_settings::set_user_setting(
+        &pool,
+        &user_id,
+        "plex_url",
+        "http://127.0.0.1:9",
+    )
+    .await
+    .unwrap();
+    bingesync::api::user_settings::set_user_setting(
+        &pool,
+        &user_id,
+        "plex_api_key",
+        "dummy-plex-token",
+    )
+    .await
+    .unwrap();
 
     sqlx::query(
         "INSERT INTO scrobbles (id, user_id, title, media_type, year, watch_status, progress_percent, watched_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))"
@@ -8040,12 +9059,16 @@ async fn test_media_writeback_endpoints_and_trigger() {
         .uri("/api/v1/user/sync/writeback")
         .header(header::AUTHORIZATION, format!("Bearer {}", token))
         .header(header::CONTENT_TYPE, "application/json")
-        .body(Body::from(json!({ "scrobble_id": "scrobble-wb-1" }).to_string()))
+        .body(Body::from(
+            json!({ "scrobble_id": "scrobble-wb-1" }).to_string(),
+        ))
         .unwrap();
 
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let result: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
     assert_eq!(result["status"], "success");
     assert_eq!(result["scrobbles_processed"], 1);
@@ -8058,20 +9081,32 @@ async fn test_scrobble_source_and_user_logging_and_search() {
     // 1. Create a user
     let user_id = "user-source-test-1".to_string();
     let webhook_token = "token-source-test-1".to_string();
-    sqlx::query(
-        "INSERT INTO users (id, email, display_name, webhook_token) VALUES (?, ?, ?, ?)",
-    )
-    .bind(&user_id)
-    .bind("multisync@example.com")
-    .bind("Family Sync")
-    .bind(&webhook_token)
-    .execute(&pool)
-    .await
-    .unwrap();
+    sqlx::query("INSERT INTO users (id, email, display_name, webhook_token) VALUES (?, ?, ?, ?)")
+        .bind(&user_id)
+        .bind("multisync@example.com")
+        .bind("Family Sync")
+        .bind(&webhook_token)
+        .execute(&pool)
+        .await
+        .unwrap();
 
     // Configure multiple allowed usernames for sync: "daryl, sarah, kids"
-    bingesync::api::user_settings::set_user_setting(&pool, &user_id, "plex_username", "daryl, sarah, kids").await.unwrap();
-    bingesync::api::user_settings::set_user_setting(&pool, &user_id, "jellyfin_username", "daryl, sarah, kids").await.unwrap();
+    bingesync::api::user_settings::set_user_setting(
+        &pool,
+        &user_id,
+        "plex_username",
+        "daryl, sarah, kids",
+    )
+    .await
+    .unwrap();
+    bingesync::api::user_settings::set_user_setting(
+        &pool,
+        &user_id,
+        "jellyfin_username",
+        "daryl, sarah, kids",
+    )
+    .await
+    .unwrap();
 
     let token = create_jwt(&user_id, "multisync@example.com", &config.jwt_secret).unwrap();
 
@@ -8137,13 +9172,16 @@ async fn test_scrobble_source_and_user_logging_and_search() {
         .uri("/api/v1/history")
         .header(header::AUTHORIZATION, format!("Bearer {}", token))
         .header(header::CONTENT_TYPE, "application/json")
-        .body(Body::from(json!({
-            "title": "Toy Story",
-            "media_type": "movie",
-            "year": 1995,
-            "source": "manual",
-            "source_user": "kids"
-        }).to_string()))
+        .body(Body::from(
+            json!({
+                "title": "Toy Story",
+                "media_type": "movie",
+                "year": 1995,
+                "source": "manual",
+                "source_user": "kids"
+            })
+            .to_string(),
+        ))
         .unwrap();
 
     let resp = app.clone().oneshot(req).await.unwrap();
@@ -8175,26 +9213,28 @@ async fn test_scrobble_source_and_user_logging_and_search() {
         .uri("/api/v1/import/tautulli")
         .header(header::AUTHORIZATION, format!("Bearer {}", token))
         .header(header::CONTENT_TYPE, "application/json")
-        .body(Body::from(json!({
-            "username": "daryl",
-            "content": tautulli_json.to_string()
-        }).to_string()))
+        .body(Body::from(
+            json!({
+                "username": "daryl",
+                "content": tautulli_json.to_string()
+            })
+            .to_string(),
+        ))
         .unwrap();
 
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
 
     // 5. Verify records stored source, source_user, and imported_from
-    let scrobbles: Vec<bingesync::models::Scrobble> = sqlx::query_as(
-        "SELECT * FROM scrobbles WHERE user_id = ? ORDER BY title ASC"
-    )
-    .bind(&user_id)
-    .fetch_all(&pool)
-    .await
-    .unwrap();
+    let scrobbles: Vec<bingesync::models::Scrobble> =
+        sqlx::query_as("SELECT * FROM scrobbles WHERE user_id = ? ORDER BY title ASC")
+            .bind(&user_id)
+            .fetch_all(&pool)
+            .await
+            .unwrap();
 
     assert_eq!(scrobbles.len(), 4);
-    
+
     // Moana (Plex, Sarah, direct webhook)
     let moana = scrobbles.iter().find(|s| s.title == "Moana").unwrap();
     assert_eq!(moana.source.as_deref(), Some("plex"));
@@ -8208,7 +9248,10 @@ async fn test_scrobble_source_and_user_logging_and_search() {
     assert_eq!(inc.imported_from.as_deref(), Some("tautulli"));
 
     // Severance (Jellyfin, daryl)
-    let sev = scrobbles.iter().find(|s| s.title == "Good News About Hell").unwrap();
+    let sev = scrobbles
+        .iter()
+        .find(|s| s.title == "Good News About Hell")
+        .unwrap();
     assert_eq!(sev.source.as_deref(), Some("jellyfin"));
     assert_eq!(sev.source_user.as_deref(), Some("daryl"));
 
@@ -8227,7 +9270,9 @@ async fn test_scrobble_source_and_user_logging_and_search() {
 
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let history: bingesync::models::HistoryResponse = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(history.total, 1);
     assert_eq!(history.items[0].title, "Moana");
@@ -8242,7 +9287,9 @@ async fn test_scrobble_source_and_user_logging_and_search() {
 
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let history: bingesync::models::HistoryResponse = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(history.total, 1);
     assert_eq!(history.items[0].title, "Good News About Hell");
@@ -8257,7 +9304,9 @@ async fn test_scrobble_source_and_user_logging_and_search() {
 
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let history: bingesync::models::HistoryResponse = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(history.total, 1);
     assert_eq!(history.items[0].title, "Toy Story");
@@ -8272,7 +9321,9 @@ async fn test_scrobble_source_and_user_logging_and_search() {
 
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let history: bingesync::models::HistoryResponse = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(history.total, 1);
     assert_eq!(history.items[0].title, "Inception");
@@ -8289,9 +9340,14 @@ async fn test_scrobble_source_and_user_logging_and_search() {
 
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let timeline: Vec<bingesync::models::TimelineDay> = serde_json::from_slice(&bytes).unwrap();
-    let titles: Vec<&str> = timeline.iter().flat_map(|d| d.items.iter().map(|it| it.title.as_str())).collect();
+    let titles: Vec<&str> = timeline
+        .iter()
+        .flat_map(|d| d.items.iter().map(|it| it.title.as_str()))
+        .collect();
     assert!(titles.contains(&"Moana"));
     assert!(titles.contains(&"Inception"));
 
@@ -8305,7 +9361,9 @@ async fn test_scrobble_source_and_user_logging_and_search() {
 
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let timeline: Vec<bingesync::models::TimelineDay> = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(timeline.len(), 1);
     assert_eq!(timeline[0].items[0].title, "Good News About Hell");
@@ -8342,7 +9400,9 @@ async fn test_scrobble_source_and_user_logging_and_search() {
 
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let np: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(np["now_playing"]["source"], "jellyfin");
     assert_eq!(np["now_playing"]["source_user"], "Sarah");
@@ -8355,15 +9415,17 @@ async fn test_plex_and_jellyfin_trailer_and_clip_exclusion() {
     let user_id = "test-trailer-user".to_string();
     let webhook_token = "token-trailer-test".to_string();
 
-    sqlx::query("INSERT INTO users (id, email, display_name, webhook_token, role) VALUES (?, ?, ?, ?, ?)")
-        .bind(&user_id)
-        .bind("trailer_user@bingesync.local")
-        .bind("Trailer Tester")
-        .bind(&webhook_token)
-        .bind("user")
-        .execute(&pool)
-        .await
-        .unwrap();
+    sqlx::query(
+        "INSERT INTO users (id, email, display_name, webhook_token, role) VALUES (?, ?, ?, ?, ?)",
+    )
+    .bind(&user_id)
+    .bind("trailer_user@bingesync.local")
+    .bind("Trailer Tester")
+    .bind(&webhook_token)
+    .bind("user")
+    .execute(&pool)
+    .await
+    .unwrap();
 
     let _token = create_jwt(&user_id, "trailer_user@bingesync.local", &config.jwt_secret).unwrap();
 
@@ -8394,7 +9456,9 @@ async fn test_plex_and_jellyfin_trailer_and_clip_exclusion() {
 
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(body["status"], "ignored");
     assert_eq!(body["reason"], "trailer_or_extra");
@@ -8424,7 +9488,9 @@ async fn test_plex_and_jellyfin_trailer_and_clip_exclusion() {
 
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(body["status"], "ignored");
     assert_eq!(body["reason"], "trailer_or_extra");
@@ -8455,7 +9521,9 @@ async fn test_plex_and_jellyfin_trailer_and_clip_exclusion() {
 
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(body["status"], "ignored");
     assert_eq!(body["reason"], "trailer_or_extra");
@@ -8480,7 +9548,9 @@ async fn test_plex_and_jellyfin_trailer_and_clip_exclusion() {
 
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(body["status"], "ignored");
     assert_eq!(body["reason"], "trailer_or_extra");
@@ -8493,11 +9563,12 @@ async fn test_plex_and_jellyfin_trailer_and_clip_exclusion() {
         .unwrap();
     assert_eq!(count, 0);
 
-    let session_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM active_sessions WHERE user_id = ?")
-        .bind(&user_id)
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+    let session_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM active_sessions WHERE user_id = ?")
+            .bind(&user_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
     assert_eq!(session_count, 0);
 
     // 6. Regular movie MUST still be successfully scrobbled!
@@ -8601,15 +9672,17 @@ async fn test_fetch_plex_and_jellyfin_users_endpoints() {
 
     // 2. Create test user and token
     let user_id = "test-fetch-users-user".to_string();
-    sqlx::query("INSERT INTO users (id, email, display_name, webhook_token, role) VALUES (?, ?, ?, ?, ?)")
-        .bind(&user_id)
-        .bind("fetch_users@bingesync.local")
-        .bind("Fetch Tester")
-        .bind("token-fetch-users")
-        .bind("user")
-        .execute(&pool)
-        .await
-        .unwrap();
+    sqlx::query(
+        "INSERT INTO users (id, email, display_name, webhook_token, role) VALUES (?, ?, ?, ?, ?)",
+    )
+    .bind(&user_id)
+    .bind("fetch_users@bingesync.local")
+    .bind("Fetch Tester")
+    .bind("token-fetch-users")
+    .bind("user")
+    .execute(&pool)
+    .await
+    .unwrap();
 
     let token = create_jwt(&user_id, "fetch_users@bingesync.local", &config.jwt_secret).unwrap();
 
@@ -8630,14 +9703,19 @@ async fn test_fetch_plex_and_jellyfin_users_endpoints() {
         .uri("/api/v1/user/settings/plex/users")
         .header(header::AUTHORIZATION, format!("Bearer {}", token))
         .header(header::CONTENT_TYPE, "application/json")
-        .body(Body::from(json!({
-            "plex_url": mock_server_url,
-            "plex_api_key": "mock-plex-token"
-        }).to_string()))
+        .body(Body::from(
+            json!({
+                "plex_url": mock_server_url,
+                "plex_api_key": "mock-plex-token"
+            })
+            .to_string(),
+        ))
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let json_resp: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
     assert_eq!(json_resp["status"], "success");
     let users = json_resp["users"].as_array().unwrap();
@@ -8649,16 +9727,20 @@ async fn test_fetch_plex_and_jellyfin_users_endpoints() {
     assert_eq!(users[2]["friendly_name"], "Plex Server Owner");
 
     // Verify cached in plex_user_cache
-    let cached_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM plex_user_cache WHERE source = 'plex'")
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+    let cached_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM plex_user_cache WHERE source = 'plex'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
     assert!(cached_count >= 3);
 
     // 5. Test Plex GET endpoint with query params
     let req = Request::builder()
         .method("GET")
-        .uri(format!("/api/v1/user/settings/plex/users?url={}&api_key=mock-plex-token", urlencoding_encode(&mock_server_url)))
+        .uri(format!(
+            "/api/v1/user/settings/plex/users?url={}&api_key=mock-plex-token",
+            urlencoding_encode(&mock_server_url)
+        ))
         .header(header::AUTHORIZATION, format!("Bearer {}", token))
         .body(Body::empty())
         .unwrap();
@@ -8671,14 +9753,19 @@ async fn test_fetch_plex_and_jellyfin_users_endpoints() {
         .uri("/api/v1/user/settings/jellyfin/users")
         .header(header::AUTHORIZATION, format!("Bearer {}", token))
         .header(header::CONTENT_TYPE, "application/json")
-        .body(Body::from(json!({
-            "jellyfin_url": mock_server_url,
-            "jellyfin_api_key": "mock-jelly-key"
-        }).to_string()))
+        .body(Body::from(
+            json!({
+                "jellyfin_url": mock_server_url,
+                "jellyfin_api_key": "mock-jelly-key"
+            })
+            .to_string(),
+        ))
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let json_resp: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
     assert_eq!(json_resp["status"], "success");
     let jf_users = json_resp["users"].as_array().unwrap();
@@ -8687,15 +9774,30 @@ async fn test_fetch_plex_and_jellyfin_users_endpoints() {
     assert_eq!(jf_users[1]["username"], "jelly_bob");
 
     // Verify cached in plex_user_cache for jellyfin
-    let jf_cached: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM plex_user_cache WHERE source = 'jellyfin'")
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+    let jf_cached: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM plex_user_cache WHERE source = 'jellyfin'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
     assert!(jf_cached >= 2);
 
     // 7. Save Jellyfin credentials in user_settings and call GET without params
-    bingesync::api::user_settings::set_user_setting(&pool, &user_id, "jellyfin_url", &mock_server_url).await.unwrap();
-    bingesync::api::user_settings::set_user_setting(&pool, &user_id, "jellyfin_api_key", "saved-jf-key").await.unwrap();
+    bingesync::api::user_settings::set_user_setting(
+        &pool,
+        &user_id,
+        "jellyfin_url",
+        &mock_server_url,
+    )
+    .await
+    .unwrap();
+    bingesync::api::user_settings::set_user_setting(
+        &pool,
+        &user_id,
+        "jellyfin_api_key",
+        "saved-jf-key",
+    )
+    .await
+    .unwrap();
 
     let req = Request::builder()
         .method("GET")
@@ -8705,7 +9807,9 @@ async fn test_fetch_plex_and_jellyfin_users_endpoints() {
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let json_resp: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
     assert_eq!(json_resp["status"], "success");
 }
@@ -8778,15 +9882,17 @@ async fn test_emby_sync_and_user_lookup_endpoints() {
 
     // 2. Setup user and token
     let user_id = "test-emby-sync-user".to_string();
-    sqlx::query("INSERT INTO users (id, email, display_name, webhook_token, role) VALUES (?, ?, ?, ?, ?)")
-        .bind(&user_id)
-        .bind("emby_sync@bingesync.local")
-        .bind("Emby Tester")
-        .bind("token-emby-sync")
-        .bind("user")
-        .execute(&pool)
-        .await
-        .unwrap();
+    sqlx::query(
+        "INSERT INTO users (id, email, display_name, webhook_token, role) VALUES (?, ?, ?, ?, ?)",
+    )
+    .bind(&user_id)
+    .bind("emby_sync@bingesync.local")
+    .bind("Emby Tester")
+    .bind("token-emby-sync")
+    .bind("user")
+    .execute(&pool)
+    .await
+    .unwrap();
 
     let token = create_jwt(&user_id, "emby_sync@bingesync.local", &config.jwt_secret).unwrap();
 
@@ -8796,18 +9902,26 @@ async fn test_emby_sync_and_user_lookup_endpoints() {
         .uri("/api/v1/user/settings/test-emby")
         .header(header::AUTHORIZATION, format!("Bearer {}", token))
         .header(header::CONTENT_TYPE, "application/json")
-        .body(Body::from(json!({
-            "emby_url": mock_server_url,
-            "emby_api_key": "test-emby-token"
-        }).to_string()))
+        .body(Body::from(
+            json!({
+                "emby_url": mock_server_url,
+                "emby_api_key": "test-emby-token"
+            })
+            .to_string(),
+        ))
         .unwrap();
 
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let conn_resp: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
     assert_eq!(conn_resp["status"], "success");
-    assert!(conn_resp["message"].as_str().unwrap().contains("Test Emby Media Server"));
+    assert!(conn_resp["message"]
+        .as_str()
+        .unwrap()
+        .contains("Test Emby Media Server"));
 
     // 4. Test Emby User Lookup via POST
     let req = Request::builder()
@@ -8815,15 +9929,20 @@ async fn test_emby_sync_and_user_lookup_endpoints() {
         .uri("/api/v1/user/settings/emby/users")
         .header(header::AUTHORIZATION, format!("Bearer {}", token))
         .header(header::CONTENT_TYPE, "application/json")
-        .body(Body::from(json!({
-            "emby_url": mock_server_url,
-            "emby_api_key": "test-emby-token"
-        }).to_string()))
+        .body(Body::from(
+            json!({
+                "emby_url": mock_server_url,
+                "emby_api_key": "test-emby-token"
+            })
+            .to_string(),
+        ))
         .unwrap();
 
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let users_resp: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
     assert_eq!(users_resp["status"], "success");
     let users = users_resp["users"].as_array().unwrap();
@@ -8832,10 +9951,11 @@ async fn test_emby_sync_and_user_lookup_endpoints() {
     assert_eq!(users[1]["username"], "emby_user_bob");
 
     // Verify cached in plex_user_cache
-    let cached_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM plex_user_cache WHERE source = 'emby'")
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+    let cached_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM plex_user_cache WHERE source = 'emby'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
     assert!(cached_count >= 2);
 
     // 5. Update user settings with Emby config
@@ -8844,11 +9964,14 @@ async fn test_emby_sync_and_user_lookup_endpoints() {
         .uri("/api/v1/user/settings")
         .header(header::AUTHORIZATION, format!("Bearer {}", token))
         .header(header::CONTENT_TYPE, "application/json")
-        .body(Body::from(json!({
-            "emby_url": mock_server_url,
-            "emby_api_key": "saved-emby-key-12345",
-            "emby_sync_enabled": true
-        }).to_string()))
+        .body(Body::from(
+            json!({
+                "emby_url": mock_server_url,
+                "emby_api_key": "saved-emby-key-12345",
+                "emby_sync_enabled": true
+            })
+            .to_string(),
+        ))
         .unwrap();
 
     let resp = app.clone().oneshot(req).await.unwrap();
@@ -8863,12 +9986,17 @@ async fn test_emby_sync_and_user_lookup_endpoints() {
 
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let settings: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
     assert_eq!(settings["emby_url"], mock_server_url);
     assert_eq!(settings["emby_api_key_configured"], true);
     assert_eq!(settings["emby_sync_enabled"], true);
-    assert!(settings["emby_api_key_masked"].as_str().unwrap().contains('•'));
+    assert!(settings["emby_api_key_masked"]
+        .as_str()
+        .unwrap()
+        .contains('•'));
 
     // 6. Test Emby User Lookup via GET (using saved user credentials)
     let req = Request::builder()
@@ -8880,7 +10008,9 @@ async fn test_emby_sync_and_user_lookup_endpoints() {
 
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let get_users_resp: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
     assert_eq!(get_users_resp["status"], "success");
     assert_eq!(get_users_resp["users"].as_array().unwrap().len(), 2);
@@ -8895,7 +10025,7 @@ async fn test_emby_sync_and_user_lookup_endpoints() {
             'scrobble-emby-wb', ?, 'Dune: Part Two', 'movie', 2024, NULL, NULL,
             datetime('now'), datetime('now'), 'completed', 100, 'emby', 'emby-item-dune-999'
         )
-        "#
+        "#,
     )
     .bind(&user_id)
     .execute(&pool)
@@ -8907,24 +10037,20 @@ async fn test_emby_sync_and_user_lookup_endpoints() {
         .uri("/api/v1/user/sync/writeback")
         .header(header::AUTHORIZATION, format!("Bearer {}", token))
         .header(header::CONTENT_TYPE, "application/json")
-        .body(Body::from(json!({
-            "limit": 10
-        }).to_string()))
+        .body(Body::from(
+            json!({
+                "limit": 10
+            })
+            .to_string(),
+        ))
         .unwrap();
 
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let wb_resp: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
     assert_eq!(wb_resp["status"], "success");
     assert!(wb_resp["emby_synced"].as_i64().unwrap() >= 1);
 }
-
-
-
-
-
-
-
-
-
