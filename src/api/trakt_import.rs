@@ -209,6 +209,18 @@ pub async fn import_trakt_handler(
         let source_name = Some("trakt".to_string());
         let source_user = Some(auth.email.clone());
         let imported_from = Some("trakt".to_string());
+        let is_rewatch = existing_map.contains_key(&key);
+        let imdb_id = item.guid.as_ref().and_then(|g| {
+            if let Some(idx) = g.find("tt") {
+                let sub = &g[idx..];
+                let num_len = sub.chars().skip(2).take_while(|c| c.is_ascii_digit()).count();
+                if num_len >= 5 {
+                    return Some(sub[..2 + num_len].to_string());
+                }
+            }
+            None
+        });
+
         let insert_res = sqlx::query(
             r#"
             INSERT INTO scrobbles (
@@ -216,9 +228,9 @@ pub async fn import_trakt_handler(
                 season_number, episode_number, year, overview, thumb_url,
                 rating_key, guid, duration_ms, user_rating,
                 genres, directors, director, cinematographer, actors, watch_status,
-                source, source_user, imported_from,
+                source, source_user, imported_from, imdb_id, is_rewatch,
                 watched_at, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             "#,
         )
         .bind(&scrobble_id)
@@ -245,6 +257,8 @@ pub async fn import_trakt_handler(
         .bind(&source_name)
         .bind(&source_user)
         .bind(&imported_from)
+        .bind(&imdb_id)
+        .bind(is_rewatch)
         .bind(&item.watched_at)
         .bind(&now)
             .execute(&mut *tx)

@@ -7,7 +7,7 @@ use bingesync::{
     auth::{create_jwt, OidcClient},
     config::Config,
     db::init_db,
-    models::{HistoryResponse, Scrobble, StatsSummary, TimelineDay, UserResponse},
+    models::{ActiveSession, HistoryResponse, Scrobble, StatsSummary, TimelineDay, UserResponse},
 };
 use serde_json::json;
 use std::sync::Arc;
@@ -10053,4 +10053,214 @@ async fn test_emby_sync_and_user_lookup_endpoints() {
     let wb_resp: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
     assert_eq!(wb_resp["status"], "success");
     assert!(wb_resp["emby_synced"].as_i64().unwrap() >= 1);
+}
+
+#[tokio::test]
+async fn test_rich_scrobble_metadata_specs_device_and_rewatch() {
+    let (app, pool, config) = setup_test_app().await;
+
+    // 1. Create a user
+    let user_id = uuid::Uuid::new_v4().to_string();
+    let token = "rich-user-token-12345".to_string();
+    sqlx::query(
+        "INSERT INTO users (id, email, display_name, webhook_token, role) VALUES (?, ?, ?, ?, 'user')"
+    )
+    .bind(&user_id)
+    .bind("richuser@example.com")
+    .bind("Rich User")
+    .bind(&token)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let auth_token = create_jwt(&user_id, "richuser@example.com", &config.jwt_secret).unwrap();
+
+    // 2. Ingest first Plex scrobble for "Inception" (2010) with rich device, specs, and IMDb ID
+    let plex_payload = json!({
+        "event": "media.scrobble",
+        "user": true,
+        "Account": {
+            "title": "richuser"
+        },
+        "Player": {
+            "title": "Living Room OLED",
+            "product": "Plex for Apple TV",
+            "platform": "tvOS",
+            "local": true
+        },
+        "Metadata": {
+            "type": "movie",
+            "title": "Inception",
+            "year": 2010,
+            "studio": "Warner Bros. Pictures",
+            "contentRating": "PG-13",
+            "duration": 8880000,
+            "summary": "A thief who steals corporate secrets through dream-sharing technology.",
+            "guid": "plex://movie/5d776824961905001eb9c2ab",
+            "Guid": [
+                { "id": "imdb://tt1375666" },
+                { "id": "tmdb://27205" }
+            ],
+            "Media": [
+                {
+                    "videoResolution": "4k",
+                    "videoCodec": "hevc",
+                    "audioCodec": "truehd",
+                    "audioChannels": 8,
+                    "doviProfile": "5"
+                }
+            ],
+            "Genre": [
+                { "tag": "Action" },
+                { "tag": "Sci-Fi" }
+            ],
+            "Director": [
+                { "tag": "Christopher Nolan" }
+            ]
+        }
+    });
+
+    let req = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/webhooks/plex/{}", token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(plex_payload.to_string()))
+        .unwrap();
+
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+
+    // Verify first scrobble in database: is_rewatch must be 0 (false)
+    let s1 = sqlx::query_as::<_, Scrobble>(
+        "SELECT * FROM scrobbles WHERE user_id = ? AND title = 'Inception'"
+    )
+    .bind(&user_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+
+    assert_eq!(s1.player_name.as_deref(), Some("Plex for Apple TV"));
+    assert_eq!(s1.device_name.as_deref(), Some("Living Room OLED"));
+    assert_eq!(s1.platform.as_deref(), Some("tvOS"));
+    assert_eq!(s1.is_local, Some(true));
+    assert_eq!(s1.imdb_id.as_deref(), Some("tt1375666"));
+    assert_eq!(s1.resolution.as_deref(), Some("4K"));
+    assert_eq!(s1.hdr_format.as_deref(), Some("Dolby Vision"));
+    assert_eq!(s1.video_codec.as_deref(), Some("HEVC"));
+    assert_eq!(s1.audio_codec.as_deref(), Some("TrueHD"));
+    assert_eq!(s1.audio_channels.as_deref(), Some("7.1"));
+    assert_eq!(s1.studio.as_deref(), Some("Warner Bros. Pictures"));
+    assert_eq!(s1.content_rating.as_deref(), Some("PG-13"));
+    assert_eq!(s1.is_rewatch, false);
+
+    // 3. Second watch of "Inception" at a later timestamp -> should be detected as rewatch
+    tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+    let manual_rewatch_req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/history")
+        .header(header::AUTHORIZATION, format!("Bearer {}", auth_token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(
+            json!({
+                "title": "Inception",
+                "media_type": "movie",
+                "year": 2010,
+                "duration_ms": 8880000,
+                "player_name": "Infuse",
+                "device_name": "Bedroom Apple TV",
+                "platform": "tvOS",
+                "is_local": true,
+                "resolution": "1080p",
+                "audio_codec": "DTS-HD MA",
+                "audio_channels": "5.1",
+                "studio": "Warner Bros. Pictures",
+                "content_rating": "PG-13",
+                "imdb_id": "tt1375666"
+            })
+            .to_string(),
+        ))
+        .unwrap();
+
+    let resp = app.clone().oneshot(manual_rewatch_req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let s2_json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    assert_eq!(s2_json["is_rewatch"], true);
+    assert_eq!(s2_json["player_name"], "Infuse");
+    assert_eq!(s2_json["resolution"], "1080p");
+    assert_eq!(s2_json["audio_codec"], "DTS-HD MA");
+
+    // 4. Test Active Session capturing device and media specs
+    let play_payload = json!({
+        "event": "media.play",
+        "user": true,
+        "Account": { "title": "richuser" },
+        "Player": {
+            "title": "Home Cinema",
+            "product": "Plex Web",
+            "platform": "Chrome",
+            "local": false
+        },
+        "Metadata": {
+            "type": "movie",
+            "title": "Oppenheimer",
+            "year": 2023,
+            "duration": 10800000,
+            "viewOffset": 300000,
+            "contentRating": "R",
+            "Media": [
+                {
+                    "videoResolution": "4k",
+                    "videoCodec": "hevc",
+                    "audioCodec": "dca-ma",
+                    "audioChannels": 6,
+                    "colorTransfer": "smpte2084"
+                }
+            ]
+        }
+    });
+
+    let req = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/webhooks/plex/{}", token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(play_payload.to_string()))
+        .unwrap();
+
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let session = sqlx::query_as::<_, ActiveSession>(
+        "SELECT * FROM active_sessions WHERE user_id = ?"
+    )
+    .bind(&user_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+
+    assert_eq!(session.title, "Oppenheimer");
+    assert_eq!(session.player_name.as_deref(), Some("Plex Web"));
+    assert_eq!(session.device_name.as_deref(), Some("Home Cinema"));
+    assert_eq!(session.platform.as_deref(), Some("Chrome"));
+    assert_eq!(session.is_local, Some(false));
+    assert_eq!(session.resolution.as_deref(), Some("4K"));
+    assert_eq!(session.hdr_format.as_deref(), Some("HDR10"));
+    assert_eq!(session.audio_codec.as_deref(), Some("DTS-HD MA"));
+    assert_eq!(session.audio_channels.as_deref(), Some("5.1"));
+    assert_eq!(session.content_rating.as_deref(), Some("R"));
+
+    // 5. Query /api/v1/history: verify search works across studio, imdb_id, and device
+    let search_req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/history?search=tt1375666")
+        .header(header::AUTHORIZATION, format!("Bearer {}", auth_token))
+        .body(Body::empty())
+        .unwrap();
+
+    let resp = app.clone().oneshot(search_req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let history_res: HistoryResponse = serde_json::from_slice(&body_bytes).unwrap();
+    assert_eq!(history_res.items.len(), 2);
+    assert_eq!(history_res.items[0].imdb_id.as_deref(), Some("tt1375666"));
 }

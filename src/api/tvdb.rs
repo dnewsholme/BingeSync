@@ -18,6 +18,10 @@ pub struct TvdbMetadata {
     pub director: Option<String>,
     pub cinematographer: Option<String>,
     pub image_url: Option<String>,
+    pub imdb_id: Option<String>,
+    pub studio: Option<String>,
+    pub original_language: Option<String>,
+    pub content_rating: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -803,6 +807,55 @@ fn parse_extended_metadata(data: &serde_json::Value) -> TvdbMetadata {
         }
     }
 
+    let original_language = data
+        .get("originalLanguage")
+        .and_then(|v| v.as_str())
+        .map(|s| s.trim().to_lowercase())
+        .filter(|s| !s.is_empty());
+
+    let studio = data
+        .get("networks")
+        .and_then(|v| v.as_array())
+        .and_then(|a| a.first())
+        .and_then(|n| n.get("name").and_then(|v| v.as_str()))
+        .or_else(|| {
+            data.get("companies")
+                .and_then(|v| v.as_array())
+                .and_then(|a| a.first())
+                .and_then(|c| c.get("name").and_then(|v| v.as_str()))
+        })
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+
+    let content_rating = data
+        .get("contentRatings")
+        .and_then(|v| v.as_array())
+        .and_then(|arr| {
+            arr.iter().find_map(|cr| {
+                let country = cr.get("country").and_then(|v| v.as_str()).unwrap_or_default().to_lowercase();
+                if country == "usa" || country == "gbr" || country == "us" || country == "uk" {
+                    cr.get("name").and_then(|v| v.as_str()).map(|s| s.trim().to_string())
+                } else {
+                    None
+                }
+            })
+        });
+
+    let imdb_id = data
+        .get("remoteIds")
+        .and_then(|v| v.as_array())
+        .and_then(|arr| {
+            arr.iter().find_map(|r| {
+                let is_imdb = r.get("type").and_then(|v| v.as_i64()) == Some(2)
+                    || r.get("sourceName").and_then(|v| v.as_str()).map(|s| s.to_lowercase()).as_deref() == Some("imdb");
+                if is_imdb {
+                    r.get("id").and_then(|v| v.as_str()).map(|s| s.trim().to_string())
+                } else {
+                    None
+                }
+            })
+        });
+
     TvdbMetadata {
         overview,
         genres,
@@ -811,6 +864,10 @@ fn parse_extended_metadata(data: &serde_json::Value) -> TvdbMetadata {
         director,
         cinematographer,
         image_url,
+        imdb_id,
+        studio,
+        original_language,
+        content_rating,
     }
 }
 
@@ -1104,6 +1161,10 @@ pub async fn process_missing_metadata_batch_provider(
                             ELSE thumb_url 
                         END,
                         tmdb_id = COALESCE(NULLIF(?, ''), NULLIF(tmdb_id, '')),
+                        imdb_id = COALESCE(NULLIF(?, ''), NULLIF(imdb_id, '')),
+                        studio = COALESCE(NULLIF(?, ''), NULLIF(studio, '')),
+                        original_language = COALESCE(NULLIF(?, ''), NULLIF(original_language, '')),
+                        content_rating = COALESCE(NULLIF(?, ''), NULLIF(content_rating, '')),
                         metadata_updated_at = datetime('now')
                     WHERE id = ? OR (grandparent_title IS NOT NULL AND LOWER(TRIM(grandparent_title)) = LOWER(TRIM(?))) OR (media_type = 'episode' AND LOWER(TRIM(title)) = LOWER(TRIM(?)))
                     "#
@@ -1117,6 +1178,10 @@ pub async fn process_missing_metadata_batch_provider(
                 .bind(&meta.image_url)
                 .bind(&meta.image_url)
                 .bind(&matched_id)
+                .bind(&meta.imdb_id)
+                .bind(&meta.studio)
+                .bind(&meta.original_language)
+                .bind(&meta.content_rating)
                 .bind(&item.id)
                 .bind(show_name)
                 .bind(show_name)
@@ -1138,6 +1203,10 @@ pub async fn process_missing_metadata_batch_provider(
                             ELSE thumb_url 
                         END,
                         tvdb_id = COALESCE(NULLIF(?, ''), NULLIF(tvdb_id, '')),
+                        imdb_id = COALESCE(NULLIF(?, ''), NULLIF(imdb_id, '')),
+                        studio = COALESCE(NULLIF(?, ''), NULLIF(studio, '')),
+                        original_language = COALESCE(NULLIF(?, ''), NULLIF(original_language, '')),
+                        content_rating = COALESCE(NULLIF(?, ''), NULLIF(content_rating, '')),
                         metadata_updated_at = datetime('now')
                     WHERE id = ? OR (grandparent_title IS NOT NULL AND LOWER(TRIM(grandparent_title)) = LOWER(TRIM(?))) OR (media_type = 'episode' AND LOWER(TRIM(title)) = LOWER(TRIM(?)))
                     "#
@@ -1151,6 +1220,10 @@ pub async fn process_missing_metadata_batch_provider(
                 .bind(&meta.image_url)
                 .bind(&meta.image_url)
                 .bind(&matched_id)
+                .bind(&meta.imdb_id)
+                .bind(&meta.studio)
+                .bind(&meta.original_language)
+                .bind(&meta.content_rating)
                 .bind(&item.id)
                 .bind(show_name)
                 .bind(show_name)
@@ -1175,6 +1248,10 @@ pub async fn process_missing_metadata_batch_provider(
                             ELSE thumb_url 
                         END,
                         tmdb_id = COALESCE(NULLIF(?, ''), NULLIF(tmdb_id, '')),
+                        imdb_id = COALESCE(NULLIF(?, ''), NULLIF(imdb_id, '')),
+                        studio = COALESCE(NULLIF(?, ''), NULLIF(studio, '')),
+                        original_language = COALESCE(NULLIF(?, ''), NULLIF(original_language, '')),
+                        content_rating = COALESCE(NULLIF(?, ''), NULLIF(content_rating, '')),
                         metadata_updated_at = datetime('now')
                     WHERE id = ?
                     "#
@@ -1188,6 +1265,10 @@ pub async fn process_missing_metadata_batch_provider(
                 .bind(&meta.image_url)
                 .bind(&meta.image_url)
                 .bind(&matched_id)
+                .bind(&meta.imdb_id)
+                .bind(&meta.studio)
+                .bind(&meta.original_language)
+                .bind(&meta.content_rating)
                 .bind(&item.id)
                 .execute(&state.pool)
                 .await;
@@ -1207,6 +1288,10 @@ pub async fn process_missing_metadata_batch_provider(
                             ELSE thumb_url 
                         END,
                         tvdb_id = COALESCE(NULLIF(?, ''), NULLIF(tvdb_id, '')),
+                        imdb_id = COALESCE(NULLIF(?, ''), NULLIF(imdb_id, '')),
+                        studio = COALESCE(NULLIF(?, ''), NULLIF(studio, '')),
+                        original_language = COALESCE(NULLIF(?, ''), NULLIF(original_language, '')),
+                        content_rating = COALESCE(NULLIF(?, ''), NULLIF(content_rating, '')),
                         metadata_updated_at = datetime('now')
                     WHERE id = ?
                     "#
@@ -1220,6 +1305,10 @@ pub async fn process_missing_metadata_batch_provider(
                 .bind(&meta.image_url)
                 .bind(&meta.image_url)
                 .bind(&matched_id)
+                .bind(&meta.imdb_id)
+                .bind(&meta.studio)
+                .bind(&meta.original_language)
+                .bind(&meta.content_rating)
                 .bind(&item.id)
                 .execute(&state.pool)
                 .await;

@@ -473,6 +473,51 @@ fn parse_tmdb_metadata(data: &serde_json::Value) -> TvdbMetadata {
             }
         });
 
+    let imdb_id = data
+        .get("imdb_id")
+        .and_then(|v| v.as_str())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+
+    let original_language = data
+        .get("original_language")
+        .and_then(|v| v.as_str())
+        .map(|s| s.trim().to_lowercase())
+        .filter(|s| !s.is_empty());
+
+    let studio = data
+        .get("networks")
+        .and_then(|v| v.as_array())
+        .and_then(|arr| arr.first())
+        .and_then(|n| n.get("name").and_then(|v| v.as_str()))
+        .or_else(|| {
+            data.get("production_companies")
+                .and_then(|v| v.as_array())
+                .and_then(|arr| arr.first())
+                .and_then(|c| c.get("name").and_then(|v| v.as_str()))
+        })
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+
+    let content_rating = data
+        .get("content_ratings")
+        .or_else(|| data.get("release_dates"))
+        .and_then(|cr| cr.get("results").and_then(|r| r.as_array()))
+        .and_then(|arr| {
+            arr.iter().find_map(|item| {
+                let iso = item.get("iso_3166_1").and_then(|v| v.as_str()).unwrap_or_default();
+                if iso == "US" || iso == "GB" {
+                    item.get("rating").and_then(|v| v.as_str()).map(|s| s.trim().to_string())
+                        .or_else(|| {
+                            item.get("release_dates").and_then(|rd| rd.as_array())
+                                .and_then(|dates| dates.iter().find_map(|d| d.get("certification").and_then(|v| v.as_str()).filter(|s| !s.trim().is_empty()).map(|s| s.trim().to_string())))
+                        })
+                } else {
+                    None
+                }
+            })
+        });
+
     TvdbMetadata {
         overview,
         genres,
@@ -481,5 +526,9 @@ fn parse_tmdb_metadata(data: &serde_json::Value) -> TvdbMetadata {
         director,
         cinematographer,
         image_url,
+        imdb_id,
+        studio,
+        original_language,
+        content_rating,
     }
 }

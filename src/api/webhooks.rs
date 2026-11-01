@@ -93,6 +93,81 @@ pub async fn handle_emby_webhook_query(
     process_jellyfin_or_emby_webhook(state, token, body_bytes, headers, "emby").await
 }
 
+pub async fn check_is_rewatch(
+    pool: &sqlx::SqlitePool,
+    user_id: &str,
+    media_type: &str,
+    title: &str,
+    grandparent_title: Option<&str>,
+    season_number: Option<i32>,
+    episode_number: Option<i32>,
+    year: Option<i32>,
+    watched_at: &str,
+) -> bool {
+    if media_type == "episode" {
+        if let (Some(gp), Some(s), Some(e)) = (grandparent_title, season_number, episode_number) {
+            let count: i64 = sqlx::query_scalar(
+                r#"
+                SELECT COUNT(*) FROM scrobbles
+                WHERE user_id = ?
+                  AND media_type = 'episode'
+                  AND grandparent_title = ?
+                  AND season_number = ?
+                  AND episode_number = ?
+                  AND watched_at < ?
+                "#,
+            )
+            .bind(user_id)
+            .bind(gp)
+            .bind(s)
+            .bind(e)
+            .bind(watched_at)
+            .fetch_one(pool)
+            .await
+            .unwrap_or(0);
+            return count > 0;
+        }
+    } else {
+        let count: i64 = if let Some(y) = year {
+            sqlx::query_scalar(
+                r#"
+                SELECT COUNT(*) FROM scrobbles
+                WHERE user_id = ?
+                  AND media_type = 'movie'
+                  AND LOWER(TRIM(title)) = LOWER(TRIM(?))
+                  AND (year = ? OR year IS NULL)
+                  AND watched_at < ?
+                "#,
+            )
+            .bind(user_id)
+            .bind(title)
+            .bind(y)
+            .bind(watched_at)
+            .fetch_one(pool)
+            .await
+            .unwrap_or(0)
+        } else {
+            sqlx::query_scalar(
+                r#"
+                SELECT COUNT(*) FROM scrobbles
+                WHERE user_id = ?
+                  AND media_type = 'movie'
+                  AND LOWER(TRIM(title)) = LOWER(TRIM(?))
+                  AND watched_at < ?
+                "#,
+            )
+            .bind(user_id)
+            .bind(title)
+            .bind(watched_at)
+            .fetch_one(pool)
+            .await
+            .unwrap_or(0)
+        };
+        return count > 0;
+    }
+    false
+}
+
 async fn process_webhook(
     state: AppState,
     token: String,
@@ -358,6 +433,12 @@ async fn process_webhook(
         ));
     }
 
+    let imdb_id = metadata.resolved_imdb_id();
+    let (resolution, hdr_format, audio_codec, audio_channels, video_codec) = metadata.resolved_media_specs();
+    let studio = metadata.studio.clone();
+    let content_rating = metadata.content_rating.clone();
+    let original_language = None::<String>;
+
     let title = metadata.title.unwrap_or_else(|| "Unknown Title".to_string());
     let media_type = metadata.media_type.unwrap_or_else(|| "movie".to_string());
     let grandparent_title = metadata.grandparent_title;
@@ -476,6 +557,23 @@ async fn process_webhook(
         .unwrap_or(None)
     };
 
+    let player_name = payload.player.as_ref().and_then(|p| p.product.clone()).or_else(|| payload.player.as_ref().and_then(|p| p.title.clone()));
+    let device_name = payload.player.as_ref().and_then(|p| p.device.clone().or_else(|| p.title.clone()));
+    let platform = payload.player.as_ref().and_then(|p| p.platform.clone());
+    let is_local = payload.player.as_ref().and_then(|p| p.local);
+
+    let is_rewatch = check_is_rewatch(
+        &state.pool,
+        &user.id,
+        &media_type,
+        &title,
+        grandparent_title.as_deref(),
+        season_number,
+        episode_number,
+        year,
+        &now_str,
+    ).await;
+
     let scrobble_id = if let Some(existing) = existing {
         let final_status = if existing.watch_status.as_deref() == Some("completed") || is_completed {
             "completed"
@@ -502,7 +600,19 @@ async fn process_webhook(
                 director = COALESCE(director, ?),
                 actors = COALESCE(actors, ?),
                 source = COALESCE(source, ?),
-                source_user = COALESCE(source_user, ?)
+                source_user = COALESCE(source_user, ?),
+                player_name = COALESCE(player_name, ?),
+                device_name = COALESCE(device_name, ?),
+                platform = COALESCE(platform, ?),
+                is_local = COALESCE(is_local, ?),
+                imdb_id = COALESCE(imdb_id, ?),
+                resolution = COALESCE(resolution, ?),
+                hdr_format = COALESCE(hdr_format, ?),
+                audio_codec = COALESCE(audio_codec, ?),
+                audio_channels = COALESCE(audio_channels, ?),
+                video_codec = COALESCE(video_codec, ?),
+                studio = COALESCE(studio, ?),
+                content_rating = COALESCE(content_rating, ?)
             WHERE id = ?
             "#
         )
@@ -517,6 +627,18 @@ async fn process_webhook(
         .bind(&actors)
         .bind(&source_name)
         .bind(&resolved_source_user)
+        .bind(&player_name)
+        .bind(&device_name)
+        .bind(&platform)
+        .bind(is_local)
+        .bind(&imdb_id)
+        .bind(&resolution)
+        .bind(&hdr_format)
+        .bind(&audio_codec)
+        .bind(&audio_channels)
+        .bind(&video_codec)
+        .bind(&studio)
+        .bind(&content_rating)
         .bind(&existing.id)
         .execute(&state.pool)
         .await
@@ -541,8 +663,12 @@ async fn process_webhook(
                 season_number, episode_number, year, overview, thumb_url,
                 rating_key, guid, duration_ms, user_rating,
                 genres, directors, director, cinematographer, actors, watch_status, progress_percent, view_offset_ms,
-                metadata_updated_at, source, source_user, watched_at, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                metadata_updated_at, source, source_user,
+                player_name, device_name, platform, is_local,
+                imdb_id, resolution, hdr_format, audio_codec, audio_channels, video_codec,
+                studio, original_language, content_rating, is_rewatch,
+                watched_at, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             "#,
         )
         .bind(&new_id)
@@ -571,6 +697,20 @@ async fn process_webhook(
         .bind(meta_updated)
         .bind(&source_name)
         .bind(&resolved_source_user)
+        .bind(&player_name)
+        .bind(&device_name)
+        .bind(&platform)
+        .bind(is_local)
+        .bind(&imdb_id)
+        .bind(&resolution)
+        .bind(&hdr_format)
+        .bind(&audio_codec)
+        .bind(&audio_channels)
+        .bind(&video_codec)
+        .bind(&studio)
+        .bind(&original_language)
+        .bind(&content_rating)
+        .bind(is_rewatch)
         .bind(&now_str)
         .bind(&now_str)
         .execute(&state.pool)
@@ -675,8 +815,10 @@ async fn process_webhook(
                     id, user_id, player_title, title, media_type, grandparent_title,
                     season_number, episode_number, year, thumb_url, state,
                     source, source_user,
+                    player_name, device_name, platform, is_local,
+                    resolution, hdr_format, audio_codec, audio_channels, video_codec, content_rating,
                     view_offset_ms, duration_ms, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 "#,
             )
             .bind(&session_id)
@@ -692,6 +834,16 @@ async fn process_webhook(
             .bind(state_str)
             .bind(&source_name)
             .bind(&resolved_source_user)
+            .bind(&player_name)
+            .bind(&device_name)
+            .bind(&platform)
+            .bind(is_local)
+            .bind(&resolution)
+            .bind(&hdr_format)
+            .bind(&audio_codec)
+            .bind(&audio_channels)
+            .bind(&video_codec)
+            .bind(&content_rating)
             .bind(view_offset_val)
             .bind(duration_val)
             .bind(&now_str)
@@ -1223,6 +1375,29 @@ async fn process_jellyfin_or_emby_webhook(
         .unwrap_or(None)
     };
 
+    let player_name = payload.resolved_client();
+    let device_name = payload.resolved_device_name();
+    let platform = payload.resolved_platform();
+    let is_local = payload.resolved_is_local();
+
+    let imdb_id = payload.resolved_imdb_id();
+    let (resolution, hdr_format, audio_codec, audio_channels, video_codec) = payload.resolved_media_specs();
+    let studio = payload.resolved_studio();
+    let original_language = payload.resolved_original_language();
+    let content_rating = payload.resolved_content_rating();
+
+    let is_rewatch = check_is_rewatch(
+        &state.pool,
+        &user.id,
+        &media_type,
+        &title,
+        grandparent_title.as_deref(),
+        season_number,
+        episode_number,
+        year,
+        &now_str,
+    ).await;
+
     let scrobble_id = if let Some(existing) = existing {
         let final_status = if existing.watch_status.as_deref() == Some("completed") || is_completed {
             "completed"
@@ -1246,7 +1421,20 @@ async fn process_jellyfin_or_emby_webhook(
                 thumb_url = COALESCE(thumb_url, ?),
                 genres = COALESCE(genres, ?),
                 source = COALESCE(source, ?),
-                source_user = COALESCE(source_user, ?)
+                source_user = COALESCE(source_user, ?),
+                player_name = COALESCE(player_name, ?),
+                device_name = COALESCE(device_name, ?),
+                platform = COALESCE(platform, ?),
+                is_local = COALESCE(is_local, ?),
+                imdb_id = COALESCE(imdb_id, ?),
+                resolution = COALESCE(resolution, ?),
+                hdr_format = COALESCE(hdr_format, ?),
+                audio_codec = COALESCE(audio_codec, ?),
+                audio_channels = COALESCE(audio_channels, ?),
+                video_codec = COALESCE(video_codec, ?),
+                studio = COALESCE(studio, ?),
+                original_language = COALESCE(original_language, ?),
+                content_rating = COALESCE(content_rating, ?)
             WHERE id = ?
             "#
         )
@@ -1258,6 +1446,19 @@ async fn process_jellyfin_or_emby_webhook(
         .bind(&genres)
         .bind(&source_name)
         .bind(&resolved_source_user)
+        .bind(&player_name)
+        .bind(&device_name)
+        .bind(&platform)
+        .bind(is_local)
+        .bind(&imdb_id)
+        .bind(&resolution)
+        .bind(&hdr_format)
+        .bind(&audio_codec)
+        .bind(&audio_channels)
+        .bind(&video_codec)
+        .bind(&studio)
+        .bind(&original_language)
+        .bind(&content_rating)
         .bind(&existing.id)
         .execute(&state.pool)
         .await
@@ -1282,8 +1483,12 @@ async fn process_jellyfin_or_emby_webhook(
                 season_number, episode_number, year, overview, thumb_url,
                 rating_key, guid, duration_ms, user_rating,
                 genres, directors, director, cinematographer, actors, watch_status, progress_percent, view_offset_ms,
-                metadata_updated_at, source, source_user, watched_at, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                metadata_updated_at, source, source_user,
+                player_name, device_name, platform, is_local,
+                imdb_id, resolution, hdr_format, audio_codec, audio_channels, video_codec,
+                studio, original_language, content_rating, is_rewatch,
+                watched_at, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             "#,
         )
         .bind(&new_id)
@@ -1312,6 +1517,20 @@ async fn process_jellyfin_or_emby_webhook(
         .bind(meta_updated)
         .bind(&source_name)
         .bind(&resolved_source_user)
+        .bind(&player_name)
+        .bind(&device_name)
+        .bind(&platform)
+        .bind(is_local)
+        .bind(&imdb_id)
+        .bind(&resolution)
+        .bind(&hdr_format)
+        .bind(&audio_codec)
+        .bind(&audio_channels)
+        .bind(&video_codec)
+        .bind(&studio)
+        .bind(&original_language)
+        .bind(&content_rating)
+        .bind(is_rewatch)
         .bind(&now_str)
         .bind(&now_str)
         .execute(&state.pool)
@@ -1464,8 +1683,10 @@ async fn process_jellyfin_or_emby_webhook(
                 id, user_id, player_title, title, media_type, grandparent_title,
                 season_number, episode_number, year, thumb_url, state,
                 source, source_user,
+                player_name, device_name, platform, is_local,
+                resolution, hdr_format, audio_codec, audio_channels, video_codec, content_rating,
                 view_offset_ms, duration_ms, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             "#,
         )
         .bind(&session_id)
@@ -1481,6 +1702,16 @@ async fn process_jellyfin_or_emby_webhook(
         .bind(state_str)
         .bind(&source_name)
         .bind(&resolved_source_user)
+        .bind(&player_name)
+        .bind(&device_name)
+        .bind(&platform)
+        .bind(is_local)
+        .bind(&resolution)
+        .bind(&hdr_format)
+        .bind(&audio_codec)
+        .bind(&audio_channels)
+        .bind(&video_codec)
+        .bind(&content_rating)
         .bind(view_offset_val)
         .bind(duration_val)
         .bind(&now_str)

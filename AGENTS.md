@@ -130,7 +130,7 @@ Plex webhooks send:
 ```bash
 cargo test
 ```
-Tests in `tests/api_tests.rs` (67 integration tests) cover:
+Tests in `tests/api_tests.rs` (68 integration tests) cover:
 - Dev login and `/api/v1/auth/me`
 - Plex movie and TV episode scrobbling
 - Plex and Jellyfin pre-play trailer, cinema intro, and clip filtering and exclusion
@@ -197,6 +197,7 @@ Tests in `tests/api_tests.rs` (67 integration tests) cover:
 - Server user fetching and multi-user filtering endpoints: `/api/v1/user/settings/plex/users`, `/api/v1/user/settings/jellyfin/users`, and `/api/v1/user/settings/emby/users` querying server APIs, inserting/caching mappings in `plex_user_cache`, and supporting both GET and POST
 - Production performance & resource optimizations: release profile LLVM optimizations (`opt-level = 3`, `lto = "thin"`, `codegen-units = 1`, `panic = "abort"`, `strip = true`), SQLite pool PRAGMAs (`synchronous = NORMAL`, `mmap_size = 256MB`, `cache_size = 64MB`, `temp_store = MEMORY`), `tower-http` dynamic compression (`gzip`, `br`, `zstd`), static asset immutable caching (`Cache-Control: public, max-age=31536000, immutable`), and shared `reqwest::Client` connection pooling with socket reuse across media integrations
 - Detailed structured logging & advanced log explorer: 5,000-entry in-memory circular buffer with default `DEBUG` level tracing, structured key=value metadata formatting (`[user_id=... event=...]`), multi-service categorization (`webhooks`, `auth`, `metadata`, `sync`, `tautulli`, `images`, `integrations`, `maintenance`, `backup`, `users`), time cutoffs (`15m`, `1h`, `6h`, `24h`), level filters (`DEBUG & Above`, `INFO & Above`, `WARN & ERROR`, `ERROR Only`), limit clamping up to 2,000 entries, clipboard copy, and `.log` file export
+- Rich scrobble metadata & stream specifications: playback device & client context (`player_name`, `device_name`, `platform`, `is_local`), canonical `imdb_id` parsing and 1-click links, stream quality technical specs (`resolution`, `hdr_format`, `audio_codec`, `audio_channels`, `video_codec`), production studio & TV network (`studio`), original audio language (`original_language`), age certification (`content_rating`), and automatic rewatch tracking (`is_rewatch`) across Plex, Jellyfin, Emby, and Trakt with card spec pills and detail modal inspection
 
 ### Run Playwright E2E UI Tests
 ```bash

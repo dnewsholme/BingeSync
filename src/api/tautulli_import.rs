@@ -393,6 +393,7 @@ pub async fn insert_tautulli_watch_items(
     let mut exact_set: HashSet<String> = HashSet::new();
     let mut day_set: HashSet<String> = HashSet::new();
     let mut rating_key_day_set: HashSet<String> = HashSet::new();
+    let mut seen_media_items: HashSet<String> = HashSet::new();
 
     for rec in existing_records {
         let day_prefix = if rec.watched_at.len() >= 10 { &rec.watched_at[..10] } else { "" };
@@ -401,12 +402,14 @@ pub async fn insert_tautulli_watch_items(
             let s = rec.season_number.unwrap_or(0);
             let ep = rec.episode_number.unwrap_or(0);
             exact_set.insert(format!("ep:{}:{}:{}:{}", show, s, ep, rec.watched_at));
+            seen_media_items.insert(format!("ep:{}:{}:{}", show, s, ep));
             if !day_prefix.is_empty() {
                 day_set.insert(format!("ep_day:{}:{}:{}:{}", show, s, ep, day_prefix));
             }
         } else {
             let t = rec.title.to_lowercase().trim().to_string();
             exact_set.insert(format!("mv:{}:{}", t, rec.watched_at));
+            seen_media_items.insert(format!("mv:{}", t));
             if !day_prefix.is_empty() {
                 day_set.insert(format!("mv_day:{}:{}", t, day_prefix));
             }
@@ -467,6 +470,16 @@ pub async fn insert_tautulli_watch_items(
         let source_name = Some("plex".to_string());
         let imported_from = Some("tautulli".to_string());
         let watched_user = item.user.clone().or_else(|| item.friendly_name.clone());
+
+        let media_item_key = if item.media_type == "episode" {
+            let show = item.grandparent_title.as_deref().unwrap_or("").to_lowercase().trim().to_string();
+            format!("ep:{}:{}:{}", show, item.season_number.unwrap_or(0), item.episode_number.unwrap_or(0))
+        } else {
+            format!("mv:{}", item.title.to_lowercase().trim())
+        };
+        let is_rewatch = seen_media_items.contains(&media_item_key);
+        seen_media_items.insert(media_item_key);
+
         let insert_res = sqlx::query(
             r#"
             INSERT INTO scrobbles (
@@ -474,9 +487,9 @@ pub async fn insert_tautulli_watch_items(
                 season_number, episode_number, year, overview, thumb_url,
                 rating_key, guid, duration_ms, user_rating,
                 genres, directors, director, cinematographer, actors, watch_status, progress_percent, view_offset_ms,
-                source, source_user, imported_from,
+                source, source_user, imported_from, is_rewatch,
                 watched_at, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             "#,
         )
         .bind(&scrobble_id)
@@ -505,6 +518,7 @@ pub async fn insert_tautulli_watch_items(
         .bind(&source_name)
         .bind(&watched_user)
         .bind(&imported_from)
+        .bind(is_rewatch)
         .bind(&item.watched_at)
         .bind(&now)
         .execute(&mut *tx)

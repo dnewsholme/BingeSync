@@ -114,6 +114,10 @@ const state = {
 
 // Helper: IMDb URL generator
 function getImdbUrl(item) {
+  if (item.imdb_id) {
+    const clean = String(item.imdb_id).trim();
+    if (clean) return `https://www.imdb.com/title/${clean}/`;
+  }
   if (item.guid) {
     const match = item.guid.match(/(?:imdb:\/\/)?(tt\d+)/i);
     if (match) {
@@ -1800,6 +1804,24 @@ function renderScrobbleCard(item, isHistory = false) {
     ? `<div class="scrobble-progress-bar"><div class="scrobble-progress-fill" style="width: ${Math.min(100, Math.max(0, item.progress_percent))}%;"></div></div>`
     : '';
 
+  const rewatchBadgeHtml = item.is_rewatch
+    ? `<span class="scrobble-badge badge-rewatch" title="Repeat viewing">🔁 Rewatch</span>`
+    : '';
+
+  const contentRatingBadgeHtml = item.content_rating
+    ? `<span class="scrobble-badge badge-content-rating" title="Certification: ${escapeHtml(item.content_rating)}">${escapeHtml(item.content_rating)}</span>`
+    : '';
+
+  const specs = [];
+  if (item.resolution) specs.push(item.resolution);
+  if (item.hdr_format) specs.push(item.hdr_format);
+  if (item.audio_codec) {
+    specs.push(item.audio_channels ? `${item.audio_codec} ${item.audio_channels}` : item.audio_codec);
+  }
+  const specsHtml = specs.length
+    ? `<div class="scrobble-card-specs">${specs.map(s => `<span class="spec-pill">${escapeHtml(s)}</span>`).join('')}</div>`
+    : '';
+
   const sourceInfo = item.source ? getSourceBadgeInfo(item.source) : null;
   const sourceHtml = sourceInfo
     ? `<button type="button" class="source-tag-card ${sourceInfo.cssClass}" data-source="${escapeHtml(item.source)}" title="Filter by source: ${escapeHtml(item.source)}">${sourceInfo.iconSvg}<span>${escapeHtml(item.source.toUpperCase())}</span></button>`
@@ -1810,8 +1832,12 @@ function renderScrobbleCard(item, isHistory = false) {
   const userHtml = item.source_user
     ? `<button type="button" class="user-tag-card" data-user="${escapeHtml(item.source_user)}" title="Watched by ${escapeHtml(item.source_user)} (click to filter)">👤 ${escapeHtml(item.source_user)}</button>`
     : '';
-  const sourceBarHtml = (item.source || item.source_user || item.imported_from)
-    ? `<div class="scrobble-card-source-bar" onclick="event.stopPropagation()">${sourceHtml}${importHtml}${userHtml}</div>`
+  const deviceName = item.player_name || item.device_name;
+  const deviceHtml = deviceName
+    ? `<span class="device-tag-card" title="Played on ${escapeHtml(deviceName)}${item.platform ? ` (${escapeHtml(item.platform)})` : ''}${item.is_local === true ? ' • Local LAN' : item.is_local === false ? ' • Remote' : ''}">📱 ${escapeHtml(deviceName)}</span>`
+    : '';
+  const sourceBarHtml = (item.source || item.source_user || item.imported_from || deviceName)
+    ? `<div class="scrobble-card-source-bar" onclick="event.stopPropagation()">${sourceHtml}${importHtml}${userHtml}${deviceHtml}</div>`
     : '';
 
   return `
@@ -1821,7 +1847,9 @@ function renderScrobbleCard(item, isHistory = false) {
       <div class="scrobble-header-badges">
         <span class="scrobble-badge ${badgeClass}">${badgeText}</span>
         ${progressBadgeHtml}
+        ${rewatchBadgeHtml}
         ${ratingHtml}
+        ${contentRatingBadgeHtml}
         ${missingBadgeHtml}
         <div class="card-external-links">
           <a href="${imdbUrl}" target="_blank" rel="noopener noreferrer" class="card-imdb-link" title="Open on IMDb" onclick="event.stopPropagation()">IMDb ↗</a>
@@ -1836,6 +1864,7 @@ function renderScrobbleCard(item, isHistory = false) {
         <span>${formatTime(item.watched_at)}</span>
         <span>${durationMin}</span>
       </div>
+      ${specsHtml}
       ${sourceBarHtml}
       ${item.tags ? `
         <div class="scrobble-card-tags" onclick="event.stopPropagation()">
@@ -4206,6 +4235,13 @@ async function openDetailModal(item) {
           })() : ''}
           ${item.imported_from ? `<div style="font-size:0.85rem;color:var(--text-dim);" id="detail-import-display">Imported From: <strong style="color:#38bdf8;text-transform:capitalize;">📥 ${escapeHtml(item.imported_from)}</strong></div>` : ''}
           ${item.source_user ? `<div style="font-size:0.85rem;color:var(--text-dim);" id="detail-user-display">Watched By: <strong style="color:#c084fc;">👤 ${escapeHtml(item.source_user)}</strong></div>` : ''}
+          ${item.is_rewatch ? `<div style="font-size:0.85rem;color:var(--text-dim);" id="detail-rewatch-display">Viewing: <strong style="color:#fbbf24;">🔁 Rewatch</strong></div>` : ''}
+          ${(item.player_name || item.device_name) ? `<div style="font-size:0.85rem;color:var(--text-dim);" id="detail-device-display">Device: <strong style="color:#fff;">📱 ${escapeHtml(item.player_name || item.device_name)}${item.platform ? ` (${escapeHtml(item.platform)})` : ''}</strong> ${item.is_local === true ? '<span class="badge-mini-local">LAN</span>' : item.is_local === false ? '<span class="badge-mini-remote">Remote</span>' : ''}</div>` : ''}
+          ${(item.resolution || item.hdr_format || item.audio_codec || item.video_codec) ? `<div style="font-size:0.85rem;color:var(--text-dim);" id="detail-quality-display">Stream Specs: <strong style="color:#38bdf8;">${[item.resolution, item.hdr_format, item.video_codec, item.audio_codec ? (item.audio_channels ? `${item.audio_codec} ${item.audio_channels}` : item.audio_codec) : null].filter(Boolean).join(' • ')}</strong></div>` : ''}
+          ${item.studio ? `<div style="font-size:0.85rem;color:var(--text-dim);" id="detail-studio-display">Studio/Network: <strong style="color:#fff;">🏢 ${escapeHtml(item.studio)}</strong></div>` : ''}
+          ${item.original_language ? `<div style="font-size:0.85rem;color:var(--text-dim);" id="detail-lang-display">Language: <strong style="color:#fff;">🌐 ${escapeHtml(item.original_language.toUpperCase())}</strong></div>` : ''}
+          ${item.content_rating ? `<div style="font-size:0.85rem;color:var(--text-dim);" id="detail-content-rating-display">Rating: <strong style="color:#fff;border:1px solid rgba(255,255,255,0.25);padding:1px 5px;border-radius:4px;font-size:0.75rem;">${escapeHtml(item.content_rating)}</strong></div>` : ''}
+          ${item.imdb_id ? `<div style="font-size:0.85rem;color:var(--text-dim);" id="detail-imdb-id-display">IMDb: <a href="https://www.imdb.com/title/${encodeURIComponent(item.imdb_id)}/" target="_blank" rel="noopener noreferrer" style="color:#fbbf24;font-family:monospace;font-weight:600;">${escapeHtml(item.imdb_id)} ↗</a></div>` : ''}
           ${statusBadge}
           ${ratingBadge}
           ${genresBadge}

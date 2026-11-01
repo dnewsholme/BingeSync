@@ -53,6 +53,20 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
             source TEXT,
             source_user TEXT,
             imported_from TEXT,
+            player_name TEXT,
+            device_name TEXT,
+            platform TEXT,
+            is_local BOOLEAN DEFAULT NULL,
+            imdb_id TEXT,
+            resolution TEXT,
+            hdr_format TEXT,
+            audio_codec TEXT,
+            audio_channels TEXT,
+            video_codec TEXT,
+            studio TEXT,
+            original_language TEXT,
+            content_rating TEXT,
+            is_rewatch BOOLEAN NOT NULL DEFAULT 0,
             watched_at TEXT NOT NULL DEFAULT (datetime('now')),
             created_at TEXT NOT NULL DEFAULT (datetime('now'))
         );
@@ -76,6 +90,16 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
             state TEXT NOT NULL,
             source TEXT,
             source_user TEXT,
+            player_name TEXT,
+            device_name TEXT,
+            platform TEXT,
+            is_local BOOLEAN DEFAULT NULL,
+            resolution TEXT,
+            hdr_format TEXT,
+            audio_codec TEXT,
+            audio_channels TEXT,
+            video_codec TEXT,
+            content_rating TEXT,
             view_offset_ms INTEGER NOT NULL DEFAULT 0,
             duration_ms INTEGER NOT NULL DEFAULT 0,
             updated_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -295,6 +319,65 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
     )
     .execute(pool)
     .await;
+
+    // Rich Scrobble Metadata Extensions:
+    // 1. Device & Client context
+    let _ = sqlx::query("ALTER TABLE scrobbles ADD COLUMN player_name TEXT").execute(pool).await;
+    let _ = sqlx::query("ALTER TABLE scrobbles ADD COLUMN device_name TEXT").execute(pool).await;
+    let _ = sqlx::query("ALTER TABLE scrobbles ADD COLUMN platform TEXT").execute(pool).await;
+    let _ = sqlx::query("ALTER TABLE scrobbles ADD COLUMN is_local BOOLEAN DEFAULT NULL").execute(pool).await;
+
+    // 2. IMDb ID
+    let _ = sqlx::query("ALTER TABLE scrobbles ADD COLUMN imdb_id TEXT").execute(pool).await;
+    let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_scrobbles_imdb_id ON scrobbles(imdb_id)").execute(pool).await;
+
+    // 3. Media Quality & Stream Technical Specs
+    let _ = sqlx::query("ALTER TABLE scrobbles ADD COLUMN resolution TEXT").execute(pool).await;
+    let _ = sqlx::query("ALTER TABLE scrobbles ADD COLUMN hdr_format TEXT").execute(pool).await;
+    let _ = sqlx::query("ALTER TABLE scrobbles ADD COLUMN audio_codec TEXT").execute(pool).await;
+    let _ = sqlx::query("ALTER TABLE scrobbles ADD COLUMN audio_channels TEXT").execute(pool).await;
+    let _ = sqlx::query("ALTER TABLE scrobbles ADD COLUMN video_codec TEXT").execute(pool).await;
+
+    // 4. Studio, Network, Original Language & Content Rating
+    let _ = sqlx::query("ALTER TABLE scrobbles ADD COLUMN studio TEXT").execute(pool).await;
+    let _ = sqlx::query("ALTER TABLE scrobbles ADD COLUMN original_language TEXT").execute(pool).await;
+    let _ = sqlx::query("ALTER TABLE scrobbles ADD COLUMN content_rating TEXT").execute(pool).await;
+    let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_scrobbles_studio ON scrobbles(studio)").execute(pool).await;
+    let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_scrobbles_orig_lang ON scrobbles(original_language)").execute(pool).await;
+
+    // 6. Letterboxd / Trakt viewing flags: Rewatch
+    let _ = sqlx::query("ALTER TABLE scrobbles ADD COLUMN is_rewatch BOOLEAN NOT NULL DEFAULT 0").execute(pool).await;
+    let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_scrobbles_user_rewatch ON scrobbles(user_id, is_rewatch)").execute(pool).await;
+
+    // Active session quality and device fields
+    let _ = sqlx::query("ALTER TABLE active_sessions ADD COLUMN player_name TEXT").execute(pool).await;
+    let _ = sqlx::query("ALTER TABLE active_sessions ADD COLUMN device_name TEXT").execute(pool).await;
+    let _ = sqlx::query("ALTER TABLE active_sessions ADD COLUMN platform TEXT").execute(pool).await;
+    let _ = sqlx::query("ALTER TABLE active_sessions ADD COLUMN is_local BOOLEAN DEFAULT NULL").execute(pool).await;
+    let _ = sqlx::query("ALTER TABLE active_sessions ADD COLUMN resolution TEXT").execute(pool).await;
+    let _ = sqlx::query("ALTER TABLE active_sessions ADD COLUMN hdr_format TEXT").execute(pool).await;
+    let _ = sqlx::query("ALTER TABLE active_sessions ADD COLUMN audio_codec TEXT").execute(pool).await;
+    let _ = sqlx::query("ALTER TABLE active_sessions ADD COLUMN audio_channels TEXT").execute(pool).await;
+    let _ = sqlx::query("ALTER TABLE active_sessions ADD COLUMN video_codec TEXT").execute(pool).await;
+    let _ = sqlx::query("ALTER TABLE active_sessions ADD COLUMN content_rating TEXT").execute(pool).await;
+
+    // Auto-backfill existing rewatches
+    let _ = sqlx::query(
+        r#"
+        UPDATE scrobbles SET is_rewatch = 1
+        WHERE id IN (
+            SELECT s1.id
+            FROM scrobbles s1
+            JOIN scrobbles s2 ON s1.user_id = s2.user_id
+              AND s1.media_type = s2.media_type
+              AND s1.watched_at > s2.watched_at
+              AND (
+                  (s1.media_type = 'movie' AND LOWER(TRIM(s1.title)) = LOWER(TRIM(s2.title)))
+                  OR (s1.media_type = 'episode' AND s1.grandparent_title = s2.grandparent_title AND s1.season_number = s2.season_number AND s1.episode_number = s2.episode_number)
+              )
+        )
+        "#
+    ).execute(pool).await;
 
     Ok(())
 }

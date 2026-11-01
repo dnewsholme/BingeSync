@@ -28,6 +28,8 @@ pub struct Scrobble {
     pub tvdb_id: Option<String>,
     #[sqlx(default)]
     pub tmdb_id: Option<String>,
+    #[sqlx(default)]
+    pub imdb_id: Option<String>,
     pub actors: Option<String>,
     pub watch_status: Option<String>,
     pub progress_percent: Option<i64>,
@@ -46,6 +48,33 @@ pub struct Scrobble {
     #[sqlx(default)]
     #[serde(alias = "import_from")]
     pub imported_from: Option<String>,
+    #[sqlx(default)]
+    pub player_name: Option<String>,
+    #[sqlx(default)]
+    pub device_name: Option<String>,
+    #[sqlx(default)]
+    pub platform: Option<String>,
+    #[sqlx(default)]
+    pub is_local: Option<bool>,
+    #[sqlx(default)]
+    pub resolution: Option<String>,
+    #[sqlx(default)]
+    pub hdr_format: Option<String>,
+    #[sqlx(default)]
+    pub audio_codec: Option<String>,
+    #[sqlx(default)]
+    pub audio_channels: Option<String>,
+    #[sqlx(default)]
+    pub video_codec: Option<String>,
+    #[sqlx(default)]
+    pub studio: Option<String>,
+    #[sqlx(default)]
+    pub original_language: Option<String>,
+    #[sqlx(default)]
+    pub content_rating: Option<String>,
+    #[sqlx(default)]
+    #[serde(default)]
+    pub is_rewatch: bool,
     pub watched_at: String,
     pub created_at: String,
 }
@@ -69,6 +98,7 @@ pub struct NewScrobbleRequest {
     pub cinematographer: Option<String>,
     pub tvdb_id: Option<String>,
     pub tmdb_id: Option<String>,
+    pub imdb_id: Option<String>,
     pub actors: Option<String>,
     pub watch_status: Option<String>,
     pub progress_percent: Option<i64>,
@@ -80,6 +110,20 @@ pub struct NewScrobbleRequest {
     pub source_user: Option<String>,
     #[serde(default, alias = "import_from")]
     pub imported_from: Option<String>,
+    pub player_name: Option<String>,
+    pub device_name: Option<String>,
+    pub platform: Option<String>,
+    pub is_local: Option<bool>,
+    pub resolution: Option<String>,
+    pub hdr_format: Option<String>,
+    pub audio_codec: Option<String>,
+    pub audio_channels: Option<String>,
+    pub video_codec: Option<String>,
+    pub studio: Option<String>,
+    pub original_language: Option<String>,
+    pub content_rating: Option<String>,
+    #[serde(default)]
+    pub is_rewatch: Option<bool>,
     pub watched_at: Option<String>,
 }
 
@@ -258,6 +302,26 @@ pub struct ActiveSession {
     #[sqlx(default)]
     #[serde(alias = "watched_by")]
     pub source_user: Option<String>,
+    #[sqlx(default)]
+    pub player_name: Option<String>,
+    #[sqlx(default)]
+    pub device_name: Option<String>,
+    #[sqlx(default)]
+    pub platform: Option<String>,
+    #[sqlx(default)]
+    pub is_local: Option<bool>,
+    #[sqlx(default)]
+    pub resolution: Option<String>,
+    #[sqlx(default)]
+    pub hdr_format: Option<String>,
+    #[sqlx(default)]
+    pub audio_codec: Option<String>,
+    #[sqlx(default)]
+    pub audio_channels: Option<String>,
+    #[sqlx(default)]
+    pub video_codec: Option<String>,
+    #[sqlx(default)]
+    pub content_rating: Option<String>,
     pub view_offset_ms: i64,
     pub duration_ms: i64,
     pub updated_at: String,

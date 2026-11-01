@@ -97,8 +97,12 @@ pub async fn list_history(
 
     if !search_filter.is_empty() && !is_missing_metadata_keyword {
         let pattern = format!("%{}%", search_filter);
-        count_sql.push_str(" AND (title LIKE ? OR grandparent_title LIKE ? OR overview LIKE ? OR tags LIKE ? OR notes LIKE ? OR source LIKE ? OR source_user LIKE ? OR imported_from LIKE ?)");
-        data_sql.push_str(" AND (title LIKE ? OR grandparent_title LIKE ? OR overview LIKE ? OR tags LIKE ? OR notes LIKE ? OR source LIKE ? OR source_user LIKE ? OR imported_from LIKE ?)");
+        count_sql.push_str(" AND (title LIKE ? OR grandparent_title LIKE ? OR overview LIKE ? OR tags LIKE ? OR notes LIKE ? OR source LIKE ? OR source_user LIKE ? OR imported_from LIKE ? OR player_name LIKE ? OR device_name LIKE ? OR studio LIKE ? OR imdb_id LIKE ?)");
+        data_sql.push_str(" AND (title LIKE ? OR grandparent_title LIKE ? OR overview LIKE ? OR tags LIKE ? OR notes LIKE ? OR source LIKE ? OR source_user LIKE ? OR imported_from LIKE ? OR player_name LIKE ? OR device_name LIKE ? OR studio LIKE ? OR imdb_id LIKE ?)");
+        bind_params.push(pattern.clone());
+        bind_params.push(pattern.clone());
+        bind_params.push(pattern.clone());
+        bind_params.push(pattern.clone());
         bind_params.push(pattern.clone());
         bind_params.push(pattern.clone());
         bind_params.push(pattern.clone());
@@ -273,6 +277,24 @@ pub async fn create_scrobble(
     let source_user = payload.source_user.or_else(|| Some(auth.email.clone()));
     let imported_from = payload.imported_from;
 
+    let is_rewatch = match payload.is_rewatch {
+        Some(r) => r,
+        None => {
+            crate::api::webhooks::check_is_rewatch(
+                &state.pool,
+                &auth.user_id,
+                &payload.media_type,
+                &payload.title,
+                payload.grandparent_title.as_deref(),
+                payload.season_number,
+                payload.episode_number,
+                payload.year,
+                &watched_at,
+            )
+            .await
+        }
+    };
+
     sqlx::query(
         r#"
         INSERT INTO scrobbles (
@@ -280,8 +302,12 @@ pub async fn create_scrobble(
             season_number, episode_number, year, overview, thumb_url,
             rating_key, guid, duration_ms, user_rating,
             genres, directors, director, cinematographer, actors, watch_status, progress_percent, view_offset_ms,
-            tags, notes, source, source_user, imported_from, watched_at, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            tags, notes, source, source_user, imported_from,
+            player_name, device_name, platform, is_local,
+            imdb_id, resolution, hdr_format, audio_codec, audio_channels, video_codec,
+            studio, original_language, content_rating, is_rewatch,
+            watched_at, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
     )
     .bind(&scrobble_id)
@@ -312,6 +338,20 @@ pub async fn create_scrobble(
     .bind(&source)
     .bind(&source_user)
     .bind(&imported_from)
+    .bind(&payload.player_name)
+    .bind(&payload.device_name)
+    .bind(&payload.platform)
+    .bind(payload.is_local)
+    .bind(&payload.imdb_id)
+    .bind(&payload.resolution)
+    .bind(&payload.hdr_format)
+    .bind(&payload.audio_codec)
+    .bind(&payload.audio_channels)
+    .bind(&payload.video_codec)
+    .bind(&payload.studio)
+    .bind(&payload.original_language)
+    .bind(&payload.content_rating)
+    .bind(is_rewatch)
     .bind(&watched_at)
     .bind(&now)
     .execute(&state.pool)

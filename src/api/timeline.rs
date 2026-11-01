@@ -81,7 +81,13 @@ pub async fn get_timeline(
 
     if !search_filter.is_empty() && !is_missing_metadata_keyword {
         let pattern = format!("%{}%", search_filter);
-        sql.push_str(" AND (title LIKE ? OR grandparent_title LIKE ? OR overview LIKE ? OR source LIKE ? OR source_user LIKE ? OR imported_from LIKE ?)");
+        sql.push_str(" AND (title LIKE ? OR grandparent_title LIKE ? OR overview LIKE ? OR tags LIKE ? OR notes LIKE ? OR source LIKE ? OR source_user LIKE ? OR imported_from LIKE ? OR player_name LIKE ? OR device_name LIKE ? OR studio LIKE ? OR imdb_id LIKE ?)");
+        bind_params.push(pattern.clone());
+        bind_params.push(pattern.clone());
+        bind_params.push(pattern.clone());
+        bind_params.push(pattern.clone());
+        bind_params.push(pattern.clone());
+        bind_params.push(pattern.clone());
         bind_params.push(pattern.clone());
         bind_params.push(pattern.clone());
         bind_params.push(pattern.clone());
