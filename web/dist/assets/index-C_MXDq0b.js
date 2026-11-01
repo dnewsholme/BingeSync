@@ -599,12 +599,17 @@
           ${V(e.description)}
         </td>
       </tr>
-    `).join(``)}}v.btnCheckVersionUpdates&&v.btnCheckVersionUpdates.addEventListener(`click`,async()=>{v.btnCheckVersionUpdates.disabled=!0;let e=v.btnCheckVersionUpdates.innerHTML;v.btnCheckVersionUpdates.textContent=`Checking...`;try{He(await r.checkAdminVersion()),setTimeout(()=>{v.btnCheckVersionUpdates&&(v.btnCheckVersionUpdates.disabled=!1,v.btnCheckVersionUpdates.innerHTML=e)},1e3)}catch(t){v.adminVersionStatusDesc&&(v.adminVersionStatusDesc.textContent=`Update check failed: `+t.message),v.btnCheckVersionUpdates.disabled=!1,v.btnCheckVersionUpdates.innerHTML=e}}),v.formAdminSettings&&v.formAdminSettings.addEventListener(`submit`,async e=>{e.preventDefault(),v.btnSaveAdminSettings&&(v.btnSaveAdminSettings.disabled=!0,v.btnSaveAdminSettings.textContent=`Saving...`),v.adminSettingsStatus&&(v.adminSettingsStatus.textContent=``);try{let e={metadata_source:v.settingMetadataSource?v.settingMetadataSource.value:null,tvdb_api_key:U(v.settingTvdbApiKey),tvdb_pin:v.settingTvdbPin?v.settingTvdbPin.value.trim():null,tvdb_base_url:v.settingTvdbBaseUrl?v.settingTvdbBaseUrl.value.trim():null,tmdb_api_key:U(v.settingTmdbApiKey),tmdb_base_url:v.settingTmdbBaseUrl?v.settingTmdbBaseUrl.value.trim():null,oidc_enabled:v.settingOidcEnabled?v.settingOidcEnabled.checked:null,oidc_issuer_url:v.settingOidcIssuerUrl?v.settingOidcIssuerUrl.value.trim():null,oidc_client_id:v.settingOidcClientId?v.settingOidcClientId.value.trim():null,oidc_client_secret:U(v.settingOidcClientSecret),oidc_redirect_url:v.settingOidcRedirectUrl?v.settingOidcRedirectUrl.value.trim():null,oidc_admin_group:v.settingOidcAdminGroup?v.settingOidcAdminGroup.value.trim():null,oidc_user_group:v.settingOidcUserGroup?v.settingOidcUserGroup.value.trim():null,scrobble_threshold_percent:v.settingScrobbleThreshold&&v.settingScrobbleThreshold.value?parseInt(v.settingScrobbleThreshold.value,10):null};await r.updateAdminSettings(e),await Be(),v.adminSettingsStatus&&(v.adminSettingsStatus.style.color=`#34d399`,v.adminSettingsStatus.textContent=`Settings saved successfully!`,setTimeout(()=>{v.adminSettingsStatus&&(v.adminSettingsStatus.textContent=``)},4e3))}catch(e){console.error(`Failed to save settings:`,e),v.adminSettingsStatus&&(v.adminSettingsStatus.style.color=`var(--accent-red)`,v.adminSettingsStatus.textContent=`Error: `+e.message)}finally{v.btnSaveAdminSettings&&(v.btnSaveAdminSettings.disabled=!1,v.btnSaveAdminSettings.textContent=`Save Settings`)}});async function W(){if(v.adminTasksContainer)try{let e=await r.getAdminTasks();Ue(Array.isArray(e)?e:e&&e.tasks?e.tasks:[])}catch(e){console.error(`Failed to load admin tasks:`,e),v.adminTasksContainer.innerHTML=`<div class="empty-state"><p style="color:var(--accent-red);">Failed to load tasks: ${V(e.message)}</p></div>`}}function Ue(e){v.adminTasksContainer&&(!e||e.length===0?v.adminTasksContainer.innerHTML=`<div class="empty-state"><p>No background tasks registered.</p></div>`:(v.adminTasksContainer.innerHTML=e.map(e=>{let t=e.status===`running`,n=`task-status-${e.status||`idle`}`,r=e.last_run_at||e.last_run,i=e.last_success_at||e.last_success,a=e.next_run_at||e.next_run,o=r?new Date(r).toLocaleString():`Never`,s=i?new Date(i).toLocaleString():`Never`,c=a?new Date(a).toLocaleString():`Pending next cycle`,l=e.last_message||e.message||`Idle`,u=e.items_pending==null?0:e.items_pending,d=e.interval_hours||4;return`
+    `).join(``)}}v.btnCheckVersionUpdates&&v.btnCheckVersionUpdates.addEventListener(`click`,async()=>{v.btnCheckVersionUpdates.disabled=!0;let e=v.btnCheckVersionUpdates.innerHTML;v.btnCheckVersionUpdates.textContent=`Checking...`;try{He(await r.checkAdminVersion()),setTimeout(()=>{v.btnCheckVersionUpdates&&(v.btnCheckVersionUpdates.disabled=!1,v.btnCheckVersionUpdates.innerHTML=e)},1e3)}catch(t){v.adminVersionStatusDesc&&(v.adminVersionStatusDesc.textContent=`Update check failed: `+t.message),v.btnCheckVersionUpdates.disabled=!1,v.btnCheckVersionUpdates.innerHTML=e}}),v.formAdminSettings&&v.formAdminSettings.addEventListener(`submit`,async e=>{e.preventDefault(),v.btnSaveAdminSettings&&(v.btnSaveAdminSettings.disabled=!0,v.btnSaveAdminSettings.textContent=`Saving...`),v.adminSettingsStatus&&(v.adminSettingsStatus.textContent=``);try{let e={metadata_source:v.settingMetadataSource?v.settingMetadataSource.value:null,tvdb_api_key:U(v.settingTvdbApiKey),tvdb_pin:v.settingTvdbPin?v.settingTvdbPin.value.trim():null,tvdb_base_url:v.settingTvdbBaseUrl?v.settingTvdbBaseUrl.value.trim():null,tmdb_api_key:U(v.settingTmdbApiKey),tmdb_base_url:v.settingTmdbBaseUrl?v.settingTmdbBaseUrl.value.trim():null,oidc_enabled:v.settingOidcEnabled?v.settingOidcEnabled.checked:null,oidc_issuer_url:v.settingOidcIssuerUrl?v.settingOidcIssuerUrl.value.trim():null,oidc_client_id:v.settingOidcClientId?v.settingOidcClientId.value.trim():null,oidc_client_secret:U(v.settingOidcClientSecret),oidc_redirect_url:v.settingOidcRedirectUrl?v.settingOidcRedirectUrl.value.trim():null,oidc_admin_group:v.settingOidcAdminGroup?v.settingOidcAdminGroup.value.trim():null,oidc_user_group:v.settingOidcUserGroup?v.settingOidcUserGroup.value.trim():null,scrobble_threshold_percent:v.settingScrobbleThreshold&&v.settingScrobbleThreshold.value?parseInt(v.settingScrobbleThreshold.value,10):null};await r.updateAdminSettings(e),await Be(),v.adminSettingsStatus&&(v.adminSettingsStatus.style.color=`#34d399`,v.adminSettingsStatus.textContent=`Settings saved successfully!`,setTimeout(()=>{v.adminSettingsStatus&&(v.adminSettingsStatus.textContent=``)},4e3))}catch(e){console.error(`Failed to save settings:`,e),v.adminSettingsStatus&&(v.adminSettingsStatus.style.color=`var(--accent-red)`,v.adminSettingsStatus.textContent=`Error: `+e.message)}finally{v.btnSaveAdminSettings&&(v.btnSaveAdminSettings.disabled=!1,v.btnSaveAdminSettings.textContent=`Save Settings`)}});async function W(){if(v.adminTasksContainer)try{let e=await r.getAdminTasks();Ue(Array.isArray(e)?e:e&&e.tasks?e.tasks:[])}catch(e){console.error(`Failed to load admin tasks:`,e),v.adminTasksContainer.innerHTML=`<div class="empty-state"><p style="color:var(--accent-red);">Failed to load tasks: ${V(e.message)}</p></div>`}}function Ue(e){if(!v.adminTasksContainer)return;if(!e||e.length===0){v.adminTasksContainer.innerHTML=`<div class="empty-state"><p>No background tasks registered.</p></div>`;return}let t=document.getElementById(`admin-tasks-summary-badge`);if(t){let n=e.filter(e=>e.status===`running`).length;n>0?(t.innerHTML=`<span class="pulse-dot-sm pulse-active" style="background:#34d399;"></span> ${n} Running (${e.length} Total)`,t.style.color=`#34d399`):(t.textContent=`${e.length} Workers Active`,t.style.color=`var(--text-muted)`)}v.adminTasksContainer.innerHTML=e.map(e=>{let t=e.status===`running`,n=`task-status-${e.status||`idle`}`,r=e.last_run_at||e.last_run,i=e.last_success_at||e.last_success,a=e.next_run_at||e.next_run;r&&new Date(r).toLocaleString();let o=i?new Date(i).toLocaleString():`Never`,s=a?new Date(a).toLocaleString():`Pending next cycle`,c=e.last_message||e.message||`Idle`,l=e.items_pending==null?0:e.items_pending,u=e.interval_hours||4,d=`⚙️`,f=`rgba(56, 189, 248, 0.12)`,p=`#38bdf8`;e.id===`tvdb_metadata`?(d=`🎬`,f=`rgba(168, 85, 247, 0.15)`,p=`#c084fc`):e.id===`image_cache`?(d=`🖼️`,f=`rgba(236, 72, 153, 0.15)`,p=`#f472b6`):e.id===`user_sync`?(d=`👥`,f=`rgba(234, 179, 8, 0.15)`,p=`#facc15`):e.id===`tautulli_sync`||e.id===`tautulli`?(d=`🔄`,f=`rgba(249, 115, 22, 0.15)`,p=`#fb923c`):e.id===`media_sync`?(d=`🔁`,f=`rgba(16, 185, 129, 0.15)`,p=`#34d399`):e.id===`db_backup`||e.id===`backup`?(d=`💾`,f=`rgba(59, 130, 246, 0.15)`,p=`#60a5fa`):(e.id===`db_maintenance`||e.id===`maintenance`)&&(d=`🧹`,f=`rgba(14, 165, 233, 0.15)`,p=`#38bdf8`);let m=e.id===`db_backup`?`Backups Stored:`:e.id===`db_maintenance`||e.id===`maintenance`?`Maintenance Runs:`:e.id===`tautulli_sync`||e.id===`tautulli`?`Synced Watches:`:`Processed Items:`,h=e.id===`db_backup`?`${e.items_processed} backup${e.items_processed===1?``:`s`}`:e.id===`db_maintenance`||e.id===`maintenance`?`${e.items_processed} run${e.items_processed===1?``:`s`} completed`:e.id===`tautulli_sync`||e.id===`tautulli`?`${e.items_processed} scrobbles synced`:`${e.items_processed} processed (${l} pending)`,ee=e.id!==`db_backup`&&e.id!==`backup`&&e.id!==`db_maintenance`&&e.id!==`maintenance`&&e.id!==`tautulli_sync`&&e.id!==`tautulli`;return`
       <div class="task-card" data-task-id="${e.id}">
         <div class="task-card-header">
-          <div>
-            <div class="task-card-title">${V(e.name)}</div>
-            <div class="task-card-desc">${V(e.description)}</div>
+          <div class="task-header-left">
+            <div class="task-icon-box" style="background: ${f}; color: ${p};">
+              ${d}
+            </div>
+            <div>
+              <div class="task-card-title">${V(e.name)}</div>
+              <div class="task-card-desc">${V(e.description)}</div>
+            </div>
           </div>
           <span class="task-status-badge ${n}">
             ${t?`<span class="pulse-dot-sm pulse-active"></span>`:``}
@@ -612,59 +617,72 @@
           </span>
         </div>
 
-        <div class="task-card-meta">
-          <div class="task-meta-row">
-            <span>Status Message:</span>
-            <strong>${V(l)}</strong>
-          </div>
-          <div class="task-meta-row">
-            <span>${e.id===`db_backup`?`Backups Stored:`:e.id===`db_maintenance`||e.id===`maintenance`?`Maintenance Runs:`:e.id===`tautulli_sync`||e.id===`tautulli`?`Synced Watches:`:`Processed Items:`}</span>
-            <strong>${e.id===`db_backup`?`${e.items_processed} backup${e.items_processed===1?``:`s`}`:e.id===`db_maintenance`||e.id===`maintenance`?`${e.items_processed} run${e.items_processed===1?``:`s`} completed`:e.id===`tautulli_sync`||e.id===`tautulli`?`${e.items_processed} scrobbles synced`:`${e.items_processed} processed (${u} pending)`}</strong>
-          </div>
-          <div class="task-meta-row" style="align-items: center;">
-            <span>Run Schedule:</span>
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <select class="input-select task-schedule-select" data-task-id="${e.id}" style="padding: 3px 8px; font-size: 0.85rem; width: auto; background: var(--bg-card); color: var(--text-main); border: 1px solid var(--border-color); border-radius: 4px;">
-                <option value="1" ${d===1?`selected`:``}>Every 1 hour${e.id===`tautulli_sync`||e.id===`tautulli`?` (Default)`:``}</option>
-                <option value="2" ${d===2?`selected`:``}>Every 2 hours</option>
-                <option value="4" ${d===4?`selected`:``}>Every 4 hours${e.id!==`db_backup`&&e.id!==`db_maintenance`&&e.id!==`tautulli_sync`&&e.id!==`tautulli`?` (Default)`:``}</option>
-                <option value="6" ${d===6?`selected`:``}>Every 6 hours</option>
-                <option value="12" ${d===12?`selected`:``}>Every 12 hours</option>
-                <option value="24" ${d===24?`selected`:``}>Every 24 hours (Daily${e.id===`db_backup`?` - Default`:``})</option>
-                <option value="168" ${d===168?`selected`:``}>Every 168 hours (Weekly${e.id===`db_maintenance`?` - Default`:``})</option>
+        <div class="task-status-callout" title="${V(c)}">
+          <span class="task-status-callout-icon">${t?`⚡`:`💬`}</span>
+          <span class="task-status-callout-text"><span style="color:var(--text-dim);font-weight:600;text-transform:uppercase;font-size:0.7rem;margin-right:4px;">Status Message:</span>${V(c)}</span>
+        </div>
+
+        <div class="task-metrics-grid">
+          <div class="task-metric-item">
+            <div class="task-metric-label">Run Schedule:</div>
+            <div class="task-metric-val">
+              <select class="input-select task-schedule-select" data-task-id="${e.id}" style="padding: 2px 6px; font-size: 0.8rem; width: auto; background: var(--bg-card); color: var(--text-main); border: 1px solid var(--border-color); border-radius: 4px;">
+                <option value="1" ${u===1?`selected`:``}>Every 1 hour${e.id===`tautulli_sync`||e.id===`tautulli`?` (Default)`:``}</option>
+                <option value="2" ${u===2?`selected`:``}>Every 2 hours</option>
+                <option value="4" ${u===4?`selected`:``}>Every 4 hours${e.id!==`db_backup`&&e.id!==`db_maintenance`&&e.id!==`tautulli_sync`&&e.id!==`tautulli`?` (Default)`:``}</option>
+                <option value="6" ${u===6?`selected`:``}>Every 6 hours</option>
+                <option value="12" ${u===12?`selected`:``}>Every 12 hours</option>
+                <option value="24" ${u===24?`selected`:``}>Every 24 hours (Daily${e.id===`db_backup`?` - Default`:``})</option>
+                <option value="168" ${u===168?`selected`:``}>Every 168 hours (Weekly${e.id===`db_maintenance`?` - Default`:``})</option>
               </select>
-              <span class="schedule-save-status" data-task-id="${e.id}" style="font-size: 0.75rem; color: #34d399;"></span>
+              <span class="schedule-save-status" data-task-id="${e.id}" style="font-size: 0.72rem; color: #34d399;"></span>
             </div>
           </div>
-          <div class="task-meta-row">
-            <span>Next Scheduled Run:</span>
-            <strong class="task-next-run">${c}</strong>
+
+          <div class="task-metric-item">
+            <div class="task-metric-label">${m}</div>
+            <div class="task-metric-val">
+              <strong>${h}</strong>
+            </div>
           </div>
-          <div class="task-meta-row">
-            <span>Last Started:</span>
-            <strong>${o}</strong>
+
+          <div class="task-metric-item">
+            <div class="task-metric-label">Next Scheduled Run:</div>
+            <div class="task-metric-val">
+              <strong class="task-next-run">${s}</strong>
+            </div>
           </div>
-          <div class="task-meta-row">
-            <span>Last Completed:</span>
-            <strong>${s}</strong>
+
+          <div class="task-metric-item">
+            <div class="task-metric-label">Last Completed:</div>
+            <div class="task-metric-val">
+              <strong>${o}</strong>
+            </div>
           </div>
         </div>
 
-        <div style="margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap;">
-          <button class="btn btn-outline btn-sm btn-trigger-task" data-task-id="${e.id}">
-            ${t?`Running... (Run Again)`:`Run Now`}
-          </button>
-          ${e.id!==`db_backup`&&e.id!==`backup`&&e.id!==`db_maintenance`&&e.id!==`maintenance`&&e.id!==`tautulli_sync`&&e.id!==`tautulli`?`
-          <button class="btn btn-outline btn-sm btn-force-task" data-task-id="${e.id}" title="${e.id===`image_cache`?`Reset poster thumbnails and re-download posters for all records`:e.id===`user_sync`?`Clear user cache and re-sync all user mappings`:`Re-download metadata for all records regardless of existing metadata`}">
-            Force Refresh All
-          </button>
-          `:``}
-          <button class="btn btn-outline btn-sm btn-task-logs" data-task-id="${e.id}" data-task-name="${V(e.name)}">
-            View Logs
-          </button>
+        <div class="task-card-footer">
+          <div class="task-footer-actions-left">
+            <button class="btn btn-outline btn-sm btn-trigger-task" data-task-id="${e.id}">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              <span>${t?`Running... (Run Again)`:`Run Now`}</span>
+            </button>
+            ${ee?`
+            <button class="btn btn-outline btn-sm btn-force-task" data-task-id="${e.id}" title="${e.id===`image_cache`?`Reset poster thumbnails and re-download posters for all records`:e.id===`user_sync`?`Clear user cache and re-sync all user mappings`:`Re-download metadata for all records regardless of existing metadata`}">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+              <span>Force Refresh All</span>
+            </button>
+            `:``}
+          </div>
+          <div class="task-footer-actions-right">
+            <button class="btn btn-outline btn-sm btn-task-logs" data-task-id="${e.id}" data-task-name="${V(e.name)}">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+              <span>View Logs</span>
+            </button>
+          </div>
         </div>
       </div>
-    `}).join(``),v.adminTasksContainer.querySelectorAll(`.btn-task-logs`).forEach(e=>{e.addEventListener(`click`,()=>{let t=e.dataset.taskId,n=e.dataset.taskName;Ge(t,n)})}),v.adminTasksContainer.querySelectorAll(`.task-schedule-select`).forEach(e=>{e.addEventListener(`change`,async t=>{let n=e.dataset.taskId,i=parseInt(t.target.value,10),a=v.adminTasksContainer.querySelector(`.schedule-save-status[data-task-id="${n}"]`);a&&(a.textContent=`Saving...`);try{await r.updateAdminTaskSchedule(n,i),a&&(a.textContent=`Saved!`,setTimeout(()=>{a&&(a.textContent=``)},2500)),await W()}catch(e){alert(`Failed to update task schedule: `+e.message),a&&(a.textContent=``)}})}),v.adminTasksContainer.querySelectorAll(`.btn-trigger-task`).forEach(e=>{e.addEventListener(`click`,async()=>{let t=e.dataset.taskId;e.disabled=!0,e.textContent=`Triggering...`;try{await r.triggerAdminTask(t),setTimeout(()=>W(),500),setTimeout(()=>W(),1500),setTimeout(()=>W(),3e3)}catch(t){alert(`Failed to trigger task: `+t.message),e.disabled=!1,e.textContent=`Run Now`}})}),v.adminTasksContainer.querySelectorAll(`.btn-force-task`).forEach(e=>{e.addEventListener(`click`,async()=>{let t=e.dataset.taskId,n=`Force refresh all items for this background task?`;if(t===`tvdb_metadata`?n=`Force refresh metadata for ALL items? This will reset metadata timestamps and re-download all metadata from the active metadata provider.`:t===`image_cache`?n=`Force refresh poster images for ALL items? This will reset poster thumbnails and re-download artwork for all scrobbles.`:t===`user_sync`&&(n=`Force refresh user cache? This will clear all cached Plex and Jellyfin user mappings and re-sync them afresh.`),confirm(n)){e.disabled=!0,e.textContent=`Triggering...`;try{t===`tvdb_metadata`?await r.forceRefreshMetadata():t===`image_cache`?await r.forceRefreshPosters():t===`user_sync`?await r.forceRefreshUserCache():await r.triggerAdminTask(t,!0),e.textContent=`Triggered!`,setTimeout(()=>W(),500),setTimeout(()=>W(),1500),setTimeout(()=>W(),3e3)}catch(t){alert(`Failed to force refresh: `+t.message),e.disabled=!1,e.textContent=`Force Refresh All`}}})})))}v.btnRefreshAdminTasks&&v.btnRefreshAdminTasks.addEventListener(`click`,()=>W()),v.btnForceRefreshAllMetadata&&v.btnForceRefreshAllMetadata.addEventListener(`click`,async()=>{if(!confirm(`Force refresh metadata for ALL items? This will reset metadata timestamps and re-download all metadata from the active metadata provider.`))return;v.btnForceRefreshAllMetadata.disabled=!0;let e=v.btnForceRefreshAllMetadata.textContent;v.btnForceRefreshAllMetadata.textContent=`Triggering...`;try{await r.forceRefreshMetadata(),v.btnForceRefreshAllMetadata.textContent=`Triggered!`,setTimeout(()=>{v.btnForceRefreshAllMetadata.disabled=!1,v.btnForceRefreshAllMetadata.textContent=e,W()},1500)}catch(t){alert(`Failed to force refresh metadata: `+t.message),v.btnForceRefreshAllMetadata.disabled=!1,v.btnForceRefreshAllMetadata.textContent=e}});var We=null;function Ge(e,t){g.admin.logsFilterTask={id:e,name:t},v.adminLogsFilterSearch&&(v.adminLogsFilterSearch.value=e),G(),Re(`admin-sub-logs`)}function G(){v.adminLogsActiveFilter&&(g.admin.logsFilterTask?(v.adminLogsActiveFilter.style.display=`flex`,v.adminLogsActiveFilterName&&(v.adminLogsActiveFilterName.textContent=g.admin.logsFilterTask.name||g.admin.logsFilterTask.id)):v.adminLogsActiveFilter.style.display=`none`)}async function K(){if(v.adminLogsViewer)try{let e=v.adminLogsFilterLevel?v.adminLogsFilterLevel.value:``,t=v.adminLogsFilterSearch?v.adminLogsFilterSearch.value.trim():``,n={};e&&(n.level=e),t&&(n.search=t);let i=await r.getAdminLogs(n);qe(Array.isArray(i)?i:i&&i.entries?i.entries:[])}catch(e){console.error(`Failed to load admin logs:`,e)}}var Ke=!1;function qe(e){if(!v.adminLogsViewer)return;if(!e||e.length===0){v.adminLogsViewer.innerHTML=`<div style="color:var(--text-dim);padding:14px;text-align:center;">No logs captured yet.</div>`;return}let t=!Ke||v.adminLogsViewer.scrollHeight-v.adminLogsViewer.scrollTop<=v.adminLogsViewer.clientHeight+60;v.adminLogsViewer.innerHTML=e.map(e=>{let t=new Date(e.timestamp).toLocaleTimeString([],{hour12:!1,hour:`2-digit`,minute:`2-digit`,second:`2-digit`}),n=(e.level||`INFO`).toUpperCase();return`
+    `}).join(``),v.adminTasksContainer.querySelectorAll(`.btn-task-logs`).forEach(e=>{e.addEventListener(`click`,()=>{let t=e.dataset.taskId,n=e.dataset.taskName;Ge(t,n)})}),v.adminTasksContainer.querySelectorAll(`.task-schedule-select`).forEach(e=>{e.addEventListener(`change`,async t=>{let n=e.dataset.taskId,i=parseInt(t.target.value,10),a=v.adminTasksContainer.querySelector(`.schedule-save-status[data-task-id="${n}"]`);a&&(a.textContent=`Saving...`);try{await r.updateAdminTaskSchedule(n,i),a&&(a.textContent=`Saved!`,setTimeout(()=>{a&&(a.textContent=``)},2500)),await W()}catch(e){alert(`Failed to update task schedule: `+e.message),a&&(a.textContent=``)}})}),v.adminTasksContainer.querySelectorAll(`.btn-trigger-task`).forEach(e=>{e.addEventListener(`click`,async()=>{let t=e.dataset.taskId;e.disabled=!0,e.textContent=`Triggering...`;try{await r.triggerAdminTask(t),setTimeout(()=>W(),500),setTimeout(()=>W(),1500),setTimeout(()=>W(),3e3)}catch(t){alert(`Failed to trigger task: `+t.message),e.disabled=!1,e.textContent=`Run Now`}})}),v.adminTasksContainer.querySelectorAll(`.btn-force-task`).forEach(e=>{e.addEventListener(`click`,async()=>{let t=e.dataset.taskId,n=`Force refresh all items for this background task?`;if(t===`tvdb_metadata`?n=`Force refresh metadata for ALL items? This will reset metadata timestamps and re-download all metadata from the active metadata provider.`:t===`image_cache`?n=`Force refresh poster images for ALL items? This will reset poster thumbnails and re-download artwork for all scrobbles.`:t===`user_sync`&&(n=`Force refresh user cache? This will clear all cached Plex and Jellyfin user mappings and re-sync them afresh.`),confirm(n)){e.disabled=!0,e.textContent=`Triggering...`;try{t===`tvdb_metadata`?await r.forceRefreshMetadata():t===`image_cache`?await r.forceRefreshPosters():t===`user_sync`?await r.forceRefreshUserCache():await r.triggerAdminTask(t,!0),e.textContent=`Triggered!`,setTimeout(()=>W(),500),setTimeout(()=>W(),1500),setTimeout(()=>W(),3e3)}catch(t){alert(`Failed to force refresh: `+t.message),e.disabled=!1,e.textContent=`Force Refresh All`}}})})}v.btnRefreshAdminTasks&&v.btnRefreshAdminTasks.addEventListener(`click`,()=>W()),v.btnForceRefreshAllMetadata&&v.btnForceRefreshAllMetadata.addEventListener(`click`,async()=>{if(!confirm(`Force refresh metadata for ALL items? This will reset metadata timestamps and re-download all metadata from the active metadata provider.`))return;v.btnForceRefreshAllMetadata.disabled=!0;let e=v.btnForceRefreshAllMetadata.textContent;v.btnForceRefreshAllMetadata.textContent=`Triggering...`;try{await r.forceRefreshMetadata(),v.btnForceRefreshAllMetadata.textContent=`Triggered!`,setTimeout(()=>{v.btnForceRefreshAllMetadata.disabled=!1,v.btnForceRefreshAllMetadata.textContent=e,W()},1500)}catch(t){alert(`Failed to force refresh metadata: `+t.message),v.btnForceRefreshAllMetadata.disabled=!1,v.btnForceRefreshAllMetadata.textContent=e}});var We=null;function Ge(e,t){g.admin.logsFilterTask={id:e,name:t},v.adminLogsFilterSearch&&(v.adminLogsFilterSearch.value=e),G(),Re(`admin-sub-logs`)}function G(){v.adminLogsActiveFilter&&(g.admin.logsFilterTask?(v.adminLogsActiveFilter.style.display=`flex`,v.adminLogsActiveFilterName&&(v.adminLogsActiveFilterName.textContent=g.admin.logsFilterTask.name||g.admin.logsFilterTask.id)):v.adminLogsActiveFilter.style.display=`none`)}async function K(){if(v.adminLogsViewer)try{let e=v.adminLogsFilterLevel?v.adminLogsFilterLevel.value:``,t=v.adminLogsFilterSearch?v.adminLogsFilterSearch.value.trim():``,n={};e&&(n.level=e),t&&(n.search=t);let i=await r.getAdminLogs(n);qe(Array.isArray(i)?i:i&&i.entries?i.entries:[])}catch(e){console.error(`Failed to load admin logs:`,e)}}var Ke=!1;function qe(e){if(!v.adminLogsViewer)return;if(!e||e.length===0){v.adminLogsViewer.innerHTML=`<div style="color:var(--text-dim);padding:14px;text-align:center;">No logs captured yet.</div>`;return}let t=!Ke||v.adminLogsViewer.scrollHeight-v.adminLogsViewer.scrollTop<=v.adminLogsViewer.clientHeight+60;v.adminLogsViewer.innerHTML=e.map(e=>{let t=new Date(e.timestamp).toLocaleTimeString([],{hour12:!1,hour:`2-digit`,minute:`2-digit`,second:`2-digit`}),n=(e.level||`INFO`).toUpperCase();return`
       <div class="log-entry">
         <span class="log-time">${t}</span>
         <span class="log-level log-level-${n}">${n}</span>

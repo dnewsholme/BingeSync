@@ -22,8 +22,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="BingeSync" />
-  <script type="module" crossorigin src="./assets/index-BqiRdtIf.js"></script>
-  <link rel="stylesheet" crossorigin href="./assets/index-BdcyK8uk.css">
+  <script type="module" crossorigin src="./assets/index-C_MXDq0b.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-gvylJl0P.css">
 </head>
 <body>
   <div id="app">
@@ -1905,21 +1905,28 @@
 
           <!-- Sub-view 3: Background Tasks Status -->
           <div id="admin-sub-tasks" class="admin-subview" style="display: none;">
-            <div class="settings-card">
-              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
-                <div>
-                  <h2 class="card-title">Background Tasks & Workers</h2>
-                  <p class="card-desc">Inspect real-time execution status of poster caching and metadata enrichment workers.</p>
+            <div class="tasks-overview-header settings-card">
+              <div class="tasks-overview-info">
+                <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                  <h2 class="card-title" style="margin: 0;">Background Tasks & Automation</h2>
+                  <span class="badge badge-subtle" id="admin-tasks-summary-badge">7 Workers Registered</span>
                 </div>
-                <div style="display:flex;align-items:center;gap:10px;">
-                  <button class="btn btn-outline btn-sm" id="btn-force-refresh-all-metadata" data-i18n="admin.force_refresh_all_metadata">Force Refresh All Metadata</button>
-                  <button class="btn btn-outline btn-sm" id="btn-refresh-admin-tasks">Refresh Status</button>
-                </div>
+                <p class="card-desc" style="margin: 4px 0 0 0;">Inspect real-time execution status, manage schedules, and trigger on-demand synchronization workers.</p>
               </div>
+              <div class="tasks-overview-actions">
+                <button class="btn btn-outline btn-sm" id="btn-force-refresh-all-metadata" data-i18n="admin.force_refresh_all_metadata">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                  <span>Force Refresh All Metadata</span>
+                </button>
+                <button class="btn btn-outline btn-sm" id="btn-refresh-admin-tasks">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                  <span>Refresh Status</span>
+                </button>
+              </div>
+            </div>
 
-              <div id="admin-tasks-container" class="admin-tasks-grid" style="display:grid;gap:16px;grid-template-columns:repeat(auto-fit, minmax(300px, 1fr));">
-                <!-- Injected via JavaScript -->
-              </div>
+            <div id="admin-tasks-container" class="admin-tasks-grid">
+              <!-- Injected via JavaScript -->
             </div>
           </div>
 

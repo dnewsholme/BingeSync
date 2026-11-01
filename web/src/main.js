@@ -5443,6 +5443,18 @@ function renderAdminTasks(tasks) {
     return;
   }
 
+  const summaryBadge = document.getElementById('admin-tasks-summary-badge');
+  if (summaryBadge) {
+    const runningCount = tasks.filter(t => t.status === 'running').length;
+    if (runningCount > 0) {
+      summaryBadge.innerHTML = `<span class="pulse-dot-sm pulse-active" style="background:#34d399;"></span> ${runningCount} Running (${tasks.length} Total)`;
+      summaryBadge.style.color = '#34d399';
+    } else {
+      summaryBadge.textContent = `${tasks.length} Workers Active`;
+      summaryBadge.style.color = 'var(--text-muted)';
+    }
+  }
+
   el.adminTasksContainer.innerHTML = tasks.map(t => {
     const isRunning = t.status === 'running';
     const statusClass = `task-status-${t.status || 'idle'}`;
@@ -5456,12 +5468,68 @@ function renderAdminTasks(tasks) {
     const pending = t.items_pending != null ? t.items_pending : 0;
     const intervalHours = t.interval_hours || 4;
 
+    let icon = '⚙️';
+    let iconColor = 'rgba(56, 189, 248, 0.12)';
+    let iconTextColor = '#38bdf8';
+    if (t.id === 'tvdb_metadata') {
+      icon = '🎬';
+      iconColor = 'rgba(168, 85, 247, 0.15)';
+      iconTextColor = '#c084fc';
+    } else if (t.id === 'image_cache') {
+      icon = '🖼️';
+      iconColor = 'rgba(236, 72, 153, 0.15)';
+      iconTextColor = '#f472b6';
+    } else if (t.id === 'user_sync') {
+      icon = '👥';
+      iconColor = 'rgba(234, 179, 8, 0.15)';
+      iconTextColor = '#facc15';
+    } else if (t.id === 'tautulli_sync' || t.id === 'tautulli') {
+      icon = '🔄';
+      iconColor = 'rgba(249, 115, 22, 0.15)';
+      iconTextColor = '#fb923c';
+    } else if (t.id === 'media_sync') {
+      icon = '🔁';
+      iconColor = 'rgba(16, 185, 129, 0.15)';
+      iconTextColor = '#34d399';
+    } else if (t.id === 'db_backup' || t.id === 'backup') {
+      icon = '💾';
+      iconColor = 'rgba(59, 130, 246, 0.15)';
+      iconTextColor = '#60a5fa';
+    } else if (t.id === 'db_maintenance' || t.id === 'maintenance') {
+      icon = '🧹';
+      iconColor = 'rgba(14, 165, 233, 0.15)';
+      iconTextColor = '#38bdf8';
+    }
+
+    const statLabel = t.id === 'db_backup' 
+      ? 'Backups Stored:' 
+      : (t.id === 'db_maintenance' || t.id === 'maintenance') 
+      ? 'Maintenance Runs:' 
+      : (t.id === 'tautulli_sync' || t.id === 'tautulli') 
+      ? 'Synced Watches:' 
+      : 'Processed Items:';
+
+    const statValue = t.id === 'db_backup' 
+      ? `${t.items_processed} backup${t.items_processed === 1 ? '' : 's'}` 
+      : (t.id === 'db_maintenance' || t.id === 'maintenance') 
+      ? `${t.items_processed} run${t.items_processed === 1 ? '' : 's'} completed` 
+      : (t.id === 'tautulli_sync' || t.id === 'tautulli') 
+      ? `${t.items_processed} scrobbles synced` 
+      : `${t.items_processed} processed (${pending} pending)`;
+
+    const hasForceRefresh = t.id !== 'db_backup' && t.id !== 'backup' && t.id !== 'db_maintenance' && t.id !== 'maintenance' && t.id !== 'tautulli_sync' && t.id !== 'tautulli';
+
     return `
       <div class="task-card" data-task-id="${t.id}">
         <div class="task-card-header">
-          <div>
-            <div class="task-card-title">${escapeHtml(t.name)}</div>
-            <div class="task-card-desc">${escapeHtml(t.description)}</div>
+          <div class="task-header-left">
+            <div class="task-icon-box" style="background: ${iconColor}; color: ${iconTextColor};">
+              ${icon}
+            </div>
+            <div>
+              <div class="task-card-title">${escapeHtml(t.name)}</div>
+              <div class="task-card-desc">${escapeHtml(t.description)}</div>
+            </div>
           </div>
           <span class="task-status-badge ${statusClass}">
             ${isRunning ? '<span class="pulse-dot-sm pulse-active"></span>' : ''}
@@ -5469,19 +5537,16 @@ function renderAdminTasks(tasks) {
           </span>
         </div>
 
-        <div class="task-card-meta">
-          <div class="task-meta-row">
-            <span>Status Message:</span>
-            <strong>${escapeHtml(msg)}</strong>
-          </div>
-          <div class="task-meta-row">
-            <span>${t.id === 'db_backup' ? 'Backups Stored:' : (t.id === 'db_maintenance' || t.id === 'maintenance') ? 'Maintenance Runs:' : (t.id === 'tautulli_sync' || t.id === 'tautulli') ? 'Synced Watches:' : 'Processed Items:'}</span>
-            <strong>${t.id === 'db_backup' ? `${t.items_processed} backup${t.items_processed === 1 ? '' : 's'}` : (t.id === 'db_maintenance' || t.id === 'maintenance') ? `${t.items_processed} run${t.items_processed === 1 ? '' : 's'} completed` : (t.id === 'tautulli_sync' || t.id === 'tautulli') ? `${t.items_processed} scrobbles synced` : `${t.items_processed} processed (${pending} pending)`}</strong>
-          </div>
-          <div class="task-meta-row" style="align-items: center;">
-            <span>Run Schedule:</span>
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <select class="input-select task-schedule-select" data-task-id="${t.id}" style="padding: 3px 8px; font-size: 0.85rem; width: auto; background: var(--bg-card); color: var(--text-main); border: 1px solid var(--border-color); border-radius: 4px;">
+        <div class="task-status-callout" title="${escapeHtml(msg)}">
+          <span class="task-status-callout-icon">${isRunning ? '⚡' : '💬'}</span>
+          <span class="task-status-callout-text"><span style="color:var(--text-dim);font-weight:600;text-transform:uppercase;font-size:0.7rem;margin-right:4px;">Status Message:</span>${escapeHtml(msg)}</span>
+        </div>
+
+        <div class="task-metrics-grid">
+          <div class="task-metric-item">
+            <div class="task-metric-label">Run Schedule:</div>
+            <div class="task-metric-val">
+              <select class="input-select task-schedule-select" data-task-id="${t.id}" style="padding: 2px 6px; font-size: 0.8rem; width: auto; background: var(--bg-card); color: var(--text-main); border: 1px solid var(--border-color); border-radius: 4px;">
                 <option value="1" ${intervalHours === 1 ? 'selected' : ''}>Every 1 hour${t.id === 'tautulli_sync' || t.id === 'tautulli' ? ' (Default)' : ''}</option>
                 <option value="2" ${intervalHours === 2 ? 'selected' : ''}>Every 2 hours</option>
                 <option value="4" ${intervalHours === 4 ? 'selected' : ''}>Every 4 hours${t.id !== 'db_backup' && t.id !== 'db_maintenance' && t.id !== 'tautulli_sync' && t.id !== 'tautulli' ? ' (Default)' : ''}</option>
@@ -5490,41 +5555,57 @@ function renderAdminTasks(tasks) {
                 <option value="24" ${intervalHours === 24 ? 'selected' : ''}>Every 24 hours (Daily${t.id === 'db_backup' ? ' - Default' : ''})</option>
                 <option value="168" ${intervalHours === 168 ? 'selected' : ''}>Every 168 hours (Weekly${t.id === 'db_maintenance' ? ' - Default' : ''})</option>
               </select>
-              <span class="schedule-save-status" data-task-id="${t.id}" style="font-size: 0.75rem; color: #34d399;"></span>
+              <span class="schedule-save-status" data-task-id="${t.id}" style="font-size: 0.72rem; color: #34d399;"></span>
             </div>
           </div>
-          <div class="task-meta-row">
-            <span>Next Scheduled Run:</span>
-            <strong class="task-next-run">${nextRunStr}</strong>
+
+          <div class="task-metric-item">
+            <div class="task-metric-label">${statLabel}</div>
+            <div class="task-metric-val">
+              <strong>${statValue}</strong>
+            </div>
           </div>
-          <div class="task-meta-row">
-            <span>Last Started:</span>
-            <strong>${lastRunStr}</strong>
+
+          <div class="task-metric-item">
+            <div class="task-metric-label">Next Scheduled Run:</div>
+            <div class="task-metric-val">
+              <strong class="task-next-run">${nextRunStr}</strong>
+            </div>
           </div>
-          <div class="task-meta-row">
-            <span>Last Completed:</span>
-            <strong>${lastSuccessStr}</strong>
+
+          <div class="task-metric-item">
+            <div class="task-metric-label">Last Completed:</div>
+            <div class="task-metric-val">
+              <strong>${lastSuccessStr}</strong>
+            </div>
           </div>
         </div>
 
-        <div style="margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap;">
-          <button class="btn btn-outline btn-sm btn-trigger-task" data-task-id="${t.id}">
-            ${isRunning ? 'Running... (Run Again)' : 'Run Now'}
-          </button>
-          ${t.id !== 'db_backup' && t.id !== 'backup' && t.id !== 'db_maintenance' && t.id !== 'maintenance' && t.id !== 'tautulli_sync' && t.id !== 'tautulli' ? `
-          <button class="btn btn-outline btn-sm btn-force-task" data-task-id="${t.id}" title="${
-            t.id === 'image_cache'
-              ? 'Reset poster thumbnails and re-download posters for all records'
-              : t.id === 'user_sync'
-              ? 'Clear user cache and re-sync all user mappings'
-              : 'Re-download metadata for all records regardless of existing metadata'
-          }">
-            Force Refresh All
-          </button>
-          ` : ''}
-          <button class="btn btn-outline btn-sm btn-task-logs" data-task-id="${t.id}" data-task-name="${escapeHtml(t.name)}">
-            View Logs
-          </button>
+        <div class="task-card-footer">
+          <div class="task-footer-actions-left">
+            <button class="btn btn-outline btn-sm btn-trigger-task" data-task-id="${t.id}">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              <span>${isRunning ? 'Running... (Run Again)' : 'Run Now'}</span>
+            </button>
+            ${hasForceRefresh ? `
+            <button class="btn btn-outline btn-sm btn-force-task" data-task-id="${t.id}" title="${
+              t.id === 'image_cache'
+                ? 'Reset poster thumbnails and re-download posters for all records'
+                : t.id === 'user_sync'
+                ? 'Clear user cache and re-sync all user mappings'
+                : 'Re-download metadata for all records regardless of existing metadata'
+            }">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+              <span>Force Refresh All</span>
+            </button>
+            ` : ''}
+          </div>
+          <div class="task-footer-actions-right">
+            <button class="btn btn-outline btn-sm btn-task-logs" data-task-id="${t.id}" data-task-name="${escapeHtml(t.name)}">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+              <span>View Logs</span>
+            </button>
+          </div>
         </div>
       </div>
     `;
