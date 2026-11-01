@@ -572,6 +572,44 @@ pub const OPENAPI_SPEC_JSON: &str = r###"{
                     }
                 }
             },
+            "/api/v1/user/settings/plex/users": {
+                "post": {
+                    "tags": ["User"],
+                    "summary": "Fetch Plex users",
+                    "description": "Queries configured or provided Plex Media Server instance for registered accounts and users.",
+                    "security": [{ "BearerAuth": [] }, { "ApiKeyAuth": [] }],
+                    "responses": {
+                        "200": { "description": "List of Plex users" }
+                    }
+                },
+                "get": {
+                    "tags": ["User"],
+                    "summary": "Fetch Plex users (GET)",
+                    "security": [{ "BearerAuth": [] }, { "ApiKeyAuth": [] }],
+                    "responses": {
+                        "200": { "description": "List of Plex users" }
+                    }
+                }
+            },
+            "/api/v1/user/settings/jellyfin/users": {
+                "post": {
+                    "tags": ["User"],
+                    "summary": "Fetch Jellyfin users",
+                    "description": "Queries configured or provided Jellyfin server instance for registered users.",
+                    "security": [{ "BearerAuth": [] }, { "ApiKeyAuth": [] }],
+                    "responses": {
+                        "200": { "description": "List of Jellyfin users" }
+                    }
+                },
+                "get": {
+                    "tags": ["User"],
+                    "summary": "Fetch Jellyfin users (GET)",
+                    "security": [{ "BearerAuth": [] }, { "ApiKeyAuth": [] }],
+                    "responses": {
+                        "200": { "description": "List of Jellyfin users" }
+                    }
+                }
+            },
             "/api/v1/import/trakt": {
                 "post": {
                     "tags": ["Imports"],

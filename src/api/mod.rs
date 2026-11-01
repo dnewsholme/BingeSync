@@ -376,6 +376,8 @@ pub fn create_api_router(state: AppState) -> Router {
         .route("/api/v1/user/settings/test-outbound-webhook", post(outbound_webhooks::test_outbound_webhook_handler))
         .route("/api/v1/user/settings/test-plex", post(media_writeback::test_plex_connection_handler))
         .route("/api/v1/user/settings/test-jellyfin", post(media_writeback::test_jellyfin_connection_handler))
+        .route("/api/v1/user/settings/plex/users", post(media_writeback::fetch_plex_users_post_handler).get(media_writeback::fetch_plex_users_get_handler))
+        .route("/api/v1/user/settings/jellyfin/users", post(media_writeback::fetch_jellyfin_users_post_handler).get(media_writeback::fetch_jellyfin_users_get_handler))
         .route("/api/v1/user/sync/writeback", post(media_writeback::trigger_writeback_handler))
         // Image cache (serves cached posters from disk)
         .route("/api/v1/images/{filename}", get(images::get_image_handler))

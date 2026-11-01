@@ -195,8 +195,18 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(data || {}),
     }),
+  getPlexUsers: (data) =>
+    request('/user/settings/plex/users', {
+      method: 'POST',
+      body: JSON.stringify(data || {}),
+    }),
   testJellyfinConnection: (data) =>
     request('/user/settings/test-jellyfin', {
+      method: 'POST',
+      body: JSON.stringify(data || {}),
+    }),
+  getJellyfinUsers: (data) =>
+    request('/user/settings/jellyfin/users', {
       method: 'POST',
       body: JSON.stringify(data || {}),
     }),

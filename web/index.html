@@ -1044,10 +1044,16 @@
                 <div class="form-row">
                   <div class="form-group col-full">
                     <label for="user-setting-plex-username" data-i18n="settings.plex_filter">Plex Username(s) or User ID(s)</label>
-                    <input type="text" id="user-setting-plex-username" class="form-control" placeholder="e.g. your_plex_username, 3078822f-..., 1 (comma-separated)" spellcheck="false" />
+                    <div style="display:flex;gap:8px;">
+                      <input type="text" id="user-setting-plex-username" class="form-control" placeholder="e.g. your_plex_username, 3078822f-..., 1 (comma-separated)" spellcheck="false" />
+                      <button type="button" class="btn btn-outline btn-sm" id="btn-fetch-plex-setting-users" title="Fetch registered users from Plex Media Server" style="white-space:nowrap;">
+                        Fetch Users
+                      </button>
+                    </div>
                     <small style="color: var(--text-muted); font-size: 0.8rem; margin-top: 4px; display: block;" data-i18n="settings.plex_hint">
                       Only record scrobbles matching these Plex username(s) or user ID(s). Incoming user IDs are automatically resolved and cached via your Tautulli integration.
                     </small>
+                    <div id="plex-users-picker" class="server-users-picker server-users-picker-plex" style="display:none;margin-top:10px;"></div>
                   </div>
                 </div>
                 <div class="form-row">
@@ -1125,10 +1131,16 @@
                 <div class="form-row">
                   <div class="form-group col-full">
                     <label for="user-setting-jellyfin-username" data-i18n="settings.jellyfin_filter">Jellyfin Username(s) or User ID(s)</label>
-                    <input type="text" id="user-setting-jellyfin-username" class="form-control" placeholder="e.g. your_jellyfin_username, a1b2c3d4... (comma-separated)" spellcheck="false" />
+                    <div style="display:flex;gap:8px;">
+                      <input type="text" id="user-setting-jellyfin-username" class="form-control" placeholder="e.g. your_jellyfin_username, a1b2c3d4... (comma-separated)" spellcheck="false" />
+                      <button type="button" class="btn btn-outline btn-sm" id="btn-fetch-jellyfin-setting-users" title="Fetch registered users from Jellyfin server" style="white-space:nowrap;">
+                        Fetch Users
+                      </button>
+                    </div>
                     <small style="color: var(--text-muted); font-size: 0.8rem; margin-top: 4px; display: block;" data-i18n="settings.jellyfin_hint">
                       Only record scrobbles matching these Jellyfin username(s) or user ID(s) (comma-separated).
                     </small>
+                    <div id="jellyfin-users-picker" class="server-users-picker server-users-picker-jellyfin" style="display:none;margin-top:10px;"></div>
                   </div>
                 </div>
                 <div class="form-row">
@@ -1640,91 +1652,117 @@
 
           <!-- Sub-view 2: System Settings & API Keys -->
           <div id="admin-sub-settings" class="admin-subview" style="display: none;">
-            <div class="settings-card">
-              <h2 class="card-title">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
-                Service Integrations & API Keys
-              </h2>
-              <p class="card-desc">
-                Configure external services and credentials dynamically. Saved settings override environment variables at runtime without needing container restarts.
-              </p>
-
-              <form id="form-admin-settings" style="margin-top: 18px;">
-                <!-- Metadata Source Provider Selection -->
-                <div class="settings-group-header">
-                  <span class="badge-pill" style="background: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3);">Metadata Provider</span>
-                  <strong>Active Metadata Source</strong>
+            <form id="form-admin-settings">
+              <!-- Card 1: Active Metadata Provider -->
+              <div class="card settings-card" id="card-admin-metadata-source">
+                <div class="card-title">
+                  <span class="badge-pill" style="background: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3); display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; font-weight: 600; font-size: 0.85rem;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m4.93 4.93 4.24 4.24"/><path d="m14.83 9.17 4.24-4.24"/><path d="m14.83 14.83 4.24 4.24"/><path d="m9.17 14.83-4.24 4.24"/></svg>
+                    Metadata Provider
+                  </span>
+                  <span>Active Metadata Provider</span>
                 </div>
-                <div class="form-group" style="margin-bottom: 16px;">
-                  <label for="setting-metadata-source">Metadata Source</label>
-                  <select id="setting-metadata-source" class="form-control">
-                    <option value="tvdb">TheTVDB (v4)</option>
-                    <option value="tmdb">The Movie Database (TMDB)</option>
-                  </select>
-                  <small style="display:block;margin-top:4px;font-size:0.75rem;color:var(--text-dim);">Choose whether to enrich scrobbles, artwork, cast, and overview details using TheTVDB or TMDB.</small>
+                <p class="card-desc">
+                  Choose whether to enrich scrobbles, artwork, cast, and overview details using TheTVDB or TMDB.
+                </p>
+                <div class="form-row">
+                  <div class="form-group col-full">
+                    <label for="setting-metadata-source">Metadata Source</label>
+                    <select id="setting-metadata-source" class="form-control">
+                      <option value="tvdb">TheTVDB (v4)</option>
+                      <option value="tmdb">The Movie Database (TMDB)</option>
+                    </select>
+                    <small style="display:block;margin-top:4px;font-size:0.75rem;color:var(--text-dim);">Selected provider is queried by background metadata enrichment workers for media artwork and show details.</small>
+                  </div>
                 </div>
+              </div>
 
-                <!-- TheTVDB -->
-                <div id="admin-tvdb-settings-group">
-                  <div class="settings-group-header">
-                    <span class="badge-pill" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3);">TheTVDB v4</span>
-                    <strong>TheTVDB Configuration</strong>
-                  </div>
-                  <div class="form-row">
-                    <div class="form-group col-half">
-                      <label for="setting-tvdb-api-key">TheTVDB API Key (v4)</label>
-                      <div class="input-secret-wrapper">
-                        <input type="text" id="setting-tvdb-api-key" class="form-control font-mono" placeholder="API Key" autocomplete="off" spellcheck="false" />
-                        <button type="button" class="btn-toggle-secret" data-target="setting-tvdb-api-key" title="Unhide / Show full key">
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                        </button>
-                      </div>
+              <!-- Card 2: TheTVDB v4 Integration -->
+              <div class="card settings-card" id="admin-tvdb-settings-group">
+                <div class="card-title">
+                  <span class="badge-pill" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; font-weight: 600; font-size: 0.85rem;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="20" height="15" x="2" y="7" rx="2" ry="2"/><polyline points="17 2 12 7 7 2"/></svg>
+                    TheTVDB v4
+                  </span>
+                  <span>TheTVDB Integration</span>
+                </div>
+                <p class="card-desc">
+                  Configure TheTVDB v4 API key, optional subscriber PIN, and API endpoint for TV and movie metadata enrichment.
+                </p>
+                <div class="form-row">
+                  <div class="form-group col-half">
+                    <label for="setting-tvdb-api-key">TheTVDB API Key (v4)</label>
+                    <div class="input-secret-wrapper">
+                      <input type="text" id="setting-tvdb-api-key" class="form-control font-mono" placeholder="API Key" autocomplete="off" spellcheck="false" />
+                      <button type="button" class="btn-toggle-secret" data-target="setting-tvdb-api-key" title="Unhide / Show full key">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                      </button>
                     </div>
-                    <div class="form-group col-half">
-                      <label for="setting-tvdb-pin">Subscriber PIN (Optional)</label>
-                      <input type="text" id="setting-tvdb-pin" class="form-control" placeholder="User PIN if subscriber key" />
-                    </div>
                   </div>
-                  <div class="form-group">
+                  <div class="form-group col-half">
+                    <label for="setting-tvdb-pin">Subscriber PIN (Optional)</label>
+                    <input type="text" id="setting-tvdb-pin" class="form-control" placeholder="User PIN if subscriber key" />
+                  </div>
+                </div>
+                <div class="form-row">
+                  <div class="form-group col-full">
                     <label for="setting-tvdb-base-url">TheTVDB API Base URL</label>
                     <input type="url" id="setting-tvdb-base-url" class="form-control" placeholder="https://api4.thetvdb.com/v4" />
                   </div>
                 </div>
+              </div>
 
-                <!-- TMDB -->
-                <div id="admin-tmdb-settings-group">
-                  <div class="settings-group-header" style="margin-top: 14px;">
-                    <span class="badge-pill" style="background: rgba(13, 148, 136, 0.15); color: #2dd4bf; border: 1px solid rgba(13, 148, 136, 0.3);">TMDB</span>
-                    <strong>The Movie Database (TMDB) Configuration</strong>
-                  </div>
-                  <div class="form-row">
-                    <div class="form-group col-half">
-                      <label for="setting-tmdb-api-key">TMDB API Key / Read Access Token</label>
-                      <div class="input-secret-wrapper">
-                        <input type="text" id="setting-tmdb-api-key" class="form-control font-mono" placeholder="API Key (v3) or Read Access Token (v4)" autocomplete="off" spellcheck="false" />
-                        <button type="button" class="btn-toggle-secret" data-target="setting-tmdb-api-key" title="Unhide / Show full key">
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                        </button>
-                      </div>
-                    </div>
-                    <div class="form-group col-half">
-                      <label for="setting-tmdb-base-url">TMDB API Base URL</label>
-                      <input type="url" id="setting-tmdb-base-url" class="form-control" placeholder="https://api.themoviedb.org/3" />
-                    </div>
-                  </div>
-                  <p class="card-desc" style="font-size:0.8rem;margin-top:4px;color:var(--text-dim);">
-                    This product uses the TMDB API but is not endorsed or certified by <a href="https://www.themoviedb.org" target="_blank" rel="noopener noreferrer" style="color:var(--accent-primary);">TMDB</a>.
-                  </p>
+              <!-- Card 3: The Movie Database (TMDB) Integration -->
+              <div class="card settings-card" id="admin-tmdb-settings-group">
+                <div class="card-title">
+                  <span class="badge-pill" style="background: rgba(13, 148, 136, 0.15); color: #2dd4bf; border: 1px solid rgba(13, 148, 136, 0.3); display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; font-weight: 600; font-size: 0.85rem;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="17" x2="22" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/></svg>
+                    TMDB
+                  </span>
+                  <span>The Movie Database (TMDB) Integration</span>
                 </div>
+                <p class="card-desc">
+                  Configure TMDB API Key (v3) or Read Access Token (v4) for movie and TV metadata, cast, director, and poster art.
+                </p>
+                <div class="form-row">
+                  <div class="form-group col-half">
+                    <label for="setting-tmdb-api-key">TMDB API Key / Read Access Token</label>
+                    <div class="input-secret-wrapper">
+                      <input type="text" id="setting-tmdb-api-key" class="form-control font-mono" placeholder="API Key (v3) or Read Access Token (v4)" autocomplete="off" spellcheck="false" />
+                      <button type="button" class="btn-toggle-secret" data-target="setting-tmdb-api-key" title="Unhide / Show full key">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                      </button>
+                    </div>
+                  </div>
+                  <div class="form-group col-half">
+                    <label for="setting-tmdb-base-url">TMDB API Base URL</label>
+                    <input type="url" id="setting-tmdb-base-url" class="form-control" placeholder="https://api.themoviedb.org/3" />
+                  </div>
+                </div>
+                <p class="card-desc" style="font-size:0.8rem;margin-top:6px;color:var(--text-dim);">
+                  This product uses the TMDB API but is not endorsed or certified by <a href="https://www.themoviedb.org" target="_blank" rel="noopener noreferrer" style="color:var(--accent-primary);">TMDB</a>.
+                </p>
+              </div>
 
-                <!-- OpenID Connect -->
-                <div class="settings-group-header" style="margin-top: 16px;">
-                  <span class="badge-pill" style="background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.3);">OpenID Connect</span>
-                  <strong>Single Sign-On (SSO)</strong>
+              <!-- Card 4: OpenID Connect (OIDC) Single Sign-On -->
+              <div class="card settings-card" id="card-admin-oidc">
+                <div class="card-title">
+                  <span class="badge-pill" style="background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.3); display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; font-weight: 600; font-size: 0.85rem;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+                    OpenID Connect
+                  </span>
+                  <span>Single Sign-On (SSO)</span>
                 </div>
-                <div class="form-group" style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
-                  <input type="checkbox" id="setting-oidc-enabled" style="width:18px;height:18px;cursor:pointer;" />
-                  <label for="setting-oidc-enabled" style="margin:0;cursor:pointer;font-weight:600;">Enable OpenID Connect Login</label>
+                <p class="card-desc">
+                  Enable federated authentication with your OIDC identity provider (Authentik, Keycloak, Authelia, Google, Okta, etc.).
+                </p>
+                <div class="form-row" style="margin-bottom: 12px;">
+                  <div class="form-group col-full">
+                    <label class="setting-toggle-btn" for="setting-oidc-enabled">
+                      <input type="checkbox" id="setting-oidc-enabled" />
+                      <span>Enable OpenID Connect Login</span>
+                    </label>
+                  </div>
                 </div>
                 <div class="form-row">
                   <div class="form-group col-half">
@@ -1750,6 +1788,8 @@
                     <label for="setting-oidc-redirect-url">Redirect URL (Optional)</label>
                     <input type="url" id="setting-oidc-redirect-url" class="form-control" placeholder="https://example.com/api/v1/auth/callback" />
                   </div>
+                </div>
+                <div class="form-row">
                   <div class="form-group col-half">
                     <label for="setting-oidc-admin-group">Admin Group (Optional)</label>
                     <input type="text" id="setting-oidc-admin-group" class="form-control" placeholder="e.g. admin, bingesync-admins" />
@@ -1761,12 +1801,20 @@
                     <small style="display:block;margin-top:4px;font-size:0.75rem;color:var(--text-dim);">Optional group(s) required for standard users to log in. Leave blank to allow any authenticated user.</small>
                   </div>
                 </div>
+              </div>
 
-                <!-- Playback & Scrobble Progress -->
-                <div class="settings-group-header" style="margin-top: 16px;">
-                  <span class="badge-pill" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3);">Scrobbling</span>
-                  <strong>Playback & Completion Threshold</strong>
+              <!-- Card 5: Playback & Completion Threshold -->
+              <div class="card settings-card" id="card-admin-scrobbling">
+                <div class="card-title">
+                  <span class="badge-pill" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; font-weight: 600; font-size: 0.85rem;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                    Scrobbling
+                  </span>
+                  <span>Playback & Completion Threshold</span>
                 </div>
+                <p class="card-desc">
+                  Configure playback completion thresholds and watch logging rules for incoming scrobbles.
+                </p>
                 <div class="form-row">
                   <div class="form-group col-half">
                     <label for="setting-scrobble-threshold">Watch Completion Threshold (%)</label>
@@ -1774,13 +1822,20 @@
                     <small style="display:block;margin-top:4px;font-size:0.75rem;color:var(--text-dim);">Media is marked completed when playback reaches this percentage (default: 80%).</small>
                   </div>
                 </div>
+              </div>
 
-                <div style="display:flex;align-items:center;gap:12px;margin-top:20px;">
+              <!-- Card 6: Save Configuration Action Card -->
+              <div class="card settings-card settings-save-card" id="card-admin-save" style="display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;">
+                <div>
+                  <strong style="display: block; font-size: 1rem; color: var(--text-main);">System & Service Integrations</strong>
+                  <small style="color: var(--text-dim); font-size: 0.82rem;">Save and dynamically apply updated credentials and provider settings across BingeSync.</small>
+                </div>
+                <div style="display:flex;align-items:center;gap:12px;">
                   <button type="submit" class="btn btn-primary" id="btn-save-admin-settings">Save Settings</button>
                   <span id="admin-settings-status" style="font-size:0.85rem;"></span>
                 </div>
-              </form>
-            </div>
+              </div>
+            </form>
           </div>
 
           <!-- Sub-view 3: Background Tasks Status -->

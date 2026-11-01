@@ -1,5 +1,5 @@
 use axum::{
-    extract::State,
+    extract::{Query, State},
     http::StatusCode,
     response::IntoResponse,
     Json,
@@ -38,6 +38,24 @@ pub struct TestJellyfinRequest {
     pub jellyfin_url: Option<String>,
     pub jellyfin_api_key: Option<String>,
     pub jellyfin_username: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ServerUserItem {
+    pub id: String,
+    pub username: String,
+    pub friendly_name: Option<String>,
+    pub thumb: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+pub struct FetchUsersParams {
+    pub plex_url: Option<String>,
+    pub plex_api_key: Option<String>,
+    pub jellyfin_url: Option<String>,
+    pub jellyfin_api_key: Option<String>,
+    pub url: Option<String>,
+    pub api_key: Option<String>,
 }
 
 /// Tests connection to Plex Media Server using X-Plex-Token
@@ -897,5 +915,421 @@ pub async fn trigger_writeback_handler(
         "jellyfin_synced": jellyfin_synced,
         "message": msg
     })))
+}
+
+/// Fetch list of accounts / users from Plex Media Server
+pub async fn fetch_plex_users(
+    plex_url: &str,
+    plex_token: &str,
+    pool: &SqlitePool,
+) -> Result<Vec<ServerUserItem>, String> {
+    let base = plex_url.trim_end_matches('/');
+    crate::api::ssrf::validate_integration_url(base).map_err(|e| format!("Invalid Plex URL: {}", e))?;
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(8))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let mut users: Vec<ServerUserItem> = Vec::new();
+    let mut seen_keys = std::collections::HashSet::new();
+
+    // 1. Check /myplex/account
+    let myplex_url = format!("{}/myplex/account", base);
+    if let Ok(resp) = client
+        .get(&myplex_url)
+        .header("X-Plex-Token", plex_token)
+        .header("Accept", "application/json")
+        .send()
+        .await
+    {
+        if resp.status().is_success() {
+            if let Ok(val) = resp.json::<serde_json::Value>().await {
+                let myplex = val.get("MyPlex").or_else(|| val.get("myPlex")).or_else(|| {
+                    val.get("MediaContainer").and_then(|mc| mc.get("MyPlex").or_else(|| mc.get("myPlex")))
+                });
+                if let Some(mp) = myplex {
+                    let username = mp.get("username").and_then(|u| u.as_str());
+                    let title = mp.get("title").and_then(|t| t.as_str());
+                    if let Some(un) = username {
+                        let un_trimmed = un.trim().to_string();
+                        if !un_trimmed.is_empty() {
+                            let key = un_trimmed.to_lowercase();
+                            if !seen_keys.contains(&key) {
+                                seen_keys.insert(key);
+                                let title_opt = title.map(|t| t.trim().to_string()).filter(|t| !t.is_empty() && t != &un_trimmed);
+                                users.push(ServerUserItem {
+                                    id: "1".to_string(),
+                                    username: un_trimmed.clone(),
+                                    friendly_name: title_opt.clone(),
+                                    thumb: None,
+                                });
+
+                                let _ = sqlx::query(
+                                    r#"
+                                    INSERT INTO plex_user_cache (plex_id, username, friendly_name, source, updated_at)
+                                    VALUES (?, ?, ?, 'plex', datetime('now'))
+                                    ON CONFLICT(plex_id) DO UPDATE SET username = excluded.username, friendly_name = excluded.friendly_name, source = 'plex', updated_at = excluded.updated_at
+                                    "#
+                                )
+                                .bind(&un_trimmed)
+                                .bind(&un_trimmed)
+                                .bind(title_opt)
+                                .execute(pool)
+                                .await;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 2. Check /accounts
+    let accounts_url = format!("{}/accounts", base);
+    if let Ok(resp) = client
+        .get(&accounts_url)
+        .header("X-Plex-Token", plex_token)
+        .header("Accept", "application/json")
+        .send()
+        .await
+    {
+        if resp.status().is_success() {
+            if let Ok(val) = resp.json::<serde_json::Value>().await {
+                let accounts_opt = val.get("MediaContainer").and_then(|mc| mc.get("Account"));
+                let items: Vec<serde_json::Value> = match accounts_opt {
+                    Some(serde_json::Value::Array(arr)) => arr.clone(),
+                    Some(serde_json::Value::Object(_)) => vec![accounts_opt.cloned().unwrap()],
+                    _ => Vec::new(),
+                };
+
+                for acct in items {
+                    let name = acct.get("name").and_then(|n| n.as_str())
+                        .or_else(|| acct.get("title").and_then(|t| t.as_str()));
+                    let id_val = acct.get("id").map(|v| match v {
+                        serde_json::Value::Number(n) => n.to_string(),
+                        serde_json::Value::String(s) => s.clone(),
+                        _ => v.to_string(),
+                    }).unwrap_or_else(|| "0".to_string());
+                    let thumb = acct.get("thumb").and_then(|t| t.as_str()).map(|s| s.to_string());
+
+                    if let Some(n) = name {
+                        let name_trimmed = n.trim().to_string();
+                        if !name_trimmed.is_empty() {
+                            let key = name_trimmed.to_lowercase();
+                            if !seen_keys.contains(&key) {
+                                seen_keys.insert(key);
+                                users.push(ServerUserItem {
+                                    id: id_val.clone(),
+                                    username: name_trimmed.clone(),
+                                    friendly_name: None,
+                                    thumb: thumb.clone(),
+                                });
+
+                                let _ = sqlx::query(
+                                    r#"
+                                    INSERT INTO plex_user_cache (plex_id, username, friendly_name, source, updated_at)
+                                    VALUES (?, ?, ?, 'plex', datetime('now'))
+                                    ON CONFLICT(plex_id) DO UPDATE SET username = excluded.username, friendly_name = excluded.friendly_name, source = 'plex', updated_at = excluded.updated_at
+                                    "#
+                                )
+                                .bind(&id_val)
+                                .bind(&name_trimmed)
+                                .bind(&name_trimmed)
+                                .execute(pool)
+                                .await;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 3. Fallback / supplementary: plex.tv/api/v2/home/users
+    let cloud_url = "https://plex.tv/api/v2/home/users";
+    if let Ok(resp) = client
+        .get(cloud_url)
+        .header("X-Plex-Token", plex_token)
+        .header("Accept", "application/json")
+        .timeout(Duration::from_secs(4))
+        .send()
+        .await
+    {
+        if resp.status().is_success() {
+            if let Ok(val) = resp.json::<serde_json::Value>().await {
+                if let Some(arr) = val.get("users").and_then(|u| u.as_array()) {
+                    for u in arr {
+                        let username = u.get("username").and_then(|un| un.as_str())
+                            .or_else(|| u.get("title").and_then(|t| t.as_str()))
+                            .or_else(|| u.get("friendlyName").and_then(|fn_| fn_.as_str()));
+                        let friendly_name = u.get("friendlyName").and_then(|f| f.as_str())
+                            .or_else(|| u.get("title").and_then(|t| t.as_str()));
+                        let id_val = u.get("id").map(|v| match v {
+                            serde_json::Value::Number(n) => n.to_string(),
+                            serde_json::Value::String(s) => s.clone(),
+                            _ => v.to_string(),
+                        }).unwrap_or_else(|| "0".to_string());
+                        let thumb = u.get("thumb").and_then(|t| t.as_str()).map(|s| s.to_string());
+
+                        if let Some(un) = username {
+                            let un_trimmed = un.trim().to_string();
+                            if !un_trimmed.is_empty() {
+                                let key = un_trimmed.to_lowercase();
+                                if !seen_keys.contains(&key) {
+                                    seen_keys.insert(key);
+                                    let friendly_opt = friendly_name.map(|f| f.trim().to_string()).filter(|f| !f.is_empty() && f != &un_trimmed);
+                                    users.push(ServerUserItem {
+                                        id: id_val.clone(),
+                                        username: un_trimmed.clone(),
+                                        friendly_name: friendly_opt.clone(),
+                                        thumb,
+                                    });
+
+                                    let _ = sqlx::query(
+                                        r#"
+                                        INSERT INTO plex_user_cache (plex_id, username, friendly_name, source, updated_at)
+                                        VALUES (?, ?, ?, 'plex', datetime('now'))
+                                        ON CONFLICT(plex_id) DO UPDATE SET username = excluded.username, friendly_name = excluded.friendly_name, source = 'plex', updated_at = excluded.updated_at
+                                        "#
+                                    )
+                                    .bind(&id_val)
+                                    .bind(&un_trimmed)
+                                    .bind(friendly_opt)
+                                    .execute(pool)
+                                    .await;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if users.is_empty() {
+        if let Err(e) = test_plex_connection(plex_url, plex_token).await {
+            return Err(e);
+        }
+    }
+
+    users.sort_by(|a, b| a.username.to_lowercase().cmp(&b.username.to_lowercase()));
+    Ok(users)
+}
+
+/// Fetch list of users from Jellyfin server
+pub async fn fetch_jellyfin_users(
+    jellyfin_url: &str,
+    api_key: &str,
+    pool: &SqlitePool,
+) -> Result<Vec<ServerUserItem>, String> {
+    let base = jellyfin_url.trim_end_matches('/');
+    crate::api::ssrf::validate_integration_url(base).map_err(|e| format!("Invalid Jellyfin URL: {}", e))?;
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(8))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let endpoint = format!("{}/Users", base);
+    let resp = client
+        .get(&endpoint)
+        .header("X-Emby-Token", api_key)
+        .header("Authorization", format!("MediaBrowser Token=\"{}\"", api_key))
+        .header("Accept", "application/json")
+        .send()
+        .await
+        .map_err(|e| format!("Could not reach Jellyfin server: {}", e))?;
+
+    let status = resp.status();
+    if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
+        return Err("Authentication failed: invalid Jellyfin API key".to_string());
+    }
+
+    if !status.is_success() {
+        return Err(format!("Jellyfin returned error HTTP {}", status));
+    }
+
+    let users_json: Vec<serde_json::Value> = resp
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse Jellyfin Users JSON: {}", e))?;
+
+    let mut users: Vec<ServerUserItem> = Vec::new();
+    let mut seen_keys = std::collections::HashSet::new();
+
+    for u in users_json {
+        let id = u.get("Id").and_then(|v| v.as_str()).unwrap_or("").trim();
+        let name = u.get("Name").and_then(|v| v.as_str()).unwrap_or("").trim();
+
+        if !id.is_empty() && !name.is_empty() {
+            let key = name.to_lowercase();
+            if !seen_keys.contains(&key) {
+                seen_keys.insert(key);
+                users.push(ServerUserItem {
+                    id: id.to_string(),
+                    username: name.to_string(),
+                    friendly_name: None,
+                    thumb: None,
+                });
+
+                let _ = sqlx::query(
+                    r#"
+                    INSERT INTO plex_user_cache (plex_id, username, friendly_name, source, updated_at)
+                    VALUES (?, ?, ?, 'jellyfin', datetime('now'))
+                    ON CONFLICT(plex_id) DO UPDATE SET username = excluded.username, friendly_name = excluded.friendly_name, source = 'jellyfin', updated_at = excluded.updated_at
+                    "#
+                )
+                .bind(id)
+                .bind(name)
+                .bind(name)
+                .execute(pool)
+                .await;
+
+                let unhyphenated = id.replace('-', "");
+                if unhyphenated != id {
+                    let _ = sqlx::query(
+                        r#"
+                        INSERT INTO plex_user_cache (plex_id, username, friendly_name, source, updated_at)
+                        VALUES (?, ?, ?, 'jellyfin', datetime('now'))
+                        ON CONFLICT(plex_id) DO UPDATE SET username = excluded.username, friendly_name = excluded.friendly_name, source = 'jellyfin', updated_at = excluded.updated_at
+                        "#
+                    )
+                    .bind(&unhyphenated)
+                    .bind(name)
+                    .bind(name)
+                    .execute(pool)
+                    .await;
+                }
+            }
+        }
+    }
+
+    users.sort_by(|a, b| a.username.to_lowercase().cmp(&b.username.to_lowercase()));
+    Ok(users)
+}
+
+async fn fetch_plex_users_internal(
+    state: &AppState,
+    auth: &AuthUser,
+    params: FetchUsersParams,
+) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
+    let url = params.plex_url.or(params.url);
+    let token = params.plex_api_key.or(params.api_key);
+
+    let url_final = match url {
+        Some(u) if !u.trim().is_empty() => u.trim().to_string(),
+        _ => match crate::api::user_settings::get_user_setting(&state.pool, &auth.user_id, "plex_url").await {
+            Some(u) if !u.trim().is_empty() => u.trim().to_string(),
+            _ => {
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({ "error": "Plex URL is required. Please enter it in settings or save your settings first." })),
+                ))
+            }
+        },
+    };
+
+    let token_final = match token {
+        Some(k) if !k.trim().is_empty() && !k.contains('•') => k.trim().to_string(),
+        _ => match crate::api::user_settings::get_user_setting(&state.pool, &auth.user_id, "plex_api_key").await {
+            Some(k) if !k.trim().is_empty() => k.trim().to_string(),
+            _ => {
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({ "error": "Plex API token is required. Please enter it in settings or save your settings first." })),
+                ))
+            }
+        },
+    };
+
+    match fetch_plex_users(&url_final, &token_final, &state.pool).await {
+        Ok(users) => Ok(Json(serde_json::json!({
+            "status": "success",
+            "users": users
+        }))),
+        Err(e) => Err((
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": e })),
+        )),
+    }
+}
+
+pub async fn fetch_plex_users_post_handler(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Json(payload): Json<FetchUsersParams>,
+) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
+    fetch_plex_users_internal(&state, &auth, payload).await
+}
+
+pub async fn fetch_plex_users_get_handler(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Query(params): Query<FetchUsersParams>,
+) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
+    fetch_plex_users_internal(&state, &auth, params).await
+}
+
+async fn fetch_jellyfin_users_internal(
+    state: &AppState,
+    auth: &AuthUser,
+    params: FetchUsersParams,
+) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
+    let url = params.jellyfin_url.or(params.url);
+    let key = params.jellyfin_api_key.or(params.api_key);
+
+    let url_final = match url {
+        Some(u) if !u.trim().is_empty() => u.trim().to_string(),
+        _ => match crate::api::user_settings::get_user_setting(&state.pool, &auth.user_id, "jellyfin_url").await {
+            Some(u) if !u.trim().is_empty() => u.trim().to_string(),
+            _ => {
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({ "error": "Jellyfin URL is required. Please enter it in settings or save your settings first." })),
+                ))
+            }
+        },
+    };
+
+    let key_final = match key {
+        Some(k) if !k.trim().is_empty() && !k.contains('•') => k.trim().to_string(),
+        _ => match crate::api::user_settings::get_user_setting(&state.pool, &auth.user_id, "jellyfin_api_key").await {
+            Some(k) if !k.trim().is_empty() => k.trim().to_string(),
+            _ => {
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({ "error": "Jellyfin API key is required. Please enter it in settings or save your settings first." })),
+                ))
+            }
+        },
+    };
+
+    match fetch_jellyfin_users(&url_final, &key_final, &state.pool).await {
+        Ok(users) => Ok(Json(serde_json::json!({
+            "status": "success",
+            "users": users
+        }))),
+        Err(e) => Err((
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": e })),
+        )),
+    }
+}
+
+pub async fn fetch_jellyfin_users_post_handler(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Json(payload): Json<FetchUsersParams>,
+) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
+    fetch_jellyfin_users_internal(&state, &auth, payload).await
+}
+
+pub async fn fetch_jellyfin_users_get_handler(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Query(params): Query<FetchUsersParams>,
+) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
+    fetch_jellyfin_users_internal(&state, &auth, params).await
 }
 

@@ -2758,6 +2758,117 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     await expect(page.locator('#history-user-badge')).toBeVisible();
     await expect(page.locator('#history-user-badge')).toContainText('daryl');
   });
+
+  test('user settings: fetch users and multiselect for plex and jellyfin user filtering', async ({ page }) => {
+    const testEmail = `fetch_users_ui_${Date.now()}@bingesync.local`;
+
+    // 1. Dev login
+    await page.goto('/');
+    await page.fill('#dev-email', testEmail);
+    await page.fill('#dev-name', 'Fetch Users Tester');
+    await page.click('#btn-dev-submit');
+    await expect(page.locator('#tab-timeline')).toBeVisible();
+
+    // 2. Mock backend routes for Plex and Jellyfin user fetching
+    await page.route('**/api/v1/user/settings/plex/users', async route => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          status: 'success',
+          users: [
+            { id: '1', username: 'alice', friendly_name: 'Alice Wonder' },
+            { id: '2', username: 'bob', friendly_name: null },
+            { id: '3', username: 'charlie', friendly_name: 'Charlie Brown' },
+          ],
+        }),
+      });
+    });
+
+    await page.route('**/api/v1/user/settings/jellyfin/users', async route => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          status: 'success',
+          users: [
+            { id: 'jf-1', username: 'david', friendly_name: null },
+            { id: 'jf-2', username: 'eva', friendly_name: null },
+          ],
+        }),
+      });
+    });
+
+    // 3. Navigate to Settings -> Connected Services
+    await page.click('#tab-settings');
+    await expect(page.locator('#view-settings')).toBeVisible();
+    await page.click('#pill-settings-services');
+    await expect(page.locator('#settings-sub-services')).toBeVisible();
+
+    // 4. Verify Fetch Users buttons exist
+    await expect(page.locator('#btn-fetch-plex-setting-users')).toBeVisible();
+    await expect(page.locator('#btn-fetch-jellyfin-setting-users')).toBeVisible();
+
+    // 5. Click Fetch Users for Plex
+    await page.click('#btn-fetch-plex-setting-users');
+    await expect(page.locator('#plex-users-picker')).toBeVisible();
+    await expect(page.locator('#plex-users-picker .user-select-chip')).toHaveCount(3);
+    await expect(page.locator('#plex-users-picker')).toContainText('alice');
+    await expect(page.locator('#plex-users-picker')).toContainText('bob');
+    await expect(page.locator('#plex-users-picker')).toContainText('charlie');
+
+    // 6. Click alice chip -> input updates and chip is selected
+    const chipAlice = page.locator('#plex-users-picker .user-select-chip[data-username="alice"]');
+    await chipAlice.click();
+    await expect(chipAlice).toHaveClass(/selected/);
+    await expect(page.locator('#user-setting-plex-username')).toHaveValue('alice');
+
+    // Click charlie chip -> input is "alice, charlie"
+    const chipCharlie = page.locator('#plex-users-picker .user-select-chip[data-username="charlie"]');
+    await chipCharlie.click();
+    await expect(chipCharlie).toHaveClass(/selected/);
+    await expect(page.locator('#user-setting-plex-username')).toHaveValue('alice, charlie');
+
+    // Click alice chip again -> deselects alice
+    await chipAlice.click();
+    await expect(chipAlice).not.toHaveClass(/selected/);
+    await expect(page.locator('#user-setting-plex-username')).toHaveValue('charlie');
+
+    // Test Select All
+    await page.click('#plex-users-picker .btn-picker-select-all');
+    await expect(chipAlice).toHaveClass(/selected/);
+    await expect(chipCharlie).toHaveClass(/selected/);
+    const plexVal = await page.locator('#user-setting-plex-username').inputValue();
+    expect(plexVal).toContain('alice');
+    expect(plexVal).toContain('bob');
+    expect(plexVal).toContain('charlie');
+
+    // Test Clear
+    await page.click('#plex-users-picker .btn-picker-clear-all');
+    await expect(chipAlice).not.toHaveClass(/selected/);
+    await expect(chipCharlie).not.toHaveClass(/selected/);
+    await expect(page.locator('#user-setting-plex-username')).toHaveValue('');
+
+    // Select alice and bob
+    await chipAlice.click();
+    const chipBob = page.locator('#plex-users-picker .user-select-chip[data-username="bob"]');
+    await chipBob.click();
+    await expect(page.locator('#user-setting-plex-username')).toHaveValue('alice, bob');
+
+    // 7. Click Fetch Users for Jellyfin
+    await page.click('#btn-fetch-jellyfin-setting-users');
+    await expect(page.locator('#jellyfin-users-picker')).toBeVisible();
+    await expect(page.locator('#jellyfin-users-picker .user-select-chip')).toHaveCount(2);
+
+    const chipDavid = page.locator('#jellyfin-users-picker .user-select-chip[data-username="david"]');
+    await chipDavid.click();
+    await expect(chipDavid).toHaveClass(/selected/);
+    await expect(page.locator('#user-setting-jellyfin-username')).toHaveValue('david');
+
+    // 8. Save user settings
+    await page.click('#btn-save-user-settings');
+    await expect(page.locator('#user-settings-status')).toContainText('Settings saved successfully');
+  });
 });
 
 

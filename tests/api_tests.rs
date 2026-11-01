@@ -8642,6 +8642,184 @@ async fn test_plex_and_jellyfin_trailer_and_clip_exclusion() {
     assert_eq!(count, 1);
 }
 
+#[tokio::test]
+async fn test_fetch_plex_and_jellyfin_users_endpoints() {
+    let (app, pool, config) = setup_test_app().await;
+
+    // 1. Setup mock media server
+    let mock_router = axum::Router::new()
+        .route(
+            "/myplex/account",
+            axum::routing::get(|| async {
+                axum::Json(serde_json::json!({
+                    "MyPlex": {
+                        "username": "plex_owner",
+                        "title": "Plex Server Owner"
+                    }
+                }))
+            }),
+        )
+        .route(
+            "/accounts",
+            axum::routing::get(|| async {
+                axum::Json(serde_json::json!({
+                    "MediaContainer": {
+                        "size": 2,
+                        "Account": [
+                            {
+                                "id": 1,
+                                "name": "alice_plex",
+                                "thumb": "https://plex.tv/users/alice.jpg"
+                            },
+                            {
+                                "id": 2,
+                                "name": "bob_plex",
+                                "thumb": "https://plex.tv/users/bob.jpg"
+                            }
+                        ]
+                    }
+                }))
+            }),
+        )
+        .route(
+            "/Users",
+            axum::routing::get(|| async {
+                axum::Json(serde_json::json!([
+                    {
+                        "Id": "jf-uuid-1",
+                        "Name": "jelly_alice"
+                    },
+                    {
+                        "Id": "jf-uuid-2",
+                        "Name": "jelly_bob"
+                    }
+                ]))
+            }),
+        );
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, mock_router).await.unwrap();
+    });
+
+    let mock_server_url = format!("http://{}", addr);
+
+    // 2. Create test user and token
+    let user_id = "test-fetch-users-user".to_string();
+    sqlx::query("INSERT INTO users (id, email, display_name, webhook_token, role) VALUES (?, ?, ?, ?, ?)")
+        .bind(&user_id)
+        .bind("fetch_users@bingesync.local")
+        .bind("Fetch Tester")
+        .bind("token-fetch-users")
+        .bind("user")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let token = create_jwt(&user_id, "fetch_users@bingesync.local", &config.jwt_secret).unwrap();
+
+    // 3. Without credentials, should return 400 Bad Request
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/user/settings/plex/users")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(json!({}).to_string()))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+    // 4. Fetch Plex users with payload
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/user/settings/plex/users")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(json!({
+            "plex_url": mock_server_url,
+            "plex_api_key": "mock-plex-token"
+        }).to_string()))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let json_resp: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    assert_eq!(json_resp["status"], "success");
+    let users = json_resp["users"].as_array().unwrap();
+    assert_eq!(users.len(), 3);
+    // Alphabetically sorted: alice_plex, bob_plex, plex_owner
+    assert_eq!(users[0]["username"], "alice_plex");
+    assert_eq!(users[1]["username"], "bob_plex");
+    assert_eq!(users[2]["username"], "plex_owner");
+    assert_eq!(users[2]["friendly_name"], "Plex Server Owner");
+
+    // Verify cached in plex_user_cache
+    let cached_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM plex_user_cache WHERE source = 'plex'")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert!(cached_count >= 3);
+
+    // 5. Test Plex GET endpoint with query params
+    let req = Request::builder()
+        .method("GET")
+        .uri(format!("/api/v1/user/settings/plex/users?url={}&api_key=mock-plex-token", urlencoding_encode(&mock_server_url)))
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // 6. Fetch Jellyfin users with payload
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/user/settings/jellyfin/users")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(json!({
+            "jellyfin_url": mock_server_url,
+            "jellyfin_api_key": "mock-jelly-key"
+        }).to_string()))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let json_resp: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    assert_eq!(json_resp["status"], "success");
+    let jf_users = json_resp["users"].as_array().unwrap();
+    assert_eq!(jf_users.len(), 2);
+    assert_eq!(jf_users[0]["username"], "jelly_alice");
+    assert_eq!(jf_users[1]["username"], "jelly_bob");
+
+    // Verify cached in plex_user_cache for jellyfin
+    let jf_cached: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM plex_user_cache WHERE source = 'jellyfin'")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert!(jf_cached >= 2);
+
+    // 7. Save Jellyfin credentials in user_settings and call GET without params
+    bingesync::api::user_settings::set_user_setting(&pool, &user_id, "jellyfin_url", &mock_server_url).await.unwrap();
+    bingesync::api::user_settings::set_user_setting(&pool, &user_id, "jellyfin_api_key", "saved-jf-key").await.unwrap();
+
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/user/settings/jellyfin/users")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let json_resp: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    assert_eq!(json_resp["status"], "success");
+}
+
+fn urlencoding_encode(s: &str) -> String {
+    url::form_urlencoded::byte_serialize(s.as_bytes()).collect()
+}
+
 
 
 

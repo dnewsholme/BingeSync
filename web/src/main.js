@@ -394,12 +394,16 @@ const el = {
   userSettingTheme: document.getElementById('user-setting-theme'),
   navLanguageSelect: document.getElementById('nav-language-select'),
   userSettingPlexUsername: document.getElementById('user-setting-plex-username'),
+  btnFetchPlexSettingUsers: document.getElementById('btn-fetch-plex-setting-users'),
+  plexUsersPicker: document.getElementById('plex-users-picker'),
   userSettingPlexUrl: document.getElementById('user-setting-plex-url'),
   userSettingPlexApiKey: document.getElementById('user-setting-plex-api-key'),
   userSettingPlexSyncEnabled: document.getElementById('user-setting-plex-sync-enabled'),
   btnTestPlexConnection: document.getElementById('btn-test-plex-connection'),
   plexTestStatus: document.getElementById('plex-test-status'),
   userSettingJellyfinUsername: document.getElementById('user-setting-jellyfin-username'),
+  btnFetchJellyfinSettingUsers: document.getElementById('btn-fetch-jellyfin-setting-users'),
+  jellyfinUsersPicker: document.getElementById('jellyfin-users-picker'),
   userSettingEmbyUsername: document.getElementById('user-setting-emby-username'),
   userSettingJellyfinUrl: document.getElementById('user-setting-jellyfin-url'),
   userSettingJellyfinApiKey: document.getElementById('user-setting-jellyfin-api-key'),
@@ -3199,6 +3203,200 @@ if (el.btnFetchTautulliSettingUsers) {
       alert('Failed to fetch Tautulli users: ' + (err.message || err));
       el.btnFetchTautulliSettingUsers.disabled = false;
       el.btnFetchTautulliSettingUsers.textContent = origText;
+    }
+  });
+}
+
+function renderServerUsersPicker(container, inputEl, users, serviceName) {
+  if (!container || !inputEl) return;
+  if (!users || users.length === 0) {
+    container.innerHTML = `<div style="font-size:0.8rem;color:var(--text-muted);padding:4px 0;">No users found on ${serviceName} server.</div>`;
+    container.style.display = 'block';
+    return;
+  }
+
+  function getSelectedTokens() {
+    return (inputEl.value || '')
+      .split(',')
+      .map(s => s.trim().toLowerCase())
+      .filter(Boolean);
+  }
+
+  function updateInputFromSelected(selectedUsernames) {
+    const knownKeys = new Set(users.map(u => u.username.toLowerCase()));
+    users.forEach(u => {
+      if (u.id) knownKeys.add(u.id.toLowerCase());
+    });
+
+    const existingManualTokens = (inputEl.value || '')
+      .split(',')
+      .map(s => s.trim())
+      .filter(s => s && !knownKeys.has(s.toLowerCase()));
+
+    const combined = [...existingManualTokens, ...selectedUsernames];
+    const finalTokens = [];
+    const seen = new Set();
+    for (const t of combined) {
+      const lower = t.toLowerCase();
+      if (!seen.has(lower)) {
+        seen.add(lower);
+        finalTokens.push(t);
+      }
+    }
+    inputEl.value = finalTokens.join(', ');
+    inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+    inputEl.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+
+  function refreshChipStates() {
+    const selectedTokens = new Set(getSelectedTokens());
+    const chips = container.querySelectorAll('.user-select-chip');
+    chips.forEach(chip => {
+      const username = (chip.dataset.username || '').toLowerCase();
+      const id = (chip.dataset.id || '').toLowerCase();
+      const isSelected = selectedTokens.has(username) || (id && selectedTokens.has(id));
+      chip.classList.toggle('selected', isSelected);
+      const check = chip.querySelector('.chip-check');
+      if (check) check.textContent = isSelected ? '✓' : '+';
+    });
+  }
+
+  container.innerHTML = '';
+
+  const header = document.createElement('div');
+  header.className = 'server-users-picker-header';
+  header.innerHTML = `
+    <span><strong>Select ${serviceName} users to monitor:</strong></span>
+    <span>
+      <a href="#" class="btn-picker-select-all">Select All</a> · 
+      <a href="#" class="btn-picker-clear-all">Clear</a>
+    </span>
+  `;
+  container.appendChild(header);
+
+  const chipsContainer = document.createElement('div');
+  chipsContainer.className = 'server-users-chips-container';
+
+  users.forEach(u => {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'user-select-chip';
+    chip.dataset.username = u.username;
+    chip.dataset.id = u.id || '';
+
+    const label = u.friendly_name && u.friendly_name !== u.username
+      ? `${u.username} <span style="opacity:0.6;font-size:0.75rem;">(${u.friendly_name})</span>`
+      : u.username;
+
+    chip.innerHTML = `<span class="chip-check">+</span> <span class="chip-label">${label}</span>`;
+
+    chip.addEventListener('click', (e) => {
+      e.preventDefault();
+      const selectedTokens = new Set(getSelectedTokens());
+      const isCurrentlySelected = selectedTokens.has(u.username.toLowerCase()) || (u.id && selectedTokens.has(u.id.toLowerCase()));
+
+      let nextSelected;
+      if (isCurrentlySelected) {
+        nextSelected = Array.from(selectedTokens).filter(t => t !== u.username.toLowerCase() && t !== (u.id || '').toLowerCase());
+      } else {
+        selectedTokens.add(u.username);
+        nextSelected = Array.from(selectedTokens);
+      }
+      updateInputFromSelected(nextSelected);
+      refreshChipStates();
+    });
+
+    chipsContainer.appendChild(chip);
+  });
+
+  container.appendChild(chipsContainer);
+  container.style.display = 'block';
+
+  const btnSelectAll = header.querySelector('.btn-picker-select-all');
+  if (btnSelectAll) {
+    btnSelectAll.addEventListener('click', (e) => {
+      e.preventDefault();
+      const allUsernames = users.map(u => u.username);
+      updateInputFromSelected(allUsernames);
+      refreshChipStates();
+    });
+  }
+
+  const btnClearAll = header.querySelector('.btn-picker-clear-all');
+  if (btnClearAll) {
+    btnClearAll.addEventListener('click', (e) => {
+      e.preventDefault();
+      updateInputFromSelected([]);
+      refreshChipStates();
+    });
+  }
+
+  if (!inputEl._hasPickerListener) {
+    inputEl.addEventListener('input', () => {
+      refreshChipStates();
+    });
+    inputEl._hasPickerListener = true;
+  }
+
+  refreshChipStates();
+}
+
+if (el.btnFetchPlexSettingUsers) {
+  el.btnFetchPlexSettingUsers.addEventListener('click', async () => {
+    const origText = el.btnFetchPlexSettingUsers.textContent;
+    el.btnFetchPlexSettingUsers.disabled = true;
+    el.btnFetchPlexSettingUsers.textContent = 'Fetching...';
+    const urlVal = el.userSettingPlexUrl ? el.userSettingPlexUrl.value.trim() : '';
+    const keyVal = getSecretValue(el.userSettingPlexApiKey);
+
+    try {
+      const res = await api.getPlexUsers({
+        plex_url: urlVal || undefined,
+        plex_api_key: keyVal || undefined,
+      });
+      const users = (res && res.users) ? res.users : [];
+      renderServerUsersPicker(el.plexUsersPicker, el.userSettingPlexUsername, users, 'Plex');
+      el.btnFetchPlexSettingUsers.textContent = 'Fetched!';
+      setTimeout(() => {
+        if (el.btnFetchPlexSettingUsers) {
+          el.btnFetchPlexSettingUsers.disabled = false;
+          el.btnFetchPlexSettingUsers.textContent = origText;
+        }
+      }, 1500);
+    } catch (err) {
+      alert('Failed to fetch Plex users: ' + (err.message || err));
+      el.btnFetchPlexSettingUsers.disabled = false;
+      el.btnFetchPlexSettingUsers.textContent = origText;
+    }
+  });
+}
+
+if (el.btnFetchJellyfinSettingUsers) {
+  el.btnFetchJellyfinSettingUsers.addEventListener('click', async () => {
+    const origText = el.btnFetchJellyfinSettingUsers.textContent;
+    el.btnFetchJellyfinSettingUsers.disabled = true;
+    el.btnFetchJellyfinSettingUsers.textContent = 'Fetching...';
+    const urlVal = el.userSettingJellyfinUrl ? el.userSettingJellyfinUrl.value.trim() : '';
+    const keyVal = getSecretValue(el.userSettingJellyfinApiKey);
+
+    try {
+      const res = await api.getJellyfinUsers({
+        jellyfin_url: urlVal || undefined,
+        jellyfin_api_key: keyVal || undefined,
+      });
+      const users = (res && res.users) ? res.users : [];
+      renderServerUsersPicker(el.jellyfinUsersPicker, el.userSettingJellyfinUsername, users, 'Jellyfin');
+      el.btnFetchJellyfinSettingUsers.textContent = 'Fetched!';
+      setTimeout(() => {
+        if (el.btnFetchJellyfinSettingUsers) {
+          el.btnFetchJellyfinSettingUsers.disabled = false;
+          el.btnFetchJellyfinSettingUsers.textContent = origText;
+        }
+      }, 1500);
+    } catch (err) {
+      alert('Failed to fetch Jellyfin users: ' + (err.message || err));
+      el.btnFetchJellyfinSettingUsers.disabled = false;
+      el.btnFetchJellyfinSettingUsers.textContent = origText;
     }
   });
 }

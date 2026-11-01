@@ -5112,6 +5112,105 @@ body[data-theme="rose"] .heatmap-cell[data-level="4"] { background: rgba(244, 63
   line-height: 1.3;
 }
 
+/* Server Users Multi-Select Picker (Plex & Jellyfin) */
+.server-users-picker {
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px dashed var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 10px 14px;
+  animation: fadeIn 0.2s ease-in-out;
+}
+
+.server-users-picker-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.server-users-picker-header a {
+  color: var(--primary);
+  text-decoration: none;
+  font-weight: 500;
+  margin-left: 6px;
+  cursor: pointer;
+}
+
+.server-users-picker-header a:hover {
+  text-decoration: underline;
+  color: #fff;
+}
+
+.server-users-chips-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.user-select-chip {
+  background: rgba(30, 41, 59, 0.7);
+  border: 1px solid var(--border-color);
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 500;
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  user-select: none;
+}
+
+.user-select-chip:hover {
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.user-select-chip .chip-check {
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: bold;
+  opacity: 0.4;
+}
+
+.user-select-chip.selected {
+  background: rgba(244, 63, 94, 0.15);
+  border-color: var(--primary);
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.user-select-chip.selected .chip-check {
+  opacity: 1;
+}
+
+.server-users-picker-plex .user-select-chip.selected {
+  background: rgba(229, 160, 13, 0.18);
+  border-color: #fbbf24;
+  color: #fbbf24;
+}
+
+.server-users-picker-plex .server-users-picker-header a {
+  color: #fbbf24;
+}
+
+.server-users-picker-jellyfin .user-select-chip.selected {
+  background: rgba(170, 92, 195, 0.2);
+  border-color: #c084fc;
+  color: #c084fc;
+}
+
+.server-users-picker-jellyfin .server-users-picker-header a {
+  color: #c084fc;
+}
+
+
 
 
 

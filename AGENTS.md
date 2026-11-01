@@ -130,7 +130,7 @@ Plex webhooks send:
 ```bash
 cargo test
 ```
-Tests in `tests/api_tests.rs` (65 integration tests) cover:
+Tests in `tests/api_tests.rs` (66 integration tests) cover:
 - Dev login and `/api/v1/auth/me`
 - Plex movie and TV episode scrobbling
 - Plex and Jellyfin pre-play trailer, cinema intro, and clip filtering and exclusion
@@ -194,6 +194,7 @@ Tests in `tests/api_tests.rs` (65 integration tests) cover:
 - Tautulli continuous 1-way sync: background polling worker, user filter setting, dynamic user discovery, deduplication against database scrobbles, and task tracker management
 - Bidirectional media sync: user settings configuration (`plex_url`, `plex_api_key`, `bidirectional_sync_enabled`), connection testing endpoints (`/test-plex`, `/test-jellyfin`), and on-demand writeback (`/api/v1/user/sync/writeback`)
 - Media source (`source`: `"plex"`, `"jellyfin"`, `"emby"`, `"trakt"`, `"manual"`), import origin (`imported_from`: `"tautulli"`, `"trakt"`), and watched-by user (`source_user` / `watched_by`) logging on scrobbles and active sessions, card source/import/user badges, and history/timeline search and filtering
+- Server user fetching and multi-user filtering endpoints: `/api/v1/user/settings/plex/users` and `/api/v1/user/settings/jellyfin/users` querying server APIs, inserting/caching mappings in `plex_user_cache`, and supporting both GET and POST
 
 ### Run Playwright E2E UI Tests
 ```bash
@@ -201,7 +202,7 @@ cd web
 npm install
 npx playwright test
 ```
-Playwright tests in `web/tests/e2e.spec.js` (47 browser E2E tests) cover:
+Playwright tests in `web/tests/e2e.spec.js` (49 browser E2E tests) cover:
 - User sign-in flow, "+ Log Watch" modal, and timeline rendering
 - Multi-user separation in the web UI
 - Trakt history and rating import flow in the web UI (pasted JSON)
@@ -248,6 +249,10 @@ Playwright tests in `web/tests/e2e.spec.js` (47 browser E2E tests) cover:
 - Settings menu sub-navigation tabs: switch between Webhooks, Connected Services, API Keys, Preferences, and Data & Export
 - Admin "About" tab: dedicated system information view displaying dynamic runtime versions (Docker base image, SQLite engine, Rust compiler, OS kernel, Axum, Tokio), GitHub release update checks, and clean status badges
 - Tautulli continuous 1-way sync: user settings configuration, dynamic user selector dropdown with "Fetch Users" trigger, sync toggle, and background task management card (schedule, Run Now, View Logs)
+- Bidirectional media sync: user settings configuration (Plex & Jellyfin), test connection buttons, per-service sync checkboxes (Plex & Jellyfin), collapsible token extraction guides, scheduled and on-demand writeback, and dedicated admin background task management card (schedule, Run Now, View Logs)
+- Scrobble source and watched-by user: colour-coded service badges with logos (Plex, Jellyfin, Emby, Tautulli, Trakt, Manual), user chips with click-to-filter, detail modal display, settings service logo icons (Plex, Jellyfin, Emby, Radarr, Sonarr, Tautulli), and source/user filtering in History and Timeline
+- Server user fetching and multi-select filtering: Plex and Jellyfin user fetch buttons (`btn-fetch-plex-setting-users`, `btn-fetch-jellyfin-setting-users`), interactive multi-select user chips (`user-select-chip`) with selection checkmarks, select all / clear actions, and automatic sync with comma-separated inputs
+- Admin Services & API Keys card layout: split into dedicated cards per service (Metadata Provider, TheTVDB v4, TMDB, OpenID Connect SSO, Playback & Completion Threshold, and Save Action Card)
 - Bidirectional media sync: user settings configuration (Plex & Jellyfin), test connection buttons, per-service sync checkboxes (Plex & Jellyfin), collapsible token extraction guides, scheduled and on-demand writeback, and dedicated admin background task management card (schedule, Run Now, View Logs)
 - Scrobble source and watched-by user: colour-coded service badges with logos (Plex, Jellyfin, Emby, Tautulli, Trakt, Manual), user chips with click-to-filter, detail modal display, settings service logo icons (Plex, Jellyfin, Emby, Radarr, Sonarr, Tautulli), and source/user filtering in History and Timeline
 
