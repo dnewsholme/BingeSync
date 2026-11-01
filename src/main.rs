@@ -12,14 +12,14 @@ use bingesync::{
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 1. In-memory logging buffer and background task tracker
-    let log_buffer = Arc::new(bingesync::api::logs::LogBuffer::new(1000));
+    let log_buffer = Arc::new(bingesync::api::logs::LogBuffer::new(5000));
     let task_tracker = Arc::new(bingesync::api::jobs::BackgroundTaskTracker::new());
 
     // 2. Logging setup with in-memory buffer capture
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "bingesync=info,tower_http=info".into()),
+                .unwrap_or_else(|_| "bingesync=debug,tower_http=info".into()),
         )
         .with(tracing_subscriber::fmt::layer())
         .with(bingesync::api::logs::TracingLogLayer::new(log_buffer.clone()))

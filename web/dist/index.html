@@ -22,8 +22,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="BingeSync" />
-  <script type="module" crossorigin src="./assets/index-C_MXDq0b.js"></script>
-  <link rel="stylesheet" crossorigin href="./assets/index-gvylJl0P.css">
+  <script type="module" crossorigin src="./assets/index-DTKF2T_v.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-DZmZA2i8.css">
 </head>
 <body>
   <div id="app">
@@ -1935,23 +1935,71 @@
             <div class="settings-card">
               <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:14px;">
                 <div>
-                  <h2 class="card-title">Live Application Logs</h2>
-                  <p class="card-desc">Real-time log stream captured from server tracing events.</p>
+                  <div style="display:flex;align-items:center;gap:10px;">
+                    <h2 class="card-title" style="margin-bottom:0;">Live Application Logs</h2>
+                    <span id="admin-logs-count-badge" class="badge" style="background:rgba(255,255,255,0.08);color:var(--text-dim);font-size:0.75rem;padding:3px 8px;border-radius:12px;">0 entries</span>
+                  </div>
+                  <p class="card-desc" style="margin-top:4px;margin-bottom:0;">Real-time log stream captured from server tracing events with structured field inspection.</p>
                 </div>
-                <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-                  <input type="text" id="admin-logs-filter-search" class="form-control form-control-sm" placeholder="Search logs..." style="width:160px;padding:4px 8px;font-size:0.82rem;" />
-                  <select id="admin-logs-filter-level" class="form-control form-control-sm" style="width:auto;">
-                    <option value="">All Levels</option>
-                    <option value="INFO" selected>INFO & Above</option>
-                    <option value="WARN">WARN & ERROR</option>
-                    <option value="ERROR">ERROR Only</option>
-                  </select>
-                  <label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;color:var(--text-dim);cursor:pointer;">
-                    <input type="checkbox" id="admin-logs-autorefresh" checked /> Auto-refresh
-                  </label>
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                  <button class="btn btn-outline btn-sm" id="btn-copy-admin-logs" title="Copy visible logs to clipboard" style="display:inline-flex;align-items:center;gap:6px;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                    <span>Copy</span>
+                  </button>
+                  <button class="btn btn-outline btn-sm" id="btn-download-admin-logs" title="Download logs as text file" style="display:inline-flex;align-items:center;gap:6px;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    <span>Download</span>
+                  </button>
                   <button class="btn btn-outline btn-sm" id="btn-refresh-admin-logs">Refresh</button>
                   <button class="btn btn-outline btn-sm text-danger" id="btn-clear-admin-logs">Clear</button>
                 </div>
+              </div>
+
+              <!-- Filter Toolbar -->
+              <div class="admin-logs-toolbar" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:rgba(255,255,255,0.02);border:1px solid var(--border-subtle);border-radius:var(--radius-md);padding:8px 12px;margin-bottom:12px;">
+                <input type="text" id="admin-logs-filter-search" class="form-control form-control-sm" placeholder="Filter or search logs..." style="min-width:180px;flex:1;padding:5px 9px;font-size:0.82rem;" />
+                
+                <select id="admin-logs-filter-service" class="form-control form-control-sm" style="width:auto;font-size:0.82rem;">
+                  <option value="" selected>All Services</option>
+                  <option value="webhooks">Webhooks (Plex/Jellyfin/Emby)</option>
+                  <option value="auth">Auth & Security (OIDC/Tokens)</option>
+                  <option value="metadata">Metadata (TMDB/TVDB)</option>
+                  <option value="sync">Bidirectional Sync & Writeback</option>
+                  <option value="tautulli">Tautulli Sync</option>
+                  <option value="images">Image & Poster Cache</option>
+                  <option value="integrations">Integrations (Radarr/Sonarr)</option>
+                  <option value="maintenance">Database Maintenance</option>
+                  <option value="backup">Database Backups</option>
+                  <option value="users">User Sync & Cache</option>
+                </select>
+
+                <select id="admin-logs-filter-level" class="form-control form-control-sm" style="width:auto;font-size:0.82rem;">
+                  <option value="">All Levels</option>
+                  <option value="DEBUG">DEBUG & Above</option>
+                  <option value="INFO" selected>INFO & Above</option>
+                  <option value="WARN">WARN & ERROR</option>
+                  <option value="ERROR">ERROR Only</option>
+                </select>
+
+                <select id="admin-logs-filter-timerange" class="form-control form-control-sm" style="width:auto;font-size:0.82rem;">
+                  <option value="" selected>All Time</option>
+                  <option value="15m">Last 15m</option>
+                  <option value="1h">Last 1h</option>
+                  <option value="6h">Last 6h</option>
+                  <option value="24h">Last 24h</option>
+                </select>
+
+                <select id="admin-logs-filter-limit" class="form-control form-control-sm" style="width:auto;font-size:0.82rem;">
+                  <option value="100">100</option>
+                  <option value="250" selected>250</option>
+                  <option value="500">500</option>
+                  <option value="1000">1,000</option>
+                  <option value="2000">2,000</option>
+                </select>
+
+                <label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;color:var(--text-dim);cursor:pointer;white-space:nowrap;margin-left:auto;">
+                  <input type="checkbox" id="admin-logs-autorefresh" checked /> Auto-refresh
+                </label>
               </div>
 
               <div id="admin-logs-active-filter" style="display:none;margin-bottom:12px;align-items:center;gap:8px;">

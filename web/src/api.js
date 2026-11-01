@@ -317,8 +317,10 @@ export const api = {
   getAdminVersion: () => request('/admin/version'),
   checkAdminVersion: () => request('/admin/version/check', { method: 'POST' }),
   getAdminLogs: (params = {}) => {
-    let url = `/admin/logs?limit=${params.limit || 200}`;
+    let url = `/admin/logs?limit=${params.limit || 250}`;
     if (params.level) url += `&level=${encodeURIComponent(params.level)}`;
+    if (params.service) url += `&service=${encodeURIComponent(params.service)}`;
+    if (params.since) url += `&since=${encodeURIComponent(params.since)}`;
     if (params.search) url += `&search=${encodeURIComponent(params.search)}`;
     return request(url);
   },

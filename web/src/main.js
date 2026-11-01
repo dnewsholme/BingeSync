@@ -544,8 +544,14 @@ const el = {
   // Admin Application Logs
   btnRefreshAdminLogs: document.getElementById('btn-refresh-admin-logs'),
   btnClearAdminLogs: document.getElementById('btn-clear-admin-logs'),
+  btnCopyAdminLogs: document.getElementById('btn-copy-admin-logs'),
+  btnDownloadAdminLogs: document.getElementById('btn-download-admin-logs'),
   adminLogsViewer: document.getElementById('admin-logs-viewer'),
   adminLogsFilterLevel: document.getElementById('admin-logs-filter-level'),
+  adminLogsFilterService: document.getElementById('admin-logs-filter-service'),
+  adminLogsFilterTimerange: document.getElementById('admin-logs-filter-timerange'),
+  adminLogsFilterLimit: document.getElementById('admin-logs-filter-limit'),
+  adminLogsCountBadge: document.getElementById('admin-logs-count-badge'),
   adminLogsFilterSearch: document.getElementById('admin-logs-filter-search'),
   adminLogsAutorefresh: document.getElementById('admin-logs-autorefresh'),
   adminLogsActiveFilter: document.getElementById('admin-logs-active-filter'),
@@ -5749,16 +5755,26 @@ function updateAdminLogsFilterBadge() {
   }
 }
 
+let currentLoadedAdminLogs = [];
+
 async function loadAdminLogs() {
   if (!el.adminLogsViewer) return;
   try {
     const level = el.adminLogsFilterLevel ? el.adminLogsFilterLevel.value : '';
+    const service = el.adminLogsFilterService ? el.adminLogsFilterService.value : '';
+    const timerange = el.adminLogsFilterTimerange ? el.adminLogsFilterTimerange.value : '';
+    const limit = el.adminLogsFilterLimit ? parseInt(el.adminLogsFilterLimit.value, 10) : 250;
     const search = el.adminLogsFilterSearch ? el.adminLogsFilterSearch.value.trim() : '';
-    const params = {};
+
+    const params = { limit };
     if (level) params.level = level;
+    if (service) params.service = service;
+    if (timerange) params.since = timerange;
     if (search) params.search = search;
+
     const res = await api.getAdminLogs(params);
     const logs = Array.isArray(res) ? res : (res && res.entries ? res.entries : []);
+    currentLoadedAdminLogs = logs;
     renderAdminLogs(logs);
   } catch (err) {
     console.error('Failed to load admin logs:', err);
@@ -5767,10 +5783,40 @@ async function loadAdminLogs() {
 
 let initialLogsLoaded = false;
 
+function formatLogMessage(rawMsg) {
+  if (!rawMsg) return '';
+  const escaped = escapeHtml(rawMsg);
+
+  // Match bracketed key=val metadata e.g. "Message text [key1=val1 key2=val2]"
+  const bracketMatch = escaped.match(/^(.*?)(\s*\[([a-zA-Z0-9_]+=[^\]]+)\])$/);
+  if (bracketMatch) {
+    const textPart = bracketMatch[1];
+    const tagsPart = bracketMatch[3];
+    const formattedTags = tagsPart.split(/\s+/).map(pair => {
+      const eqIdx = pair.indexOf('=');
+      if (eqIdx > 0) {
+        const k = pair.substring(0, eqIdx);
+        const v = pair.substring(eqIdx + 1);
+        return `<span class="log-meta-tag"><span class="log-key">${k}</span>=<span class="log-val">${v}</span></span>`;
+      }
+      return `<span class="log-meta-tag">${pair}</span>`;
+    }).join(' ');
+
+    return `${textPart} ${formattedTags}`;
+  }
+
+  return escaped;
+}
+
 function renderAdminLogs(logs) {
   if (!el.adminLogsViewer) return;
+
+  if (el.adminLogsCountBadge) {
+    el.adminLogsCountBadge.textContent = `${logs ? logs.length : 0} ${logs && logs.length === 1 ? 'entry' : 'entries'}`;
+  }
+
   if (!logs || logs.length === 0) {
-    el.adminLogsViewer.innerHTML = `<div style="color:var(--text-dim);padding:14px;text-align:center;">No logs captured yet.</div>`;
+    el.adminLogsViewer.innerHTML = `<div style="color:var(--text-dim);padding:24px 14px;text-align:center;">No logs matched the selected filters.</div>`;
     return;
   }
 
@@ -5779,12 +5825,14 @@ function renderAdminLogs(logs) {
   el.adminLogsViewer.innerHTML = logs.map(l => {
     const time = new Date(l.timestamp).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
     const level = (l.level || 'INFO').toUpperCase();
+    const formattedMsg = formatLogMessage(l.message);
+    const shortTarget = escapeHtml((l.target || '').replace(/^bingesync::/, ''));
     return `
       <div class="log-entry">
-        <span class="log-time">${time}</span>
+        <span class="log-time" title="${escapeHtml(l.timestamp)}">${time}</span>
         <span class="log-level log-level-${level}">${level}</span>
-        <span class="log-target">${escapeHtml(l.target)}</span>
-        <span class="log-msg">${escapeHtml(l.message)}</span>
+        <span class="log-target" title="${escapeHtml(l.target)}">${shortTarget}</span>
+        <span class="log-msg">${formattedMsg}</span>
       </div>
     `;
   }).join('');
@@ -5817,8 +5865,59 @@ if (el.btnRefreshAdminLogs) {
   el.btnRefreshAdminLogs.addEventListener('click', () => loadAdminLogs());
 }
 
+if (el.btnCopyAdminLogs) {
+  el.btnCopyAdminLogs.addEventListener('click', async () => {
+    if (!currentLoadedAdminLogs || currentLoadedAdminLogs.length === 0) {
+      alert('No logs currently visible to copy.');
+      return;
+    }
+    const text = currentLoadedAdminLogs.map(l => `[${l.timestamp}] [${l.level}] [${l.target}] ${l.message}`).join('\n');
+    try {
+      await navigator.clipboard.writeText(text);
+      const originalHtml = el.btnCopyAdminLogs.innerHTML;
+      el.btnCopyAdminLogs.innerHTML = `<span>Copied!</span>`;
+      setTimeout(() => {
+        el.btnCopyAdminLogs.innerHTML = originalHtml;
+      }, 2000);
+    } catch (err) {
+      alert('Failed to copy to clipboard: ' + err.message);
+    }
+  });
+}
+
+if (el.btnDownloadAdminLogs) {
+  el.btnDownloadAdminLogs.addEventListener('click', () => {
+    if (!currentLoadedAdminLogs || currentLoadedAdminLogs.length === 0) {
+      alert('No logs currently visible to download.');
+      return;
+    }
+    const text = currentLoadedAdminLogs.map(l => `[${l.timestamp}] [${l.level}] [${l.target}] ${l.message}`).join('\n');
+    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `bingesync-logs-${new Date().toISOString().replace(/[:.]/g, '-')}.log`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  });
+}
+
 if (el.adminLogsFilterLevel) {
   el.adminLogsFilterLevel.addEventListener('change', () => loadAdminLogs());
+}
+
+if (el.adminLogsFilterService) {
+  el.adminLogsFilterService.addEventListener('change', () => loadAdminLogs());
+}
+
+if (el.adminLogsFilterTimerange) {
+  el.adminLogsFilterTimerange.addEventListener('change', () => loadAdminLogs());
+}
+
+if (el.adminLogsFilterLimit) {
+  el.adminLogsFilterLimit.addEventListener('change', () => loadAdminLogs());
 }
 
 if (el.btnClearAdminLogsFilter) {

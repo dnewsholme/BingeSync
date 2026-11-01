@@ -2642,6 +2642,26 @@ async fn test_admin_settings_logs_and_tasks_management() {
     let empty_logs: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(empty_logs["entries"].as_array().unwrap().len(), 0);
 
+    // Test logs service, since, and limit query parameters
+    let req = Request::builder()
+        .uri("/api/v1/admin/logs?service=images&limit=5")
+        .header(header::AUTHORIZATION, format!("Bearer {}", admin_jwt))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let image_logs: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert!(image_logs["entries"].as_array().unwrap().len() <= 5);
+
+    let req = Request::builder()
+        .uri("/api/v1/admin/logs?since=1h&level=INFO")
+        .header(header::AUTHORIZATION, format!("Bearer {}", admin_jwt))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
     // Test triggering db_maintenance
     let req = Request::builder()
         .method("POST")
