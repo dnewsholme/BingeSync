@@ -405,6 +405,13 @@ const el = {
   btnFetchJellyfinSettingUsers: document.getElementById('btn-fetch-jellyfin-setting-users'),
   jellyfinUsersPicker: document.getElementById('jellyfin-users-picker'),
   userSettingEmbyUsername: document.getElementById('user-setting-emby-username'),
+  btnFetchEmbySettingUsers: document.getElementById('btn-fetch-emby-setting-users'),
+  embyUsersPicker: document.getElementById('emby-users-picker'),
+  userSettingEmbyUrl: document.getElementById('user-setting-emby-url'),
+  userSettingEmbyApiKey: document.getElementById('user-setting-emby-api-key'),
+  userSettingEmbySyncEnabled: document.getElementById('user-setting-emby-sync-enabled'),
+  btnTestEmbyConnection: document.getElementById('btn-test-emby-connection'),
+  embyTestStatus: document.getElementById('emby-test-status'),
   userSettingJellyfinUrl: document.getElementById('user-setting-jellyfin-url'),
   userSettingJellyfinApiKey: document.getElementById('user-setting-jellyfin-api-key'),
   userSettingJellyfinSyncEnabled: document.getElementById('user-setting-jellyfin-sync-enabled'),
@@ -2909,6 +2916,12 @@ async function loadUserSettings() {
       el.userSettingJellyfinSyncEnabled.checked = s.jellyfin_sync_enabled !== undefined ? !!s.jellyfin_sync_enabled : !!s.bidirectional_sync_enabled;
     }
 
+    if (el.userSettingEmbyUrl) el.userSettingEmbyUrl.value = s.emby_url || '';
+    applySecretField(el.userSettingEmbyApiKey, s.emby_api_key, s.emby_api_key_masked);
+    if (el.userSettingEmbySyncEnabled) {
+      el.userSettingEmbySyncEnabled.checked = s.emby_sync_enabled !== undefined ? !!s.emby_sync_enabled : !!s.bidirectional_sync_enabled;
+    }
+
     if (el.userSettingBidirectionalSyncEnabled) {
       el.userSettingBidirectionalSyncEnabled.checked = !!s.bidirectional_sync_enabled;
     }
@@ -2976,7 +2989,10 @@ if (el.formUserSettings) {
         jellyfin_url: el.userSettingJellyfinUrl ? el.userSettingJellyfinUrl.value.trim() : null,
         jellyfin_api_key: getSecretValue(el.userSettingJellyfinApiKey),
         jellyfin_sync_enabled: el.userSettingJellyfinSyncEnabled ? el.userSettingJellyfinSyncEnabled.checked : false,
-        bidirectional_sync_enabled: (el.userSettingPlexSyncEnabled && el.userSettingPlexSyncEnabled.checked) || (el.userSettingJellyfinSyncEnabled && el.userSettingJellyfinSyncEnabled.checked) || (el.userSettingBidirectionalSyncEnabled ? el.userSettingBidirectionalSyncEnabled.checked : false),
+        emby_url: el.userSettingEmbyUrl ? el.userSettingEmbyUrl.value.trim() : null,
+        emby_api_key: getSecretValue(el.userSettingEmbyApiKey),
+        emby_sync_enabled: el.userSettingEmbySyncEnabled ? el.userSettingEmbySyncEnabled.checked : false,
+        bidirectional_sync_enabled: (el.userSettingPlexSyncEnabled && el.userSettingPlexSyncEnabled.checked) || (el.userSettingJellyfinSyncEnabled && el.userSettingJellyfinSyncEnabled.checked) || (el.userSettingEmbySyncEnabled && el.userSettingEmbySyncEnabled.checked) || (el.userSettingBidirectionalSyncEnabled ? el.userSettingBidirectionalSyncEnabled.checked : false),
         radarr_url: el.userSettingRadarrUrl ? el.userSettingRadarrUrl.value.trim() : null,
         radarr_api_key: getSecretValue(el.userSettingRadarrApiKey),
         sonarr_url: el.userSettingSonarrUrl ? el.userSettingSonarrUrl.value.trim() : null,
@@ -3125,6 +3141,41 @@ if (el.btnTestJellyfinConnection) {
     } finally {
       el.btnTestJellyfinConnection.disabled = false;
       el.btnTestJellyfinConnection.textContent = 'Test Jellyfin Connection';
+    }
+  });
+}
+
+if (el.btnTestEmbyConnection) {
+  el.btnTestEmbyConnection.addEventListener('click', async () => {
+    const url = el.userSettingEmbyUrl ? el.userSettingEmbyUrl.value.trim() : '';
+    const key = getSecretValue(el.userSettingEmbyApiKey);
+    if (!url) {
+      if (el.embyTestStatus) {
+        el.embyTestStatus.style.color = 'var(--accent-red)';
+        el.embyTestStatus.textContent = 'Please enter an Emby Server URL first.';
+      }
+      return;
+    }
+    el.btnTestEmbyConnection.disabled = true;
+    el.btnTestEmbyConnection.textContent = 'Testing...';
+    if (el.embyTestStatus) {
+      el.embyTestStatus.style.color = 'var(--text-muted)';
+      el.embyTestStatus.textContent = 'Connecting to Emby...';
+    }
+    try {
+      const res = await api.testEmbyConnection({ emby_url: url, emby_api_key: key });
+      if (el.embyTestStatus) {
+        el.embyTestStatus.style.color = '#34d399';
+        el.embyTestStatus.textContent = res.message || 'Connection successful!';
+      }
+    } catch (err) {
+      if (el.embyTestStatus) {
+        el.embyTestStatus.style.color = 'var(--accent-red)';
+        el.embyTestStatus.textContent = 'Failed: ' + err.message;
+      }
+    } finally {
+      el.btnTestEmbyConnection.disabled = false;
+      el.btnTestEmbyConnection.textContent = 'Test Emby Connection';
     }
   });
 }
@@ -3397,6 +3448,36 @@ if (el.btnFetchJellyfinSettingUsers) {
       alert('Failed to fetch Jellyfin users: ' + (err.message || err));
       el.btnFetchJellyfinSettingUsers.disabled = false;
       el.btnFetchJellyfinSettingUsers.textContent = origText;
+    }
+  });
+}
+
+if (el.btnFetchEmbySettingUsers) {
+  el.btnFetchEmbySettingUsers.addEventListener('click', async () => {
+    const origText = el.btnFetchEmbySettingUsers.textContent;
+    el.btnFetchEmbySettingUsers.disabled = true;
+    el.btnFetchEmbySettingUsers.textContent = 'Fetching...';
+    const urlVal = el.userSettingEmbyUrl ? el.userSettingEmbyUrl.value.trim() : '';
+    const keyVal = getSecretValue(el.userSettingEmbyApiKey);
+
+    try {
+      const res = await api.getEmbyUsers({
+        emby_url: urlVal || undefined,
+        emby_api_key: keyVal || undefined,
+      });
+      const users = (res && res.users) ? res.users : [];
+      renderServerUsersPicker(el.embyUsersPicker, el.userSettingEmbyUsername, users, 'Emby');
+      el.btnFetchEmbySettingUsers.textContent = 'Fetched!';
+      setTimeout(() => {
+        if (el.btnFetchEmbySettingUsers) {
+          el.btnFetchEmbySettingUsers.disabled = false;
+          el.btnFetchEmbySettingUsers.textContent = origText;
+        }
+      }, 1500);
+    } catch (err) {
+      alert('Failed to fetch Emby users: ' + (err.message || err));
+      el.btnFetchEmbySettingUsers.disabled = false;
+      el.btnFetchEmbySettingUsers.textContent = origText;
     }
   });
 }

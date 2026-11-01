@@ -1203,27 +1203,91 @@
                 </details>
               </div>
 
-              <!-- Card 3: Emby Account Filtering -->
+              <!-- Card 3: Emby Media Server & Filtering -->
               <div class="card settings-card" id="card-user-emby">
                 <div class="card-title">
                   <span class="badge-pill badge-pill-emby" style="background: rgba(82, 181, 75, 0.15); color: #4ade80; border: 1px solid rgba(82, 181, 75, 0.4); display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; font-weight: 600; font-size: 0.85rem;">
                     <svg class="service-icon" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M11.2 1.5a2.5 2.5 0 0 1 3.6 0l7.7 7.7a2.5 2.5 0 0 1 0 3.6l-7.7 7.7a2.5 2.5 0 0 1-3.6 0l-7.7-7.7a2.5 2.5 0 0 1 0-3.6l7.7-7.7zm-1.2 6v9l6.5-4.5-6.5-4.5z"/></svg>
                     Emby
                   </span>
-                  <span>Emby Account Filtering</span>
+                  <span>Emby Account Filtering & Server Sync</span>
                 </div>
                 <p class="card-desc">
-                  Filter incoming Emby webhook scrobbles to only match your personal user account.
+                  Filter incoming Emby webhooks and sync watch events back to your Emby media server.
                 </p>
                 <div class="form-row">
                   <div class="form-group col-full">
                     <label for="user-setting-emby-username">Emby Username(s) or User ID(s)</label>
-                    <input type="text" id="user-setting-emby-username" class="form-control" placeholder="e.g. your_emby_username, a1b2c3d4... (comma-separated)" spellcheck="false" />
+                    <div style="display:flex;gap:8px;">
+                      <input type="text" id="user-setting-emby-username" class="form-control" placeholder="e.g. your_emby_username, a1b2c3d4... (comma-separated)" spellcheck="false" />
+                      <button type="button" class="btn btn-outline btn-sm" id="btn-fetch-emby-setting-users" title="Fetch registered users from Emby server" style="white-space:nowrap;">
+                        Fetch Users
+                      </button>
+                    </div>
                     <small style="color: var(--text-muted); font-size: 0.8rem; margin-top: 4px; display: block;">
                       Only record scrobbles matching these Emby username(s) or user ID(s) (comma-separated).
                     </small>
+                    <div id="emby-users-picker" class="server-users-picker server-users-picker-emby" style="display:none;margin-top:10px;"></div>
                   </div>
                 </div>
+                <div class="form-row">
+                  <div class="form-group col-half">
+                    <label for="user-setting-emby-url">Emby Server URL (for Sync & Writeback)</label>
+                    <input type="url" id="user-setting-emby-url" class="form-control" placeholder="http://192.168.1.100:8096" />
+                  </div>
+                  <div class="form-group col-half">
+                    <label for="user-setting-emby-api-key">Emby API Key</label>
+                    <div class="input-secret-wrapper">
+                      <input type="text" id="user-setting-emby-api-key" class="form-control font-mono" placeholder="Emby API Key" autocomplete="off" spellcheck="false" />
+                      <button type="button" class="btn-toggle-secret" data-target="user-setting-emby-api-key" title="Unhide / Show full key">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <div class="form-row" style="margin-top: -6px; margin-bottom: 12px;">
+                  <div class="form-group col-full" style="display:flex;align-items:center;gap:10px;">
+                    <button type="button" class="btn btn-outline btn-sm" id="btn-test-emby-connection">Test Emby Connection</button>
+                    <span id="emby-test-status" class="setting-test-status" style="font-size:0.85rem;"></span>
+                  </div>
+                </div>
+                <div class="form-row" style="margin-top: 4px; margin-bottom: 8px;">
+                  <div class="form-group col-full">
+                    <label class="setting-toggle-btn" for="user-setting-emby-sync-enabled">
+                      <input type="checkbox" id="user-setting-emby-sync-enabled" />
+                      <span>Enable Watch History Sync to Emby</span>
+                    </label>
+                    <small style="display:block;margin-top:4px;font-size:0.75rem;color:var(--text-dim);">
+                      Automatically marks media as watched on your Emby server when logged or scrobbled in BingeSync.
+                    </small>
+                  </div>
+                </div>
+                <details class="setup-guide-accordion" style="margin-top: 6px; margin-bottom: 6px;">
+                  <summary>How to find your Emby API Key</summary>
+                  <div class="steps-list">
+                    <div class="step-item">
+                      <div class="step-number">1</div>
+                      <div class="step-content">
+                        <h4>Open Emby Server Dashboard</h4>
+                        <p>Sign in to your Emby Server as an administrator, click the gear icon in the top right to open the <strong>Server Dashboard</strong>.</p>
+                      </div>
+                    </div>
+                    <div class="step-item">
+                      <div class="step-number">2</div>
+                      <div class="step-content">
+                        <h4>Navigate to API Keys</h4>
+                        <p>In the left sidebar under <strong>Advanced</strong>, click <strong>API Keys</strong>.</p>
+                      </div>
+                    </div>
+                    <div class="step-item">
+                      <div class="step-number">3</div>
+                      <div class="step-content">
+                        <h4>Create New API Key</h4>
+                        <p>Click <strong>New Api Key</strong>, enter an application name like <code>BingeSync</code>, and copy the generated key into the field above.</p>
+                      </div>
+                    </div>
+                  </div>
+                </details>
               </div>
 
               <!-- Card 4: Bidirectional Watch State Sync -->
@@ -1233,10 +1297,10 @@
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
                     Media Server Sync
                   </span>
-                  <span>Bidirectional Watch State Sync (Plex & Jellyfin)</span>
+                  <span>Bidirectional Watch State Sync (Plex, Jellyfin & Emby)</span>
                 </div>
                 <p class="card-desc">
-                  Keep watched states synchronized across both Plex and Jellyfin media servers with automatic writeback or on-demand triggers.
+                  Keep watched states synchronized across Plex, Jellyfin, and Emby media servers with automatic writeback or on-demand triggers.
                 </p>
                 <div class="form-row">
                   <div class="form-group col-half">
@@ -1245,7 +1309,7 @@
                       <input type="checkbox" id="user-setting-bidirectional-sync-enabled" />
                       <span>Enable Bidirectional Sync</span>
                     </label>
-                    <small style="display:block;margin-top:4px;font-size:0.75rem;color:var(--text-dim);">When enabled, watches logged or completed in BingeSync are automatically synced back to your configured Plex and Jellyfin servers.</small>
+                    <small style="display:block;margin-top:4px;font-size:0.75rem;color:var(--text-dim);">When enabled, watches logged or completed in BingeSync are automatically synced back to your configured Plex, Jellyfin, and Emby servers.</small>
                   </div>
                   <div class="form-group col-half" style="display:flex;flex-direction:column;justify-content:flex-end;">
                     <label>Manual Sync Writeback</label>

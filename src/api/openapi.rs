@@ -610,6 +610,25 @@ pub const OPENAPI_SPEC_JSON: &str = r###"{
                     }
                 }
             },
+            "/api/v1/user/settings/emby/users": {
+                "post": {
+                    "tags": ["User"],
+                    "summary": "Fetch Emby users",
+                    "description": "Queries configured or provided Emby server instance for registered users.",
+                    "security": [{ "BearerAuth": [] }, { "ApiKeyAuth": [] }],
+                    "responses": {
+                        "200": { "description": "List of Emby users" }
+                    }
+                },
+                "get": {
+                    "tags": ["User"],
+                    "summary": "Fetch Emby users (GET)",
+                    "security": [{ "BearerAuth": [] }, { "ApiKeyAuth": [] }],
+                    "responses": {
+                        "200": { "description": "List of Emby users" }
+                    }
+                }
+            },
             "/api/v1/import/trakt": {
                 "post": {
                     "tags": ["Imports"],

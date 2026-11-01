@@ -5210,6 +5210,16 @@ body[data-theme="rose"] .heatmap-cell[data-level="4"] { background: rgba(244, 63
   color: #c084fc;
 }
 
+.server-users-picker-emby .user-select-chip.selected {
+  background: rgba(82, 181, 75, 0.2);
+  border-color: #4ade80;
+  color: #4ade80;
+}
+
+.server-users-picker-emby .server-users-picker-header a {
+  color: #4ade80;
+}
+
 
 
 

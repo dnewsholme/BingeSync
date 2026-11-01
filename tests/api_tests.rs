@@ -8820,6 +8820,213 @@ fn urlencoding_encode(s: &str) -> String {
     url::form_urlencoded::byte_serialize(s.as_bytes()).collect()
 }
 
+#[tokio::test]
+async fn test_emby_sync_and_user_lookup_endpoints() {
+    let (app, pool, config) = setup_test_app().await;
+
+    // 1. Mock Emby Server
+    let mock_router = axum::Router::new()
+        .route(
+            "/System/Info",
+            axum::routing::get(|| async {
+                axum::Json(serde_json::json!({
+                    "ServerName": "Test Emby Media Server",
+                    "Version": "4.8.8.0"
+                }))
+            }),
+        )
+        .route(
+            "/Users",
+            axum::routing::get(|| async {
+                axum::Json(serde_json::json!([
+                    {
+                        "Id": "emby-uuid-1",
+                        "Name": "emby_user_alice"
+                    },
+                    {
+                        "Id": "emby-uuid-2",
+                        "Name": "emby_user_bob"
+                    }
+                ]))
+            }),
+        )
+        .route(
+            "/Users/{user_id}/Items",
+            axum::routing::get(|| async {
+                axum::Json(serde_json::json!({
+                    "Items": [
+                        {
+                            "Id": "emby-item-dune-999",
+                            "Name": "Dune: Part Two",
+                            "Type": "Movie",
+                            "ProductionYear": 2024
+                        }
+                    ]
+                }))
+            }),
+        )
+        .route(
+            "/Users/{user_id}/PlayedItems/{item_id}",
+            axum::routing::post(|| async {
+                axum::Json(serde_json::json!({
+                    "Played": true
+                }))
+            }),
+        );
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, mock_router).await.unwrap();
+    });
+
+    let mock_server_url = format!("http://{}", addr);
+
+    // 2. Setup user and token
+    let user_id = "test-emby-sync-user".to_string();
+    sqlx::query("INSERT INTO users (id, email, display_name, webhook_token, role) VALUES (?, ?, ?, ?, ?)")
+        .bind(&user_id)
+        .bind("emby_sync@bingesync.local")
+        .bind("Emby Tester")
+        .bind("token-emby-sync")
+        .bind("user")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let token = create_jwt(&user_id, "emby_sync@bingesync.local", &config.jwt_secret).unwrap();
+
+    // 3. Test Emby connection
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/user/settings/test-emby")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(json!({
+            "emby_url": mock_server_url,
+            "emby_api_key": "test-emby-token"
+        }).to_string()))
+        .unwrap();
+
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let conn_resp: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    assert_eq!(conn_resp["status"], "success");
+    assert!(conn_resp["message"].as_str().unwrap().contains("Test Emby Media Server"));
+
+    // 4. Test Emby User Lookup via POST
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/user/settings/emby/users")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(json!({
+            "emby_url": mock_server_url,
+            "emby_api_key": "test-emby-token"
+        }).to_string()))
+        .unwrap();
+
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let users_resp: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    assert_eq!(users_resp["status"], "success");
+    let users = users_resp["users"].as_array().unwrap();
+    assert_eq!(users.len(), 2);
+    assert_eq!(users[0]["username"], "emby_user_alice");
+    assert_eq!(users[1]["username"], "emby_user_bob");
+
+    // Verify cached in plex_user_cache
+    let cached_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM plex_user_cache WHERE source = 'emby'")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert!(cached_count >= 2);
+
+    // 5. Update user settings with Emby config
+    let req = Request::builder()
+        .method("PUT")
+        .uri("/api/v1/user/settings")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(json!({
+            "emby_url": mock_server_url,
+            "emby_api_key": "saved-emby-key-12345",
+            "emby_sync_enabled": true
+        }).to_string()))
+        .unwrap();
+
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // Verify GET /api/v1/user/settings reflects Emby config
+    let req = Request::builder()
+        .uri("/api/v1/user/settings")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .body(Body::empty())
+        .unwrap();
+
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let settings: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    assert_eq!(settings["emby_url"], mock_server_url);
+    assert_eq!(settings["emby_api_key_configured"], true);
+    assert_eq!(settings["emby_sync_enabled"], true);
+    assert!(settings["emby_api_key_masked"].as_str().unwrap().contains('•'));
+
+    // 6. Test Emby User Lookup via GET (using saved user credentials)
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/user/settings/emby/users")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .body(Body::empty())
+        .unwrap();
+
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let get_users_resp: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    assert_eq!(get_users_resp["status"], "success");
+    assert_eq!(get_users_resp["users"].as_array().unwrap().len(), 2);
+
+    // 7. Test Emby Writeback
+    sqlx::query(
+        r#"
+        INSERT INTO scrobbles (
+            id, user_id, title, media_type, year, season_number, episode_number,
+            watched_at, created_at, watch_status, progress_percent, source, guid
+        ) VALUES (
+            'scrobble-emby-wb', ?, 'Dune: Part Two', 'movie', 2024, NULL, NULL,
+            datetime('now'), datetime('now'), 'completed', 100, 'emby', 'emby-item-dune-999'
+        )
+        "#
+    )
+    .bind(&user_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/user/sync/writeback")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(json!({
+            "limit": 10
+        }).to_string()))
+        .unwrap();
+
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let wb_resp: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    assert_eq!(wb_resp["status"], "success");
+    assert!(wb_resp["emby_synced"].as_i64().unwrap() >= 1);
+}
+
+
 
 
 

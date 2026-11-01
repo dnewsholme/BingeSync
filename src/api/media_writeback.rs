@@ -40,6 +40,13 @@ pub struct TestJellyfinRequest {
     pub jellyfin_username: Option<String>,
 }
 
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct TestEmbyRequest {
+    pub emby_url: Option<String>,
+    pub emby_api_key: Option<String>,
+    pub emby_username: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServerUserItem {
     pub id: String,
@@ -54,6 +61,8 @@ pub struct FetchUsersParams {
     pub plex_api_key: Option<String>,
     pub jellyfin_url: Option<String>,
     pub jellyfin_api_key: Option<String>,
+    pub emby_url: Option<String>,
+    pub emby_api_key: Option<String>,
     pub url: Option<String>,
     pub api_key: Option<String>,
 }
@@ -131,6 +140,49 @@ pub async fn test_jellyfin_connection(jellyfin_url: &str, api_key: &str) -> Resu
         .and_then(|v| v.get("ServerName"))
         .and_then(|v| v.as_str())
         .unwrap_or("Jellyfin");
+    let version = body
+        .as_ref()
+        .and_then(|v| v.get("Version"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+
+    Ok(format!("Successfully connected to {} (v{})", server_name, version))
+}
+
+/// Tests connection to Emby server using X-Emby-Token
+pub async fn test_emby_connection(emby_url: &str, api_key: &str) -> Result<String, String> {
+    let base = emby_url.trim_end_matches('/');
+    crate::api::ssrf::validate_integration_url(base).map_err(|e| format!("Invalid Emby URL: {}", e))?;
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(8))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let url = format!("{}/System/Info", base);
+    let resp = client
+        .get(&url)
+        .header("X-Emby-Token", api_key)
+        .header("Authorization", format!("MediaBrowser Token=\"{}\"", api_key))
+        .send()
+        .await
+        .map_err(|e| format!("Could not reach Emby server: {}", e))?;
+
+    let status = resp.status();
+    if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
+        return Err("Authentication failed: invalid Emby API key".to_string());
+    }
+
+    if !status.is_success() {
+        return Err(format!("Emby returned error HTTP {}", status));
+    }
+
+    let body = resp.json::<serde_json::Value>().await.ok();
+    let server_name = body
+        .as_ref()
+        .and_then(|v| v.get("ServerName"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("Emby");
     let version = body
         .as_ref()
         .and_then(|v| v.get("Version"))
@@ -453,7 +505,12 @@ pub fn dispatch_media_writeback(pool: SqlitePool, user_id: String, item: Writeba
             .map(|s| s == "true" || s == "1")
             .unwrap_or(bidi);
 
-        if !plex_sync && !jellyfin_sync {
+        let emby_sync = crate::api::user_settings::get_user_setting(&pool, &user_id, "emby_sync_enabled")
+            .await
+            .map(|s| s == "true" || s == "1")
+            .unwrap_or(bidi);
+
+        if !plex_sync && !jellyfin_sync && !emby_sync {
             return;
         }
 
@@ -490,6 +547,23 @@ pub fn dispatch_media_writeback(pool: SqlitePool, user_id: String, item: Writeba
                         Ok(true) => tracing::info!(title = %item.title, "Successfully synced watch state to Jellyfin"),
                         Ok(false) => tracing::debug!(title = %item.title, "Item not found in Jellyfin library for writeback"),
                         Err(e) => tracing::warn!(title = %item.title, error = %e, "Failed to writeback watch state to Jellyfin"),
+                    }
+                }
+            }
+        }
+
+        // 3. Sync to Emby if configured & enabled
+        if emby_sync {
+            let emby_url = crate::api::user_settings::get_user_setting(&pool, &user_id, "emby_url").await;
+            let emby_api_key = crate::api::user_settings::get_user_setting(&pool, &user_id, "emby_api_key").await;
+            let emby_username = crate::api::user_settings::get_user_setting(&pool, &user_id, "emby_username").await;
+
+            if let (Some(ref url), Some(ref key)) = (emby_url, emby_api_key) {
+                if !url.trim().is_empty() && !key.trim().is_empty() {
+                    match writeback_item_to_jellyfin(&client, url, key, emby_username.as_deref(), &item).await {
+                        Ok(true) => tracing::info!(title = %item.title, "Successfully synced watch state to Emby"),
+                        Ok(false) => tracing::debug!(title = %item.title, "Item not found in Emby library for writeback"),
+                        Err(e) => tracing::warn!(title = %item.title, error = %e, "Failed to writeback watch state to Emby"),
                     }
                 }
             }
@@ -600,7 +674,12 @@ pub async fn sync_all_users_media(state: &AppState) -> Result<(usize, usize, usi
             .map(|s| s == "true" || s == "1")
             .unwrap_or(bidi);
 
-        if !plex_sync && !jellyfin_sync {
+        let emby_sync = crate::api::user_settings::get_user_setting(pool, &u.id, "emby_sync_enabled")
+            .await
+            .map(|s| s == "true" || s == "1")
+            .unwrap_or(bidi);
+
+        if !plex_sync && !jellyfin_sync && !emby_sync {
             continue;
         }
 
@@ -609,6 +688,9 @@ pub async fn sync_all_users_media(state: &AppState) -> Result<(usize, usize, usi
         let jellyfin_url = crate::api::user_settings::get_user_setting(pool, &u.id, "jellyfin_url").await;
         let jellyfin_api_key = crate::api::user_settings::get_user_setting(pool, &u.id, "jellyfin_api_key").await;
         let jellyfin_username = crate::api::user_settings::get_user_setting(pool, &u.id, "jellyfin_username").await;
+        let emby_url = crate::api::user_settings::get_user_setting(pool, &u.id, "emby_url").await;
+        let emby_api_key = crate::api::user_settings::get_user_setting(pool, &u.id, "emby_api_key").await;
+        let emby_username = crate::api::user_settings::get_user_setting(pool, &u.id, "emby_username").await;
 
         let has_plex = plex_sync && plex_url.as_ref().map(|s| !s.trim().is_empty()).unwrap_or(false)
             && plex_api_key.as_ref().map(|s| !s.trim().is_empty()).unwrap_or(false);
@@ -616,7 +698,10 @@ pub async fn sync_all_users_media(state: &AppState) -> Result<(usize, usize, usi
         let has_jellyfin = jellyfin_sync && jellyfin_url.as_ref().map(|s| !s.trim().is_empty()).unwrap_or(false)
             && jellyfin_api_key.as_ref().map(|s| !s.trim().is_empty()).unwrap_or(false);
 
-        if !has_plex && !has_jellyfin {
+        let has_emby = emby_sync && emby_url.as_ref().map(|s| !s.trim().is_empty()).unwrap_or(false)
+            && emby_api_key.as_ref().map(|s| !s.trim().is_empty()).unwrap_or(false);
+
+        if !has_plex && !has_jellyfin && !has_emby {
             continue;
         }
 
@@ -646,6 +731,7 @@ pub async fn sync_all_users_media(state: &AppState) -> Result<(usize, usize, usi
 
         let mut user_plex_synced = 0;
         let mut user_jellyfin_synced = 0;
+        let mut user_emby_synced = 0;
 
         for r in &rows {
             let item = WritebackItem {
@@ -673,10 +759,18 @@ pub async fn sync_all_users_media(state: &AppState) -> Result<(usize, usize, usi
                     }
                 }
             }
+
+            if has_emby {
+                if let (Some(ref url), Some(ref key)) = (&emby_url, &emby_api_key) {
+                    if let Ok(true) = writeback_item_to_jellyfin(&client, url, key, emby_username.as_deref(), &item).await {
+                        user_emby_synced += 1;
+                    }
+                }
+            }
         }
 
         total_processed += rows.len();
-        let user_synced_count = user_plex_synced + user_jellyfin_synced;
+        let user_synced_count = user_plex_synced + user_jellyfin_synced + user_emby_synced;
         total_synced += user_synced_count;
         users_synced += 1;
 
@@ -684,8 +778,8 @@ pub async fn sync_all_users_media(state: &AppState) -> Result<(usize, usize, usi
             "INFO",
             "bingesync::writeback",
             &format!(
-                "Media sync for user {}: {} scrobbles evaluated (Plex: {}, Jellyfin: {})",
-                u.email, rows.len(), user_plex_synced, user_jellyfin_synced
+                "Media sync for user {}: {} scrobbles evaluated (Plex: {}, Jellyfin: {}, Emby: {})",
+                u.email, rows.len(), user_plex_synced, user_jellyfin_synced, user_emby_synced
             ),
         );
     }
@@ -781,6 +875,50 @@ pub async fn test_jellyfin_connection_handler(
     }
 }
 
+/// Handler for testing user's Emby connection: POST /api/v1/user/settings/test-emby
+pub async fn test_emby_connection_handler(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Json(payload): Json<TestEmbyRequest>,
+) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
+    let url = match payload.emby_url {
+        Some(u) if !u.trim().is_empty() => u.trim().to_string(),
+        _ => match crate::api::user_settings::get_user_setting(&state.pool, &auth.user_id, "emby_url").await {
+            Some(u) if !u.trim().is_empty() => u.trim().to_string(),
+            _ => {
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({ "error": "Emby URL is required" })),
+                ))
+            }
+        },
+    };
+
+    let api_key = match payload.emby_api_key {
+        Some(k) if !k.trim().is_empty() && !k.contains('•') => k.trim().to_string(),
+        _ => match crate::api::user_settings::get_user_setting(&state.pool, &auth.user_id, "emby_api_key").await {
+            Some(k) if !k.trim().is_empty() => k.trim().to_string(),
+            _ => {
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({ "error": "Emby API key is required" })),
+                ))
+            }
+        },
+    };
+
+    match test_emby_connection(&url, &api_key).await {
+        Ok(msg) => Ok(Json(serde_json::json!({
+            "status": "success",
+            "message": msg
+        }))),
+        Err(e) => Err((
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": e })),
+        )),
+    }
+}
+
 /// Handler for triggering media writeback on-demand: POST /api/v1/user/sync/writeback
 pub async fn trigger_writeback_handler(
     State(state): State<AppState>,
@@ -792,17 +930,22 @@ pub async fn trigger_writeback_handler(
     let jellyfin_url = crate::api::user_settings::get_user_setting(&state.pool, &auth.user_id, "jellyfin_url").await;
     let jellyfin_api_key = crate::api::user_settings::get_user_setting(&state.pool, &auth.user_id, "jellyfin_api_key").await;
     let jellyfin_username = crate::api::user_settings::get_user_setting(&state.pool, &auth.user_id, "jellyfin_username").await;
+    let emby_url = crate::api::user_settings::get_user_setting(&state.pool, &auth.user_id, "emby_url").await;
+    let emby_api_key = crate::api::user_settings::get_user_setting(&state.pool, &auth.user_id, "emby_api_key").await;
+    let emby_username = crate::api::user_settings::get_user_setting(&state.pool, &auth.user_id, "emby_username").await;
 
     let has_plex = plex_url.as_ref().map(|u| !u.trim().is_empty()).unwrap_or(false)
         && plex_api_key.as_ref().map(|k| !k.trim().is_empty()).unwrap_or(false);
     let has_jellyfin = jellyfin_url.as_ref().map(|u| !u.trim().is_empty()).unwrap_or(false)
         && jellyfin_api_key.as_ref().map(|k| !k.trim().is_empty()).unwrap_or(false);
+    let has_emby = emby_url.as_ref().map(|u| !u.trim().is_empty()).unwrap_or(false)
+        && emby_api_key.as_ref().map(|k| !k.trim().is_empty()).unwrap_or(false);
 
-    if !has_plex && !has_jellyfin {
+    if !has_plex && !has_jellyfin && !has_emby {
         return Err((
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({
-                "error": "No media server configured. Please configure Plex or Jellyfin in Connected Services."
+                "error": "No media server configured. Please configure Plex, Jellyfin, or Emby in Connected Services."
             })),
         ));
     }
@@ -882,6 +1025,7 @@ pub async fn trigger_writeback_handler(
     let total = items.len();
     let mut plex_synced = 0;
     let mut jellyfin_synced = 0;
+    let mut emby_synced = 0;
 
     for item in &items {
         if has_plex {
@@ -898,9 +1042,16 @@ pub async fn trigger_writeback_handler(
                 }
             }
         }
+        if has_emby {
+            if let (Some(ref u), Some(ref k)) = (&emby_url, &emby_api_key) {
+                if let Ok(true) = writeback_item_to_jellyfin(&client, u, k, emby_username.as_deref(), item).await {
+                    emby_synced += 1;
+                }
+            }
+        }
     }
 
-    let msg = format!("Writeback complete: {} scrobbles processed (Plex: {}, Jellyfin: {})", total, plex_synced, jellyfin_synced);
+    let msg = format!("Writeback complete: {} scrobbles processed (Plex: {}, Jellyfin: {}, Emby: {})", total, plex_synced, jellyfin_synced, emby_synced);
     state.log_buffer.push(
         "INFO",
         "bingesync::writeback",
@@ -913,6 +1064,7 @@ pub async fn trigger_writeback_handler(
         "scrobbles_processed": total,
         "plex_synced": plex_synced,
         "jellyfin_synced": jellyfin_synced,
+        "emby_synced": emby_synced,
         "message": msg
     })))
 }
@@ -1331,5 +1483,159 @@ pub async fn fetch_jellyfin_users_get_handler(
     Query(params): Query<FetchUsersParams>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
     fetch_jellyfin_users_internal(&state, &auth, params).await
+}
+
+/// Fetch list of users from Emby server
+pub async fn fetch_emby_users(
+    emby_url: &str,
+    api_key: &str,
+    pool: &SqlitePool,
+) -> Result<Vec<ServerUserItem>, String> {
+    let base = emby_url.trim_end_matches('/');
+    crate::api::ssrf::validate_integration_url(base).map_err(|e| format!("Invalid Emby URL: {}", e))?;
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(8))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let endpoint = format!("{}/Users", base);
+    let resp = client
+        .get(&endpoint)
+        .header("X-Emby-Token", api_key)
+        .header("Authorization", format!("MediaBrowser Token=\"{}\"", api_key))
+        .header("Accept", "application/json")
+        .send()
+        .await
+        .map_err(|e| format!("Could not reach Emby server: {}", e))?;
+
+    let status = resp.status();
+    if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
+        return Err("Authentication failed: invalid Emby API key".to_string());
+    }
+
+    if !status.is_success() {
+        return Err(format!("Emby returned error HTTP {}", status));
+    }
+
+    let users_json: Vec<serde_json::Value> = resp
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse Emby Users JSON: {}", e))?;
+
+    let mut users: Vec<ServerUserItem> = Vec::new();
+    let mut seen_keys = std::collections::HashSet::new();
+
+    for u in users_json {
+        let id = u.get("Id").and_then(|v| v.as_str()).unwrap_or("").trim();
+        let name = u.get("Name").and_then(|v| v.as_str()).unwrap_or("").trim();
+
+        if !id.is_empty() && !name.is_empty() {
+            let key = name.to_lowercase();
+            if !seen_keys.contains(&key) {
+                seen_keys.insert(key);
+                users.push(ServerUserItem {
+                    id: id.to_string(),
+                    username: name.to_string(),
+                    friendly_name: None,
+                    thumb: None,
+                });
+
+                let _ = sqlx::query(
+                    r#"
+                    INSERT INTO plex_user_cache (plex_id, username, friendly_name, source, updated_at)
+                    VALUES (?, ?, ?, 'emby', datetime('now'))
+                    ON CONFLICT(plex_id) DO UPDATE SET username = excluded.username, friendly_name = excluded.friendly_name, source = 'emby', updated_at = excluded.updated_at
+                    "#
+                )
+                .bind(id)
+                .bind(name)
+                .bind(name)
+                .execute(pool)
+                .await;
+
+                let unhyphenated = id.replace('-', "");
+                if unhyphenated != id {
+                    let _ = sqlx::query(
+                        r#"
+                        INSERT INTO plex_user_cache (plex_id, username, friendly_name, source, updated_at)
+                        VALUES (?, ?, ?, 'emby', datetime('now'))
+                        ON CONFLICT(plex_id) DO UPDATE SET username = excluded.username, friendly_name = excluded.friendly_name, source = 'emby', updated_at = excluded.updated_at
+                        "#
+                    )
+                    .bind(&unhyphenated)
+                    .bind(name)
+                    .bind(name)
+                    .execute(pool)
+                    .await;
+                }
+            }
+        }
+    }
+
+    users.sort_by(|a, b| a.username.to_lowercase().cmp(&b.username.to_lowercase()));
+    Ok(users)
+}
+
+async fn fetch_emby_users_internal(
+    state: &AppState,
+    auth: &AuthUser,
+    params: FetchUsersParams,
+) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
+    let url = params.emby_url.or(params.url);
+    let key = params.emby_api_key.or(params.api_key);
+
+    let url_final = match url {
+        Some(u) if !u.trim().is_empty() => u.trim().to_string(),
+        _ => match crate::api::user_settings::get_user_setting(&state.pool, &auth.user_id, "emby_url").await {
+            Some(u) if !u.trim().is_empty() => u.trim().to_string(),
+            _ => {
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({ "error": "Emby URL is required. Please enter it in settings or save your settings first." })),
+                ))
+            }
+        },
+    };
+
+    let key_final = match key {
+        Some(k) if !k.trim().is_empty() && !k.contains('•') => k.trim().to_string(),
+        _ => match crate::api::user_settings::get_user_setting(&state.pool, &auth.user_id, "emby_api_key").await {
+            Some(k) if !k.trim().is_empty() => k.trim().to_string(),
+            _ => {
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({ "error": "Emby API key is required. Please enter it in settings or save your settings first." })),
+                ))
+            }
+        },
+    };
+
+    match fetch_emby_users(&url_final, &key_final, &state.pool).await {
+        Ok(users) => Ok(Json(serde_json::json!({
+            "status": "success",
+            "users": users
+        }))),
+        Err(e) => Err((
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": e })),
+        )),
+    }
+}
+
+pub async fn fetch_emby_users_post_handler(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Json(payload): Json<FetchUsersParams>,
+) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
+    fetch_emby_users_internal(&state, &auth, payload).await
+}
+
+pub async fn fetch_emby_users_get_handler(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Query(params): Query<FetchUsersParams>,
+) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
+    fetch_emby_users_internal(&state, &auth, params).await
 }
 

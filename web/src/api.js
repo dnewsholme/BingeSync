@@ -210,6 +210,16 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(data || {}),
     }),
+  testEmbyConnection: (data) =>
+    request('/user/settings/test-emby', {
+      method: 'POST',
+      body: JSON.stringify(data || {}),
+    }),
+  getEmbyUsers: (data) =>
+    request('/user/settings/emby/users', {
+      method: 'POST',
+      body: JSON.stringify(data || {}),
+    }),
   triggerMediaWriteback: (options) =>
     request('/user/sync/writeback', {
       method: 'POST',

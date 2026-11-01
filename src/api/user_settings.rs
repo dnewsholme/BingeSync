@@ -24,9 +24,14 @@ pub struct UserSettingsResponse {
     pub jellyfin_api_key: Option<String>,
 
     pub emby_username: Option<String>,
+    pub emby_url: Option<String>,
+    pub emby_api_key_configured: bool,
+    pub emby_api_key_masked: Option<String>,
+    pub emby_api_key: Option<String>,
 
     pub plex_sync_enabled: bool,
     pub jellyfin_sync_enabled: bool,
+    pub emby_sync_enabled: bool,
     pub bidirectional_sync_enabled: bool,
 
     pub radarr_url: Option<String>,
@@ -73,6 +78,9 @@ pub struct UpdateUserSettingsRequest {
     pub jellyfin_url: Option<String>,
     pub jellyfin_api_key: Option<String>,
     pub emby_username: Option<String>,
+    pub emby_url: Option<String>,
+    pub emby_api_key: Option<String>,
+    pub emby_sync_enabled: Option<bool>,
     pub plex_sync_enabled: Option<bool>,
     pub jellyfin_sync_enabled: Option<bool>,
     pub bidirectional_sync_enabled: Option<bool>,
@@ -148,6 +156,8 @@ pub async fn get_user_settings_handler(
     let jellyfin_api_key = get_user_setting(&state.pool, &auth.user_id, "jellyfin_api_key").await;
 
     let emby_username = get_user_setting(&state.pool, &auth.user_id, "emby_username").await;
+    let emby_url = get_user_setting(&state.pool, &auth.user_id, "emby_url").await;
+    let emby_api_key = get_user_setting(&state.pool, &auth.user_id, "emby_api_key").await;
 
     let bidirectional_sync_enabled_str = get_user_setting(&state.pool, &auth.user_id, "bidirectional_sync_enabled").await;
     let bidirectional_sync_enabled = bidirectional_sync_enabled_str.as_deref().map(|s| s == "true" || s == "1").unwrap_or(false);
@@ -160,6 +170,12 @@ pub async fn get_user_settings_handler(
 
     let jellyfin_sync_enabled_str = get_user_setting(&state.pool, &auth.user_id, "jellyfin_sync_enabled").await;
     let jellyfin_sync_enabled = jellyfin_sync_enabled_str
+        .as_deref()
+        .map(|s| s == "true" || s == "1")
+        .unwrap_or(bidirectional_sync_enabled);
+
+    let emby_sync_enabled_str = get_user_setting(&state.pool, &auth.user_id, "emby_sync_enabled").await;
+    let emby_sync_enabled = emby_sync_enabled_str
         .as_deref()
         .map(|s| s == "true" || s == "1")
         .unwrap_or(bidirectional_sync_enabled);
@@ -223,9 +239,14 @@ pub async fn get_user_settings_handler(
         jellyfin_api_key: None,
 
         emby_username,
+        emby_url,
+        emby_api_key_configured: emby_api_key.as_ref().map(|k| !k.trim().is_empty()).unwrap_or(false),
+        emby_api_key_masked: emby_api_key.as_deref().map(mask_secret),
+        emby_api_key: None,
 
         plex_sync_enabled,
         jellyfin_sync_enabled,
+        emby_sync_enabled,
         bidirectional_sync_enabled,
 
         radarr_url,
@@ -315,6 +336,23 @@ pub async fn update_user_settings_handler(
     if let Some(ref val) = payload.emby_username {
         let _ = set_user_setting(&state.pool, &auth.user_id, "emby_username", val.trim()).await;
     }
+    if let Some(ref val) = payload.emby_url {
+        let trimmed = val.trim();
+        if !trimmed.is_empty() {
+            crate::api::ssrf::validate_integration_url(trimmed).map_err(|e| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({ "error": format!("Invalid Emby URL: {}", e) })),
+                )
+            })?;
+        }
+        let _ = set_user_setting(&state.pool, &auth.user_id, "emby_url", trimmed).await;
+    }
+    if let Some(ref val) = payload.emby_api_key {
+        if !val.contains('•') {
+            let _ = set_user_setting(&state.pool, &auth.user_id, "emby_api_key", val.trim()).await;
+        }
+    }
 
     if let Some(enabled) = payload.plex_sync_enabled {
         let _ = set_user_setting(&state.pool, &auth.user_id, "plex_sync_enabled", if enabled { "true" } else { "false" }).await;
@@ -322,6 +360,10 @@ pub async fn update_user_settings_handler(
 
     if let Some(enabled) = payload.jellyfin_sync_enabled {
         let _ = set_user_setting(&state.pool, &auth.user_id, "jellyfin_sync_enabled", if enabled { "true" } else { "false" }).await;
+    }
+
+    if let Some(enabled) = payload.emby_sync_enabled {
+        let _ = set_user_setting(&state.pool, &auth.user_id, "emby_sync_enabled", if enabled { "true" } else { "false" }).await;
     }
 
     if let Some(enabled) = payload.bidirectional_sync_enabled {

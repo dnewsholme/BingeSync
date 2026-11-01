@@ -2869,6 +2869,86 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     await page.click('#btn-save-user-settings');
     await expect(page.locator('#user-settings-status')).toContainText('Settings saved successfully');
   });
+
+  test('User settings: Emby 2-way sync, user lookup picker, and connection test', async ({ page }) => {
+    const testEmail = `emby_test_${Date.now()}@bingesync.local`;
+
+    // 1. Dev login
+    await page.goto('/');
+    await page.fill('#dev-email', testEmail);
+    await page.fill('#dev-name', 'Emby Sync Tester');
+    await page.click('#btn-dev-submit');
+    await expect(page.locator('#tab-timeline')).toBeVisible();
+
+    // 2. Mock backend routes for Emby user fetching and connection test
+    await page.route('**/api/v1/user/settings/emby/users', async route => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          status: 'success',
+          users: [
+            { id: 'emby-1', username: 'emby_alice', friendly_name: 'Alice Emby' },
+            { id: 'emby-2', username: 'emby_bob', friendly_name: null },
+          ],
+        }),
+      });
+    });
+
+    await page.route('**/api/v1/user/settings/test-emby', async route => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          status: 'success',
+          message: 'Successfully connected to Emby Server (v4.8.8.0)',
+        }),
+      });
+    });
+
+    // 3. Navigate to Settings -> Connected Services
+    await page.click('#tab-settings');
+    await expect(page.locator('#view-settings')).toBeVisible();
+    await page.click('#pill-settings-services');
+    await expect(page.locator('#settings-sub-services')).toBeVisible();
+
+    // 4. Verify Emby section elements
+    await expect(page.locator('#card-user-emby')).toBeVisible();
+    await expect(page.locator('#btn-fetch-emby-setting-users')).toBeVisible();
+    await expect(page.locator('#user-setting-emby-url')).toBeVisible();
+    await expect(page.locator('#user-setting-emby-api-key')).toBeVisible();
+    await expect(page.locator('#btn-test-emby-connection')).toBeVisible();
+    await expect(page.locator('#user-setting-emby-sync-enabled')).toBeVisible();
+
+    // 5. Fill in Emby URL and API key
+    await page.fill('#user-setting-emby-url', 'http://127.0.0.1:8096');
+    await page.fill('#user-setting-emby-api-key', 'emby_secret_key_123');
+
+    // 6. Test connection
+    await page.click('#btn-test-emby-connection');
+    await expect(page.locator('#emby-test-status')).toContainText('Successfully connected to Emby Server');
+
+    // 7. Click Fetch Users for Emby
+    await page.click('#btn-fetch-emby-setting-users');
+    await expect(page.locator('#emby-users-picker')).toBeVisible();
+    await expect(page.locator('#emby-users-picker .user-select-chip')).toHaveCount(2);
+    await expect(page.locator('#emby-users-picker')).toContainText('emby_alice');
+    await expect(page.locator('#emby-users-picker')).toContainText('emby_bob');
+
+    // 8. Select emby_alice chip
+    const chipAlice = page.locator('#emby-users-picker .user-select-chip[data-username="emby_alice"]');
+    await chipAlice.click();
+    await expect(chipAlice).toHaveClass(/selected/);
+    await expect(page.locator('#user-setting-emby-username')).toHaveValue('emby_alice');
+
+    // 9. Enable Emby sync checkbox
+    await page.check('#user-setting-emby-sync-enabled');
+    await expect(page.locator('#user-setting-emby-sync-enabled')).toBeChecked();
+
+    // 10. Save user settings
+    await page.click('#btn-save-user-settings');
+    await expect(page.locator('#user-settings-status')).toContainText('Settings saved successfully');
+  });
 });
 
 

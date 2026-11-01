@@ -132,6 +132,28 @@ async fn sync_user_cache_once_with_client(state: &AppState, client: &Client) -> 
         total_synced += count;
     }
 
+    // 3. Sync from Emby instances
+    let mut emby_instances: HashSet<(String, String)> = HashSet::new();
+    let emby_urls: Vec<UserSettingRow> = sqlx::query_as(
+        "SELECT user_id, value FROM user_settings WHERE key = 'emby_url' AND value IS NOT NULL AND value != ''"
+    )
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+
+    for row in emby_urls {
+        if let Some(key) = crate::api::user_settings::get_user_setting(pool, &row.user_id, "emby_api_key").await {
+            if !row.value.trim().is_empty() && !key.trim().is_empty() {
+                emby_instances.insert((row.value.trim().to_string(), key.trim().to_string()));
+            }
+        }
+    }
+
+    for (url, key) in emby_instances {
+        let users = crate::api::media_writeback::fetch_emby_users(&url, &key, pool).await.unwrap_or_default();
+        total_synced += users.len();
+    }
+
     total_synced
 }
 
