@@ -2362,8 +2362,8 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
   });
 
   test('first-run setup wizard: step navigation, copyable redirect URIs, test connection, and review summary', async ({ page }) => {
-    // 1. Visit app
-    await page.goto('/');
+    // 1. Visit app with ?setup=true to prevent init() from racing and hiding setup state
+    await page.goto('/?setup=true');
 
     // 2. Open setup wizard
     await page.evaluate(() => {
