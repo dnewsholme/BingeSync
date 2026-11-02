@@ -1187,7 +1187,9 @@ select.form-control-sm {
 .scrobble-card-meta {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
+  gap: 8px;
+  flex-wrap: wrap;
   font-size: 0.72rem;
   color: var(--text-dim);
   line-height: 1.2;
@@ -2140,7 +2142,6 @@ select.filter-ctrl {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  margin-left: auto;
 }
 
 /* Radarr / Sonarr Cleanup Card */

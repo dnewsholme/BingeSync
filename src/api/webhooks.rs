@@ -440,6 +440,8 @@ async fn process_webhook(
     }
 
     let imdb_id = metadata.resolved_imdb_id();
+    let tvdb_id = metadata.resolved_tvdb_id();
+    let tmdb_id = metadata.resolved_tmdb_id();
     let (resolution, hdr_format, audio_codec, audio_channels, video_codec) = metadata.resolved_media_specs();
     let studio = metadata.studio.clone();
     let content_rating = metadata.content_rating.clone();
@@ -618,7 +620,9 @@ async fn process_webhook(
                 audio_channels = COALESCE(audio_channels, ?),
                 video_codec = COALESCE(video_codec, ?),
                 studio = COALESCE(studio, ?),
-                content_rating = COALESCE(content_rating, ?)
+                content_rating = COALESCE(content_rating, ?),
+                tvdb_id = COALESCE(NULLIF(?, ''), tvdb_id),
+                tmdb_id = COALESCE(NULLIF(?, ''), tmdb_id)
             WHERE id = ?
             "#
         )
@@ -645,6 +649,8 @@ async fn process_webhook(
         .bind(&video_codec)
         .bind(&studio)
         .bind(&content_rating)
+        .bind(&tvdb_id)
+        .bind(&tmdb_id)
         .bind(&existing.id)
         .execute(&state.pool)
         .await
@@ -673,8 +679,9 @@ async fn process_webhook(
                 player_name, device_name, platform, is_local,
                 imdb_id, resolution, hdr_format, audio_codec, audio_channels, video_codec,
                 studio, original_language, content_rating, is_rewatch,
+                tvdb_id, tmdb_id,
                 watched_at, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             "#,
         )
         .bind(&new_id)
@@ -717,6 +724,8 @@ async fn process_webhook(
         .bind(&original_language)
         .bind(&content_rating)
         .bind(is_rewatch)
+        .bind(&tvdb_id)
+        .bind(&tmdb_id)
         .bind(&now_str)
         .bind(&now_str)
         .execute(&state.pool)
@@ -1387,6 +1396,8 @@ async fn process_jellyfin_or_emby_webhook(
     let is_local = payload.resolved_is_local();
 
     let imdb_id = payload.resolved_imdb_id();
+    let tvdb_id = payload.resolved_tvdb_id();
+    let tmdb_id = payload.resolved_tmdb_id();
     let (resolution, hdr_format, audio_codec, audio_channels, video_codec) = payload.resolved_media_specs();
     let studio = payload.resolved_studio();
     let original_language = payload.resolved_original_language();
@@ -1440,7 +1451,9 @@ async fn process_jellyfin_or_emby_webhook(
                 video_codec = COALESCE(video_codec, ?),
                 studio = COALESCE(studio, ?),
                 original_language = COALESCE(original_language, ?),
-                content_rating = COALESCE(content_rating, ?)
+                content_rating = COALESCE(content_rating, ?),
+                tvdb_id = COALESCE(NULLIF(?, ''), tvdb_id),
+                tmdb_id = COALESCE(NULLIF(?, ''), tmdb_id)
             WHERE id = ?
             "#
         )
@@ -1465,6 +1478,8 @@ async fn process_jellyfin_or_emby_webhook(
         .bind(&studio)
         .bind(&original_language)
         .bind(&content_rating)
+        .bind(&tvdb_id)
+        .bind(&tmdb_id)
         .bind(&existing.id)
         .execute(&state.pool)
         .await
@@ -1493,8 +1508,9 @@ async fn process_jellyfin_or_emby_webhook(
                 player_name, device_name, platform, is_local,
                 imdb_id, resolution, hdr_format, audio_codec, audio_channels, video_codec,
                 studio, original_language, content_rating, is_rewatch,
+                tvdb_id, tmdb_id,
                 watched_at, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             "#,
         )
         .bind(&new_id)
@@ -1537,6 +1553,8 @@ async fn process_jellyfin_or_emby_webhook(
         .bind(&original_language)
         .bind(&content_rating)
         .bind(is_rewatch)
+        .bind(&tvdb_id)
+        .bind(&tmdb_id)
         .bind(&now_str)
         .bind(&now_str)
         .execute(&state.pool)

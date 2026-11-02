@@ -306,8 +306,9 @@ pub async fn create_scrobble(
             player_name, device_name, platform, is_local,
             imdb_id, resolution, hdr_format, audio_codec, audio_channels, video_codec,
             studio, original_language, content_rating, is_rewatch,
+            tvdb_id, tmdb_id,
             watched_at, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
     )
     .bind(&scrobble_id)
@@ -352,6 +353,8 @@ pub async fn create_scrobble(
     .bind(&payload.original_language)
     .bind(&payload.content_rating)
     .bind(is_rewatch)
+    .bind(&payload.tvdb_id)
+    .bind(&payload.tmdb_id)
     .bind(&watched_at)
     .bind(&now)
     .execute(&state.pool)

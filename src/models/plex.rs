@@ -195,6 +195,74 @@ impl PlexMetadata {
         None
     }
 
+    /// Resolves canonical TheTVDB ID from Plex GUIDs or main guid.
+    pub fn resolved_tvdb_id(&self) -> Option<String> {
+        if let Some(ref list) = self.guids {
+            for item in list {
+                if let Some(ref gid) = item.id {
+                    let g = gid.trim();
+                    if g.starts_with("tvdb://") {
+                        let id = g.trim_start_matches("tvdb://").trim();
+                        if !id.is_empty() {
+                            return Some(id.to_string());
+                        }
+                    }
+                }
+            }
+        }
+        if let Some(ref g) = self.guid {
+            if let Some(idx) = g.find("tvdb://") {
+                let sub = &g[idx + 7..];
+                let num_len = sub.chars().take_while(|c| c.is_ascii_digit()).count();
+                if num_len > 0 {
+                    return Some(sub[..num_len].to_string());
+                }
+            }
+            if let Some(idx) = g.find("thetvdb://") {
+                let sub = &g[idx + 10..];
+                let num_len = sub.chars().take_while(|c| c.is_ascii_digit()).count();
+                if num_len > 0 {
+                    return Some(sub[..num_len].to_string());
+                }
+            }
+        }
+        None
+    }
+
+    /// Resolves canonical TMDB ID from Plex GUIDs or main guid.
+    pub fn resolved_tmdb_id(&self) -> Option<String> {
+        if let Some(ref list) = self.guids {
+            for item in list {
+                if let Some(ref gid) = item.id {
+                    let g = gid.trim();
+                    if g.starts_with("tmdb://") {
+                        let id = g.trim_start_matches("tmdb://").trim();
+                        if !id.is_empty() {
+                            return Some(id.to_string());
+                        }
+                    }
+                }
+            }
+        }
+        if let Some(ref g) = self.guid {
+            if let Some(idx) = g.find("tmdb://") {
+                let sub = &g[idx + 7..];
+                let num_len = sub.chars().take_while(|c| c.is_ascii_digit()).count();
+                if num_len > 0 {
+                    return Some(sub[..num_len].to_string());
+                }
+            }
+            if let Some(idx) = g.find("themoviedb://") {
+                let sub = &g[idx + 13..];
+                let num_len = sub.chars().take_while(|c| c.is_ascii_digit()).count();
+                if num_len > 0 {
+                    return Some(sub[..num_len].to_string());
+                }
+            }
+        }
+        None
+    }
+
     /// Resolves technical stream specs: (resolution, hdr_format, audio_codec, audio_channels, video_codec)
     pub fn resolved_media_specs(&self) -> (Option<String>, Option<String>, Option<String>, Option<String>, Option<String>) {
         let stream = match self.media.as_ref().and_then(|m| m.first()) {
