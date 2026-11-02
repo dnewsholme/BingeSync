@@ -910,7 +910,14 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     await expect(page.locator('.task-card', { hasText: 'GitHub Release & Update Check' })).toBeVisible();
     await expect(page.locator('.task-card', { hasText: 'Radarr & Sonarr Library Desync Audit' })).toBeVisible();
 
-    // Verify View Logs button exists on each background task card
+    // Verify card is initially collapsed as a single line item
+    await expect(posterCard).toHaveClass(/is-collapsed/);
+
+    // Click card summary to expand full details
+    await posterCard.locator('.task-card-summary').click();
+    await expect(posterCard).toHaveClass(/is-expanded/);
+
+    // Verify View Logs button exists on background task card
     await expect(posterCard.locator('.btn-task-logs')).toBeVisible();
 
     // Verify schedule selector and next run time are displayed
@@ -1451,6 +1458,10 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     const userSyncCard = page.locator('.task-card', { hasText: 'Plex & Media Server User Cache Sync' });
     await expect(userSyncCard).toBeVisible();
 
+    // Expand card to access full actions
+    await userSyncCard.locator('.task-card-summary').click();
+    await expect(userSyncCard).toHaveClass(/is-expanded/);
+
     // Trigger run
     const runBtn = userSyncCard.locator('button.btn-trigger-task');
     if (await runBtn.count() > 0) {
@@ -1577,6 +1588,9 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     // Verify top "Force Refresh All Metadata" button
     const btnForceAll = page.locator('#btn-force-refresh-all-metadata');
     await expect(btnForceAll).toBeVisible();
+
+    // Toggle expand all tasks to access expanded action buttons
+    await page.click('#btn-toggle-all-tasks');
 
     // Verify "Force Refresh All" button inside Metadata Enrichment task card
     const tvdbCard = page.locator('.task-card', { hasText: /Metadata Enrichment/ });
@@ -1848,7 +1862,8 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     await sourceSelect.selectOption('tmdb');
 
     // 5. Fill TMDB API key and base URL
-    await page.fill('#setting-tmdb-api-key', 'tmdb_ui_test_key_789');
+    await page.locator('#setting-tmdb-api-key').clear();
+    await page.locator('#setting-tmdb-api-key').fill('tmdb_ui_test_key_789');
     await page.fill('#setting-tmdb-base-url', 'https://api.themoviedb.org/3');
 
     // 6. Save settings
@@ -2571,6 +2586,11 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     const tautulliCard = page.locator('.task-card', { hasText: 'Tautulli Continuous 1-Way Sync' });
     await expect(tautulliCard).toBeVisible();
     await expect(tautulliCard).toContainText('Every 1 hour');
+
+    // Expand Tautulli card to view action buttons
+    await tautulliCard.locator('.task-card-summary').click();
+    await expect(tautulliCard).toHaveClass(/is-expanded/);
+
     await expect(tautulliCard.locator('.btn-trigger-task')).toBeVisible();
     await expect(tautulliCard.locator('.btn-task-logs')).toBeVisible();
 

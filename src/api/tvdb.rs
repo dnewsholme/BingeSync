@@ -996,14 +996,23 @@ struct MissingMetadataItem {
     id: String,
     title: String,
     media_type: String,
+    #[sqlx(default)]
     grandparent_title: Option<String>,
+    #[sqlx(default)]
     year: Option<i32>,
+    #[sqlx(default)]
     overview: Option<String>,
+    #[sqlx(default)]
     genres: Option<String>,
+    #[sqlx(default)]
     actors: Option<String>,
+    #[sqlx(default)]
     directors: Option<String>,
+    #[sqlx(default)]
     thumb_url: Option<String>,
+    #[sqlx(default)]
     tvdb_id: Option<String>,
+    #[sqlx(default)]
     tmdb_id: Option<String>,
 }
 
@@ -1035,7 +1044,11 @@ pub async fn process_missing_metadata_batch_provider(
     .await
     {
         Ok(r) => r,
-        Err(_) => return 0,
+        Err(e) => {
+            state.log_buffer.push("ERROR", "bingesync::tasks::metadata_backfill", &format!("Database error fetching missing metadata items: {} [task=metadata_backfill]", e));
+            tracing::error!("Database error fetching missing metadata items: {}", e);
+            return 0;
+        }
     };
 
     if rows.is_empty() {
@@ -1113,6 +1126,11 @@ pub async fn process_missing_metadata_batch_provider(
                             .execute(&state.pool)
                             .await;
                     }
+                    state.log_buffer.push(
+                        "DEBUG",
+                        "bingesync::tasks::metadata_backfill",
+                        &format!("No online metadata candidates found for '{}' (media_type: {}, year: {:?}) [task=metadata_backfill]", search_title, item.media_type, effective_year),
+                    );
                     failed_lookups.insert(cache_key);
                     processed_count += 1;
                     continue;
@@ -1322,6 +1340,12 @@ pub async fn process_missing_metadata_batch_provider(
         }
 
         processed_count += 1;
+        let provider_name = if is_tmdb { "TMDB" } else { "TheTVDB" };
+        state.log_buffer.push(
+            "INFO",
+            "bingesync::tasks::metadata_backfill",
+            &format!("Enriched scrobble metadata: '{}' ({}) via {} [task=metadata_backfill]", search_title, item.media_type, provider_name),
+        );
         tracing::info!(
             id = %item.id,
             title = %search_title,

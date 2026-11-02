@@ -31,18 +31,9 @@ pub async fn run_session_reaper(state: &AppState) -> Result<String, String> {
 /// Runs hourly by default (every 1 hour) or upon notification.
 pub fn start_session_reaper_worker(state: AppState) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
-        tokio::time::sleep(Duration::from_secs(3)).await;
+        tokio::time::sleep(Duration::from_secs(5)).await;
 
         loop {
-            let interval_hours = state.get_task_interval_hours("session_reaper").await;
-            let next_run = (chrono::Utc::now() + chrono::Duration::hours(interval_hours as i64)).to_rfc3339();
-            state.task_tracker.set_session_reaper_next_run(Some(next_run)).await;
-
-            tokio::select! {
-                _ = state.session_reaper_notify.notified() => {}
-                _ = tokio::time::sleep(Duration::from_secs(interval_hours * 3600)) => {}
-            }
-
             state.task_tracker.set_session_reaper_running(Some(&state.pool), "Reaping stale active playback sessions...").await;
             match run_session_reaper(&state).await {
                 Ok(msg) => {
@@ -56,6 +47,15 @@ pub fn start_session_reaper_worker(state: AppState) -> tokio::task::JoinHandle<(
                 Err(err) => {
                     state.task_tracker.set_session_reaper_idle(Some(&state.pool), 0, &format!("Reaper error: {}", err)).await;
                 }
+            }
+
+            let interval_hours = state.get_task_interval_hours("session_reaper").await;
+            let next_run = (chrono::Utc::now() + chrono::Duration::hours(interval_hours as i64)).to_rfc3339();
+            state.task_tracker.set_session_reaper_next_run(Some(next_run)).await;
+
+            tokio::select! {
+                _ = state.session_reaper_notify.notified() => {}
+                _ = tokio::time::sleep(Duration::from_secs(interval_hours * 3600)) => {}
             }
         }
     })
@@ -133,18 +133,9 @@ pub async fn run_image_prune(state: &AppState) -> Result<String, String> {
 /// Runs daily by default (every 24 hours) or upon notification.
 pub fn start_image_prune_worker(state: AppState) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
-        tokio::time::sleep(Duration::from_secs(4)).await;
+        tokio::time::sleep(Duration::from_secs(8)).await;
 
         loop {
-            let interval_hours = state.get_task_interval_hours("image_prune").await;
-            let next_run = (chrono::Utc::now() + chrono::Duration::hours(interval_hours as i64)).to_rfc3339();
-            state.task_tracker.set_image_prune_next_run(Some(next_run)).await;
-
-            tokio::select! {
-                _ = state.image_prune_notify.notified() => {}
-                _ = tokio::time::sleep(Duration::from_secs(interval_hours * 3600)) => {}
-            }
-
             state.task_tracker.set_image_prune_running(Some(&state.pool), "Pruning orphaned image cache files...").await;
             match run_image_prune(&state).await {
                 Ok(msg) => {
@@ -158,6 +149,15 @@ pub fn start_image_prune_worker(state: AppState) -> tokio::task::JoinHandle<()> 
                 Err(err) => {
                     state.task_tracker.set_image_prune_idle(Some(&state.pool), 0, &format!("Prune error: {}", err)).await;
                 }
+            }
+
+            let interval_hours = state.get_task_interval_hours("image_prune").await;
+            let next_run = (chrono::Utc::now() + chrono::Duration::hours(interval_hours as i64)).to_rfc3339();
+            state.task_tracker.set_image_prune_next_run(Some(next_run)).await;
+
+            tokio::select! {
+                _ = state.image_prune_notify.notified() => {}
+                _ = tokio::time::sleep(Duration::from_secs(interval_hours * 3600)) => {}
             }
         }
     })
@@ -197,18 +197,9 @@ pub async fn run_duplicate_pruner(state: &AppState) -> Result<String, String> {
 /// Runs daily by default (every 24 hours) or upon notification.
 pub fn start_duplicate_pruner_worker(state: AppState) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
-        tokio::time::sleep(Duration::from_secs(5)).await;
+        tokio::time::sleep(Duration::from_secs(12)).await;
 
         loop {
-            let interval_hours = state.get_task_interval_hours("duplicate_pruner").await;
-            let next_run = (chrono::Utc::now() + chrono::Duration::hours(interval_hours as i64)).to_rfc3339();
-            state.task_tracker.set_duplicate_pruner_next_run(Some(next_run)).await;
-
-            tokio::select! {
-                _ = state.duplicate_pruner_notify.notified() => {}
-                _ = tokio::time::sleep(Duration::from_secs(interval_hours * 3600)) => {}
-            }
-
             state.task_tracker.set_duplicate_pruner_running(Some(&state.pool), "Scanning and cleaning duplicate scrobbles...").await;
             match run_duplicate_pruner(&state).await {
                 Ok(msg) => {
@@ -222,6 +213,15 @@ pub fn start_duplicate_pruner_worker(state: AppState) -> tokio::task::JoinHandle
                 Err(err) => {
                     state.task_tracker.set_duplicate_pruner_idle(Some(&state.pool), 0, &format!("Duplicate pruner error: {}", err)).await;
                 }
+            }
+
+            let interval_hours = state.get_task_interval_hours("duplicate_pruner").await;
+            let next_run = (chrono::Utc::now() + chrono::Duration::hours(interval_hours as i64)).to_rfc3339();
+            state.task_tracker.set_duplicate_pruner_next_run(Some(next_run)).await;
+
+            tokio::select! {
+                _ = state.duplicate_pruner_notify.notified() => {}
+                _ = tokio::time::sleep(Duration::from_secs(interval_hours * 3600)) => {}
             }
         }
     })
@@ -300,18 +300,9 @@ pub async fn run_metadata_backfill(state: &AppState) -> Result<String, String> {
 /// Runs daily by default (every 24 hours) or upon notification.
 pub fn start_metadata_backfill_worker(state: AppState) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
-        tokio::time::sleep(Duration::from_secs(6)).await;
+        tokio::time::sleep(Duration::from_secs(15)).await;
 
         loop {
-            let interval_hours = state.get_task_interval_hours("metadata_backfill").await;
-            let next_run = (chrono::Utc::now() + chrono::Duration::hours(interval_hours as i64)).to_rfc3339();
-            state.task_tracker.set_metadata_backfill_next_run(Some(next_run)).await;
-
-            tokio::select! {
-                _ = state.metadata_backfill_notify.notified() => {}
-                _ = tokio::time::sleep(Duration::from_secs(interval_hours * 3600)) => {}
-            }
-
             state.task_tracker.set_metadata_backfill_running(Some(&state.pool), "Backfilling missing metadata & refreshing ratings...").await;
             match run_metadata_backfill(&state).await {
                 Ok(msg) => {
@@ -327,6 +318,15 @@ pub fn start_metadata_backfill_worker(state: AppState) -> tokio::task::JoinHandl
                 Err(err) => {
                     state.task_tracker.set_metadata_backfill_idle(Some(&state.pool), 0, &format!("Metadata backfill error: {}", err)).await;
                 }
+            }
+
+            let interval_hours = state.get_task_interval_hours("metadata_backfill").await;
+            let next_run = (chrono::Utc::now() + chrono::Duration::hours(interval_hours as i64)).to_rfc3339();
+            state.task_tracker.set_metadata_backfill_next_run(Some(next_run)).await;
+
+            tokio::select! {
+                _ = state.metadata_backfill_notify.notified() => {}
+                _ = tokio::time::sleep(Duration::from_secs(interval_hours * 3600)) => {}
             }
         }
     })
@@ -358,18 +358,9 @@ pub async fn run_version_check(state: &AppState) -> Result<String, String> {
 /// Runs daily by default (every 24 hours) or upon notification.
 pub fn start_version_check_worker(state: AppState) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
-        tokio::time::sleep(Duration::from_secs(7)).await;
+        tokio::time::sleep(Duration::from_secs(18)).await;
 
         loop {
-            let interval_hours = state.get_task_interval_hours("version_check").await;
-            let next_run = (chrono::Utc::now() + chrono::Duration::hours(interval_hours as i64)).to_rfc3339();
-            state.task_tracker.set_version_check_next_run(Some(next_run)).await;
-
-            tokio::select! {
-                _ = state.version_check_notify.notified() => {}
-                _ = tokio::time::sleep(Duration::from_secs(interval_hours * 3600)) => {}
-            }
-
             state.task_tracker.set_version_check_running(Some(&state.pool), "Checking GitHub API for releases...").await;
             match run_version_check(&state).await {
                 Ok(msg) => {
@@ -378,6 +369,15 @@ pub fn start_version_check_worker(state: AppState) -> tokio::task::JoinHandle<()
                 Err(err) => {
                     state.task_tracker.set_version_check_idle(Some(&state.pool), 0, &format!("Version check error: {}", err)).await;
                 }
+            }
+
+            let interval_hours = state.get_task_interval_hours("version_check").await;
+            let next_run = (chrono::Utc::now() + chrono::Duration::hours(interval_hours as i64)).to_rfc3339();
+            state.task_tracker.set_version_check_next_run(Some(next_run)).await;
+
+            tokio::select! {
+                _ = state.version_check_notify.notified() => {}
+                _ = tokio::time::sleep(Duration::from_secs(interval_hours * 3600)) => {}
             }
         }
     })
@@ -415,18 +415,9 @@ pub async fn run_library_audit(state: &AppState) -> Result<String, String> {
 /// Runs daily by default (every 24 hours) or upon notification.
 pub fn start_library_audit_worker(state: AppState) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
-        tokio::time::sleep(Duration::from_secs(8)).await;
+        tokio::time::sleep(Duration::from_secs(20)).await;
 
         loop {
-            let interval_hours = state.get_task_interval_hours("library_audit").await;
-            let next_run = (chrono::Utc::now() + chrono::Duration::hours(interval_hours as i64)).to_rfc3339();
-            state.task_tracker.set_library_audit_next_run(Some(next_run)).await;
-
-            tokio::select! {
-                _ = state.library_audit_notify.notified() => {}
-                _ = tokio::time::sleep(Duration::from_secs(interval_hours * 3600)) => {}
-            }
-
             state.task_tracker.set_library_audit_running(Some(&state.pool), "Auditing connected Radarr & Sonarr libraries...").await;
             match run_library_audit(&state).await {
                 Ok(msg) => {
@@ -440,6 +431,15 @@ pub fn start_library_audit_worker(state: AppState) -> tokio::task::JoinHandle<()
                 Err(err) => {
                     state.task_tracker.set_library_audit_idle(Some(&state.pool), 0, &format!("Library audit error: {}", err)).await;
                 }
+            }
+
+            let interval_hours = state.get_task_interval_hours("library_audit").await;
+            let next_run = (chrono::Utc::now() + chrono::Duration::hours(interval_hours as i64)).to_rfc3339();
+            state.task_tracker.set_library_audit_next_run(Some(next_run)).await;
+
+            tokio::select! {
+                _ = state.library_audit_notify.notified() => {}
+                _ = tokio::time::sleep(Duration::from_secs(interval_hours * 3600)) => {}
             }
         }
     })

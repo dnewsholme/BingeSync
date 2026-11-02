@@ -69,6 +69,7 @@ const state = {
   admin: {
     activeSubview: 'admin-sub-users',
     logsFilterTask: null,
+    expandedTasks: new Set(),
   },
   settings: {
     activeSubview: 'settings-sub-webhooks',
@@ -543,6 +544,8 @@ const el = {
   // Admin Background Tasks
   btnRefreshAdminTasks: document.getElementById('btn-refresh-admin-tasks'),
   btnForceRefreshAllMetadata: document.getElementById('btn-force-refresh-all-metadata'),
+  btnToggleAllTasks: document.getElementById('btn-toggle-all-tasks'),
+  btnToggleAllTasksText: document.getElementById('btn-toggle-all-tasks-text'),
   adminTasksContainer: document.getElementById('admin-tasks-container'),
   adminTasksCategoryPills: document.getElementById('admin-tasks-category-pills'),
   adminTasksSearch: document.getElementById('admin-tasks-search'),
@@ -5673,97 +5676,121 @@ function renderAdminTasks(tasks) {
       ? `${t.items_processed} items audited`
       : `${t.items_processed} processed (${pending} pending)`;
 
+    const isExpanded = state.admin.expandedTasks.has(t.id);
     const hasForceRefresh = t.id === 'image_cache' || t.id === 'tvdb_metadata' || t.id === 'user_sync';
 
     return `
-      <div class="task-card" data-task-id="${t.id}" data-task-category="${category}">
-        <div class="task-card-header">
-          <div class="task-header-left">
+      <div class="task-card ${isExpanded ? 'is-expanded' : 'is-collapsed'}" data-task-id="${t.id}" data-task-category="${category}">
+        <!-- Collapsible Row Summary (Always visible & clickable) -->
+        <div class="task-card-summary" role="button" tabindex="0" aria-expanded="${isExpanded}">
+          <div class="task-summary-left">
+            <div class="task-expand-chevron" title="Click to expand/collapse details">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+            </div>
             <div class="task-icon-box" style="background: ${iconColor}; color: ${iconTextColor};">
               ${icon}
             </div>
-            <div style="min-width: 0;">
+            <div class="task-summary-title-group">
               <div class="task-card-title">
                 <span>${escapeHtml(t.name)}</span>
                 <span class="task-category-tag">${categoryLabel}</span>
               </div>
-              <div class="task-card-desc">${escapeHtml(t.description)}</div>
-            </div>
-          </div>
-          <span class="task-status-badge ${statusClass}">
-            ${isRunning ? '<span class="pulse-dot-sm pulse-active"></span>' : ''}
-            ${escapeHtml(t.status)}
-          </span>
-        </div>
-
-        <div class="task-status-callout" title="${escapeHtml(msg)}">
-          <span class="task-status-callout-icon">${isRunning ? '⚡' : '💬'}</span>
-          <span class="task-status-callout-text"><span style="color:var(--text-dim);font-weight:600;text-transform:uppercase;font-size:0.7rem;margin-right:4px;">Status Message:</span>${escapeHtml(msg)}</span>
-        </div>
-
-        <div class="task-metrics-grid">
-          <div class="task-metric-item">
-            <div class="task-metric-label">Run Schedule:</div>
-            <div class="task-metric-val">
-              <select class="input-select task-schedule-select" data-task-id="${t.id}" style="padding: 2px 6px; font-size: 0.8rem; width: auto; background: var(--bg-card); color: var(--text-main); border: 1px solid var(--border-color); border-radius: 4px;">
-                <option value="1" ${intervalHours === 1 ? 'selected' : ''}>Every 1 hour${t.id === 'tautulli_sync' || t.id === 'tautulli' || t.id === 'session_reaper' ? ' (Default)' : ''}</option>
-                <option value="2" ${intervalHours === 2 ? 'selected' : ''}>Every 2 hours</option>
-                <option value="4" ${intervalHours === 4 ? 'selected' : ''}>Every 4 hours${t.id === 'image_cache' || t.id === 'tvdb_metadata' || t.id === 'user_sync' || t.id === 'media_sync' ? ' (Default)' : ''}</option>
-                <option value="6" ${intervalHours === 6 ? 'selected' : ''}>Every 6 hours${t.id === 'duplicate_pruner' ? ' (Default)' : ''}</option>
-                <option value="12" ${intervalHours === 12 ? 'selected' : ''}>Every 12 hours${t.id === 'metadata_backfill' ? ' (Default)' : ''}</option>
-                <option value="24" ${intervalHours === 24 ? 'selected' : ''}>Every 24 hours (Daily${t.id === 'db_backup' || t.id === 'image_prune' || t.id === 'version_check' || t.id === 'library_audit' ? ' - Default' : ''})</option>
-                <option value="168" ${intervalHours === 168 ? 'selected' : ''}>Every 168 hours (Weekly${t.id === 'db_maintenance' ? ' - Default' : ''})</option>
-              </select>
-              <span class="schedule-save-status" data-task-id="${t.id}" style="font-size: 0.72rem; color: #34d399;"></span>
+              <div class="task-summary-desc-hint">${escapeHtml(t.description)}</div>
             </div>
           </div>
 
-          <div class="task-metric-item">
-            <div class="task-metric-label">${statLabel}</div>
-            <div class="task-metric-val">
+          <!-- Quick Info Pills in Row -->
+          <div class="task-summary-mid">
+            <div class="task-summary-stat-pill" title="${statLabel} ${statValue}">
               <strong>${statValue}</strong>
             </div>
-          </div>
-
-          <div class="task-metric-item">
-            <div class="task-metric-label">Next Scheduled Run:</div>
-            <div class="task-metric-val">
-              <strong class="task-next-run">${nextRunStr}</strong>
+            <div class="task-summary-schedule-pill" title="Run Schedule: ${escapeHtml(t.schedule)}">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              <span>${escapeHtml(t.schedule)}</span>
             </div>
-          </div>
-
-          <div class="task-metric-item">
-            <div class="task-metric-label">Last Completed:</div>
-            <div class="task-metric-val">
-              <strong>${lastSuccessStr}</strong>
-            </div>
+            <span class="task-status-badge ${statusClass}">
+              ${isRunning ? '<span class="pulse-dot-sm pulse-active"></span>' : ''}
+              ${escapeHtml(t.status)}
+            </span>
+            <span class="task-expand-hint" title="Toggle full card">
+              <span class="task-expand-text">${isExpanded ? 'Hide' : 'Details'}</span>
+            </span>
           </div>
         </div>
 
-        <div class="task-card-footer">
-          <div class="task-footer-actions-left">
-            <button class="btn btn-outline btn-sm btn-trigger-task" data-task-id="${t.id}">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-              <span>${isRunning ? 'Running... (Run Again)' : 'Run Now'}</span>
-            </button>
-            ${hasForceRefresh ? `
-            <button class="btn btn-outline btn-sm btn-force-task" data-task-id="${t.id}" title="${
-              t.id === 'image_cache'
-                ? 'Reset poster thumbnails and re-download posters for all records'
-                : t.id === 'user_sync'
-                ? 'Clear user cache and re-sync all user mappings'
-                : 'Re-download metadata for all records regardless of existing metadata'
-            }">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-              <span>Force Refresh All</span>
-            </button>
-            ` : ''}
+        <!-- Expandable Drawer Body -->
+        <div class="task-card-body">
+          <div class="task-card-desc-full">${escapeHtml(t.description)}</div>
+
+          <div class="task-status-callout" title="${escapeHtml(msg)}">
+            <span class="task-status-callout-icon">${isRunning ? '⚡' : '💬'}</span>
+            <span class="task-status-callout-text"><span style="color:var(--text-dim);font-weight:600;text-transform:uppercase;font-size:0.7rem;margin-right:4px;">Status Message:</span>${escapeHtml(msg)}</span>
           </div>
-          <div class="task-footer-actions-right">
-            <button class="btn btn-outline btn-sm btn-task-logs" data-task-id="${t.id}" data-task-name="${escapeHtml(t.name)}">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-              <span>View Logs</span>
-            </button>
+
+          <div class="task-metrics-grid">
+            <div class="task-metric-item">
+              <div class="task-metric-label">Run Schedule:</div>
+              <div class="task-metric-val">
+                <select class="input-select task-schedule-select" data-task-id="${t.id}" style="padding: 2px 6px; font-size: 0.8rem; width: auto; background: var(--bg-card); color: var(--text-main); border: 1px solid var(--border-color); border-radius: 4px;">
+                  <option value="1" ${intervalHours === 1 ? 'selected' : ''}>Every 1 hour${t.id === 'tautulli_sync' || t.id === 'tautulli' || t.id === 'session_reaper' ? ' (Default)' : ''}</option>
+                  <option value="2" ${intervalHours === 2 ? 'selected' : ''}>Every 2 hours</option>
+                  <option value="4" ${intervalHours === 4 ? 'selected' : ''}>Every 4 hours${t.id === 'image_cache' || t.id === 'tvdb_metadata' || t.id === 'user_sync' || t.id === 'media_sync' ? ' (Default)' : ''}</option>
+                  <option value="6" ${intervalHours === 6 ? 'selected' : ''}>Every 6 hours${t.id === 'duplicate_pruner' ? ' (Default)' : ''}</option>
+                  <option value="12" ${intervalHours === 12 ? 'selected' : ''}>Every 12 hours${t.id === 'metadata_backfill' ? ' (Default)' : ''}</option>
+                  <option value="24" ${intervalHours === 24 ? 'selected' : ''}>Every 24 hours (Daily${t.id === 'db_backup' || t.id === 'image_prune' || t.id === 'version_check' || t.id === 'library_audit' ? ' - Default' : ''})</option>
+                  <option value="168" ${intervalHours === 168 ? 'selected' : ''}>Every 168 hours (Weekly${t.id === 'db_maintenance' ? ' - Default' : ''})</option>
+                </select>
+                <span class="schedule-save-status" data-task-id="${t.id}" style="font-size: 0.72rem; color: #34d399;"></span>
+              </div>
+            </div>
+
+            <div class="task-metric-item">
+              <div class="task-metric-label">${statLabel}</div>
+              <div class="task-metric-val">
+                <strong>${statValue}</strong>
+              </div>
+            </div>
+
+            <div class="task-metric-item">
+              <div class="task-metric-label">Next Scheduled Run:</div>
+              <div class="task-metric-val">
+                <strong class="task-next-run">${nextRunStr}</strong>
+              </div>
+            </div>
+
+            <div class="task-metric-item">
+              <div class="task-metric-label">Last Completed:</div>
+              <div class="task-metric-val">
+                <strong>${lastSuccessStr}</strong>
+              </div>
+            </div>
+          </div>
+
+          <div class="task-card-footer">
+            <div class="task-footer-actions-left">
+              <button class="btn btn-outline btn-sm btn-trigger-task" data-task-id="${t.id}">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                <span>${isRunning ? 'Running... (Run Again)' : 'Run Now'}</span>
+              </button>
+              ${hasForceRefresh ? `
+              <button class="btn btn-outline btn-sm btn-force-task" data-task-id="${t.id}" title="${
+                t.id === 'image_cache'
+                  ? 'Reset poster thumbnails and re-download posters for all records'
+                  : t.id === 'user_sync'
+                  ? 'Clear user cache and re-sync all user mappings'
+                  : 'Re-download metadata for all records regardless of existing metadata'
+              }">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                <span>Force Refresh All</span>
+              </button>
+              ` : ''}
+            </div>
+            <div class="task-footer-actions-right">
+              <button class="btn btn-outline btn-sm btn-task-logs" data-task-id="${t.id}" data-task-name="${escapeHtml(t.name)}">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                <span>View Logs</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -5771,6 +5798,30 @@ function renderAdminTasks(tasks) {
   }).join('');
 
   applyAdminTasksFilters();
+  updateToggleAllTasksButton();
+
+  // Click on row summary toggles expand/collapse
+  el.adminTasksContainer.querySelectorAll('.task-card-summary').forEach(summary => {
+    summary.addEventListener('click', (e) => {
+      if (e.target.closest('button') || e.target.closest('select') || e.target.closest('a') || e.target.closest('input')) {
+        return;
+      }
+      const card = summary.closest('.task-card');
+      if (!card) return;
+      const taskId = card.dataset.taskId;
+      const isNowExpanded = card.classList.toggle('is-expanded');
+      card.classList.toggle('is-collapsed', !isNowExpanded);
+      summary.setAttribute('aria-expanded', isNowExpanded);
+      if (taskId) {
+        if (isNowExpanded) {
+          state.admin.expandedTasks.add(taskId);
+        } else {
+          state.admin.expandedTasks.delete(taskId);
+        }
+      }
+      updateToggleAllTasksButton();
+    });
+  });
 
   el.adminTasksContainer.querySelectorAll('.btn-task-logs').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -5855,6 +5906,36 @@ function renderAdminTasks(tasks) {
         btn.textContent = 'Force Refresh All';
       }
     });
+  });
+}
+
+function updateToggleAllTasksButton() {
+  if (!el.btnToggleAllTasksText) return;
+  const cards = el.adminTasksContainer ? el.adminTasksContainer.querySelectorAll('.task-card') : [];
+  if (cards.length === 0) return;
+  const allExpanded = Array.from(cards).every(c => c.classList.contains('is-expanded'));
+  el.btnToggleAllTasksText.textContent = allExpanded ? 'Collapse All' : 'Expand All';
+}
+
+if (el.btnToggleAllTasks) {
+  el.btnToggleAllTasks.addEventListener('click', () => {
+    const cards = el.adminTasksContainer ? el.adminTasksContainer.querySelectorAll('.task-card') : [];
+    if (cards.length === 0) return;
+    const allExpanded = Array.from(cards).every(c => c.classList.contains('is-expanded'));
+    if (allExpanded) {
+      state.admin.expandedTasks.clear();
+    } else {
+      cards.forEach(c => {
+        if (c.dataset.taskId) state.admin.expandedTasks.add(c.dataset.taskId);
+      });
+    }
+    cards.forEach(c => {
+      c.classList.toggle('is-expanded', !allExpanded);
+      c.classList.toggle('is-collapsed', allExpanded);
+      const summary = c.querySelector('.task-card-summary');
+      if (summary) summary.setAttribute('aria-expanded', !allExpanded);
+    });
+    updateToggleAllTasksButton();
   });
 }
 
