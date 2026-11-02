@@ -26,9 +26,9 @@
         ${s(`timeline.all_years`)}
       </button>
       <div class="hierarchy-nav-stepper">
-        <button class="btn btn-icon btn-xs" id="btn-timeline-prev-year" title="Previous Year">‹</button>
+        <button class="btn btn-icon btn-xs" id="btn-timeline-prev-year" title="Previous Year"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>
         <span class="hierarchy-active-label">${t}</span>
-        <button class="btn btn-icon btn-xs" id="btn-timeline-next-year" title="Next Year">›</button>
+        <button class="btn btn-icon btn-xs" id="btn-timeline-next-year" title="Next Year"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></button>
       </div>
     `:S.hierarchyControls.innerHTML=`
       <button class="btn btn-outline btn-xs btn-drill-up" id="btn-timeline-up" title="${s(`timeline.view_year_months`,{year:t})}">
@@ -36,9 +36,9 @@
         ${s(`timeline.year_months`,{year:t})}
       </button>
       <div class="hierarchy-nav-stepper">
-        <button class="btn btn-icon btn-xs" id="btn-timeline-prev-month" title="Previous Month">‹</button>
+        <button class="btn btn-icon btn-xs" id="btn-timeline-prev-month" title="Previous Month"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>
         <span class="hierarchy-active-label">${n} ${t}</span>
-        <button class="btn btn-icon btn-xs" id="btn-timeline-next-month" title="Next Month">›</button>
+        <button class="btn btn-icon btn-xs" id="btn-timeline-next-month" title="Next Month"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></button>
       </div>
     `;let r=S.hierarchyBreadcrumbs.querySelector(`#btn-crumb-years`);r&&r.addEventListener(`click`,()=>{_.timeline.level=`years`,_.timeline.userManuallySelected=!0,A()});let i=S.hierarchyBreadcrumbs.querySelector(`#btn-crumb-year`);i&&i.addEventListener(`click`,()=>{_.timeline.level=`year`,_.timeline.userManuallySelected=!0,A()});let a=S.hierarchyControls.querySelector(`#btn-timeline-up`);a&&a.addEventListener(`click`,()=>{_.timeline.level===`month`?_.timeline.level=`year`:_.timeline.level===`year`&&(_.timeline.level=`years`),_.timeline.userManuallySelected=!0,A()});let o=S.hierarchyControls.querySelector(`#btn-timeline-prev-month`);o&&o.addEventListener(`click`,()=>{let e=parseInt(_.timeline.selectedMonth,10)-1,t=parseInt(_.timeline.selectedYear,10);e<1&&(e=12,--t),_.timeline.selectedYear=String(t),_.timeline.selectedMonth=String(e).padStart(2,`0`),_.timeline.date=``,_.timeline.userManuallySelected=!0,A()});let c=S.hierarchyControls.querySelector(`#btn-timeline-next-month`);c&&c.addEventListener(`click`,()=>{let e=parseInt(_.timeline.selectedMonth,10)+1,t=parseInt(_.timeline.selectedYear,10);e>12&&(e=1,t+=1),_.timeline.selectedYear=String(t),_.timeline.selectedMonth=String(e).padStart(2,`0`),_.timeline.date=``,_.timeline.userManuallySelected=!0,A()});let l=S.hierarchyControls.querySelector(`#btn-timeline-prev-year`);l&&l.addEventListener(`click`,()=>{_.timeline.selectedYear=String(parseInt(_.timeline.selectedYear,10)-1),_.timeline.date=``,_.timeline.userManuallySelected=!0,A()});let u=S.hierarchyControls.querySelector(`#btn-timeline-next-year`);if(u&&u.addEventListener(`click`,()=>{_.timeline.selectedYear=String(parseInt(_.timeline.selectedYear,10)+1),_.timeline.date=``,_.timeline.userManuallySelected=!0,A()}),S.timelineMonthChips){if(e===`years`)S.timelineMonthChips.style.display=`none`;else{S.timelineMonthChips.style.display=`flex`;let n=_.timeline.periodsData?.years?.find(e=>e.year===t),r=new Map;n&&n.months&&n.months.forEach(e=>r.set(e.month_num,e.count)),S.timelineMonthChips.innerHTML=p.map((n,i)=>{let a=String(i+1).padStart(2,`0`),o=r.get(a)||0,s=e===`month`&&_.timeline.selectedMonth===a,c=o>0?`<span class="month-chip-badge">${o}</span>`:``,l=[`month-chip`];return s&&l.push(`active`),o>0&&l.push(`has-data`),`
           <button class="${l.join(` `)}" data-month-num="${a}" title="${f[i]} ${t}: ${o} watches">

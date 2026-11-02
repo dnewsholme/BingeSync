@@ -1,4 +1,5 @@
 :root {
+  color-scheme: dark;
   --bg-base: #080c14;
   --bg-surface: #0f172a;
   --bg-card: rgba(18, 26, 44, 0.75);
@@ -346,6 +347,41 @@ h1, h2, h3, h4 {
 .btn-sm {
   padding: 6px 12px;
   font-size: 0.82rem;
+}
+
+.btn-xs {
+  padding: 3px 8px;
+  font-size: 0.75rem;
+  border-radius: var(--radius-sm);
+  line-height: 1.2;
+}
+
+.btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  width: 26px;
+  height: 26px;
+  min-width: 26px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  line-height: 1;
+}
+
+.btn-icon:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.btn-icon:active {
+  background: rgba(255, 255, 255, 0.18);
+  transform: scale(0.95);
 }
 
 .btn-primary {
@@ -747,6 +783,24 @@ select.form-control {
 
 select.form-control:hover {
   border-color: rgba(255, 255, 255, 0.25);
+}
+
+input[type="date"],
+input[type="date"].form-control {
+  color-scheme: dark;
+  background-color: var(--bg-input);
+  color: #fff;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  filter: invert(0.85);
+  opacity: 0.75;
+  transition: opacity 0.15s ease;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
 }
 
 textarea.form-control {
@@ -3038,19 +3092,52 @@ select.filter-ctrl {
 .hierarchy-nav-stepper {
   display: inline-flex;
   align-items: center;
-  background: rgba(30, 41, 59, 0.8);
+  background: rgba(15, 23, 42, 0.85);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
-  padding: 2px 4px;
+  padding: 3px;
   gap: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+
+.hierarchy-nav-stepper .btn-icon,
+.hierarchy-nav-stepper .btn {
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #cbd5e1;
+  border-radius: 4px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  line-height: 1;
+}
+
+.hierarchy-nav-stepper .btn-icon:hover,
+.hierarchy-nav-stepper .btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.25);
+  color: #fff;
+}
+
+.hierarchy-nav-stepper .btn-icon:active,
+.hierarchy-nav-stepper .btn:active {
+  background: rgba(255, 255, 255, 0.22);
+  transform: scale(0.92);
 }
 
 .hierarchy-active-label {
   font-size: 0.82rem;
   font-weight: 600;
   color: var(--text-main);
-  padding: 0 6px;
+  padding: 0 8px;
   white-space: nowrap;
+  user-select: none;
 }
 
 .timeline-month-chips {

@@ -1071,9 +1071,9 @@ function renderTimelineHierarchyNav() {
         ${t('timeline.all_years')}
       </button>
       <div class="hierarchy-nav-stepper">
-        <button class="btn btn-icon btn-xs" id="btn-timeline-prev-year" title="Previous Year">‹</button>
+        <button class="btn btn-icon btn-xs" id="btn-timeline-prev-year" title="Previous Year"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>
         <span class="hierarchy-active-label">${year}</span>
-        <button class="btn btn-icon btn-xs" id="btn-timeline-next-year" title="Next Year">›</button>
+        <button class="btn btn-icon btn-xs" id="btn-timeline-next-year" title="Next Year"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></button>
       </div>
     `;
   } else {
@@ -1084,9 +1084,9 @@ function renderTimelineHierarchyNav() {
         ${t('timeline.year_months', { year })}
       </button>
       <div class="hierarchy-nav-stepper">
-        <button class="btn btn-icon btn-xs" id="btn-timeline-prev-month" title="Previous Month">‹</button>
+        <button class="btn btn-icon btn-xs" id="btn-timeline-prev-month" title="Previous Month"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>
         <span class="hierarchy-active-label">${monthName} ${year}</span>
-        <button class="btn btn-icon btn-xs" id="btn-timeline-next-month" title="Next Month">›</button>
+        <button class="btn btn-icon btn-xs" id="btn-timeline-next-month" title="Next Month"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></button>
       </div>
     `;
   }

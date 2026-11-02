@@ -1125,6 +1125,21 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     await expect(page.locator('#hierarchy-breadcrumbs')).toContainText('All Years');
     await expect(page.locator('#btn-timeline-up')).toBeVisible();
 
+    // Verify month stepper forward/back buttons have dark styling and SVG icons (no white background)
+    const prevMonthBtn = page.locator('#btn-timeline-prev-month');
+    await expect(prevMonthBtn).toBeVisible();
+    await expect(prevMonthBtn.locator('svg')).toBeVisible();
+    const prevBg = await prevMonthBtn.evaluate(el => window.getComputedStyle(el).backgroundColor);
+    expect(prevBg).not.toBe('rgb(255, 255, 255)');
+    expect(prevBg).not.toBe('rgb(239, 239, 239)');
+
+    const nextMonthBtn = page.locator('#btn-timeline-next-month');
+    await expect(nextMonthBtn).toBeVisible();
+    await expect(nextMonthBtn.locator('svg')).toBeVisible();
+    const nextBg = await nextMonthBtn.evaluate(el => window.getComputedStyle(el).backgroundColor);
+    expect(nextBg).not.toBe('rgb(255, 255, 255)');
+    expect(nextBg).not.toBe('rgb(239, 239, 239)');
+
     // 2. Drill up to Months view for the current year
     const currentMonthName = new Date().toLocaleString('en-US', { month: 'long' });
     await page.click('#btn-timeline-up');
