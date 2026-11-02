@@ -1766,11 +1766,12 @@ function renderScrobbleCard(item, isHistory = false) {
     ? `S${String(item.season_number || 1).padStart(2, '0')}E${String(item.episode_number || 1).padStart(2, '0')}`
     : t('history.movie');
 
-  const subTitle = isEpisode && item.grandparent_title
+  const durationMin = item.duration_ms ? `${Math.round(item.duration_ms / 60000)}m` : '';
+
+  const baseSub = isEpisode && item.grandparent_title
     ? `${item.grandparent_title}`
     : (item.year ? `${item.year}` : '');
-
-  const durationMin = item.duration_ms ? `${Math.round(item.duration_ms / 60000)}m` : '';
+  const subTitle = [baseSub, durationMin].filter(Boolean).join(' • ');
 
   const resolvedThumb = resolveImageUrl(item.thumb_url);
   const posterHtml = resolvedThumb
@@ -1868,7 +1869,6 @@ function renderScrobbleCard(item, isHistory = false) {
             <a href="${imdbUrl}" target="_blank" rel="noopener noreferrer" class="card-imdb-link" title="Open on IMDb" onclick="event.stopPropagation()">IMDb ↗</a>
             <a href="${tvdbUrl}" target="_blank" rel="noopener noreferrer" class="card-tvdb-link" title="View on TheTVDB" onclick="event.stopPropagation()">TVDB ↗</a>
           </div>
-          <span>${durationMin}</span>
         </div>
         ${specsHtml}
         ${sourceBarHtml}
