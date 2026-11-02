@@ -942,8 +942,8 @@ select.form-control-sm {
 /* Scrobble Grid & Cards */
 .scrobble-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 14px;
 }
 
 .scrobble-card {
@@ -957,6 +957,7 @@ select.form-control-sm {
   flex-direction: column;
   position: relative;
   overflow: hidden;
+  min-width: 0;
 }
 
 .scrobble-card:hover {
@@ -968,7 +969,7 @@ select.form-control-sm {
 
 .scrobble-poster {
   width: 100%;
-  height: 105px;
+  height: 130px;
   border-radius: var(--radius-sm);
   background: linear-gradient(135deg, #1e293b, #0f172a);
   object-fit: cover;
@@ -981,17 +982,37 @@ select.form-control-sm {
   overflow: hidden;
 }
 
+.scrobble-header-badges {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-bottom: 8px;
+  min-width: 0;
+}
+
 .scrobble-badge {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 3px;
+  height: 20px;
+  box-sizing: border-box;
   font-size: 0.68rem;
   font-weight: 700;
   text-transform: uppercase;
-  padding: 1.5px 6px;
+  line-height: 1;
+  padding: 0 6px;
   border-radius: var(--radius-sm);
-  margin-bottom: 6px;
+  margin: 0;
   width: fit-content;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.scrobble-header-badges .scrobble-badge {
+  margin-bottom: 0;
+  line-height: 1;
 }
 
 .badge-movie {
@@ -1009,7 +1030,27 @@ select.form-control-sm {
 .badge-in-progress {
   background: rgba(245, 158, 11, 0.15);
   color: #fbbf24;
-  border: 1px solid rgba(245, 158, 11, 0.3);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+}
+
+.scrobble-rating {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  height: 20px;
+  box-sizing: border-box;
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1;
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.12);
+  border: 1px solid rgba(251, 191, 36, 0.3);
+  padding: 0 6px;
+  border-radius: var(--radius-sm);
+  margin: 0;
+  white-space: nowrap;
+  vertical-align: middle;
 }
 
 .scrobble-progress-bar {
@@ -1026,34 +1067,6 @@ select.form-control-sm {
   height: 100%;
   background: #fbbf24;
   transition: width 0.3s ease;
-}
-
-.scrobble-header-badges {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 8px;
-}
-
-.scrobble-header-badges .scrobble-badge {
-  margin-bottom: 0;
-  line-height: 1.2;
-}
-
-.scrobble-rating {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  font-size: 0.72rem;
-  font-weight: 700;
-  line-height: 1.2;
-  color: #fbbf24;
-  background: rgba(251, 191, 36, 0.12);
-  border: 1px solid rgba(251, 191, 36, 0.25);
-  padding: 2px 7px;
-  border-radius: var(--radius-sm);
-  margin-bottom: 0;
-  vertical-align: middle;
 }
 
 .import-status-box {
@@ -1076,6 +1089,12 @@ select.form-control-sm {
   color: #f87171;
 }
 
+.scrobble-card-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
 .scrobble-card-title {
   font-weight: 700;
   font-size: 0.88rem;
@@ -1087,27 +1106,38 @@ select.form-control-sm {
   line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  word-break: break-word;
 }
 
 .scrobble-card-sub {
   font-size: 0.78rem;
   color: var(--text-muted);
-  margin-bottom: 6px;
+  margin-bottom: 4px;
   display: -webkit-box;
   -webkit-line-clamp: 1;
   line-clamp: 1;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  word-break: break-word;
+}
+
+.scrobble-card-footer {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding-top: 8px;
+  min-width: 0;
 }
 
 .scrobble-card-meta {
-  margin-top: auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
   font-size: 0.72rem;
   color: var(--text-dim);
-  padding-top: 4px;
+  line-height: 1.2;
+  min-width: 0;
 }
 
 /* History Filter Bar */
@@ -1916,17 +1946,28 @@ select.filter-ctrl {
 .card-imdb-link {
   display: inline-flex;
   align-items: center;
-  color: #f5c518;
-  font-size: 0.72rem;
+  justify-content: center;
+  gap: 3px;
+  height: 20px;
+  box-sizing: border-box;
+  font-size: 0.66rem;
   font-weight: 700;
+  padding: 0 6px;
+  border-radius: var(--radius-sm);
+  line-height: 1;
+  white-space: nowrap;
   text-decoration: none;
-  opacity: 0.85;
-  transition: opacity 0.15s ease;
+  transition: all 0.15s ease;
+  vertical-align: middle;
+  background: rgba(245, 197, 24, 0.12);
+  border: 1px solid rgba(245, 197, 24, 0.3);
+  color: #f5c518;
 }
 
 .card-imdb-link:hover {
-  opacity: 1;
-  text-decoration: underline;
+  background: rgba(245, 197, 24, 0.25);
+  border-color: #f5c518;
+  color: #fde047;
 }
 
 /* TheTVDB Link Badge & Button */
@@ -1990,39 +2031,61 @@ select.filter-ctrl {
 .card-tmdb-link {
   display: inline-flex;
   align-items: center;
-  color: #38bdf8;
-  font-size: 0.72rem;
+  justify-content: center;
+  gap: 3px;
+  height: 20px;
+  box-sizing: border-box;
+  font-size: 0.66rem;
   font-weight: 700;
+  padding: 0 6px;
+  border-radius: var(--radius-sm);
+  line-height: 1;
+  white-space: nowrap;
   text-decoration: none;
-  opacity: 0.85;
-  transition: opacity 0.15s ease;
+  transition: all 0.15s ease;
+  vertical-align: middle;
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  color: #38bdf8;
 }
 
 .card-tmdb-link:hover {
-  opacity: 1;
-  text-decoration: underline;
+  background: rgba(56, 189, 248, 0.25);
+  border-color: #38bdf8;
+  color: #7dd3fc;
 }
 
 .card-tvdb-link {
   display: inline-flex;
   align-items: center;
-  color: #4ade80;
-  font-size: 0.72rem;
+  justify-content: center;
+  gap: 3px;
+  height: 20px;
+  box-sizing: border-box;
+  font-size: 0.66rem;
   font-weight: 700;
+  padding: 0 6px;
+  border-radius: var(--radius-sm);
+  line-height: 1;
+  white-space: nowrap;
   text-decoration: none;
-  opacity: 0.85;
-  transition: opacity 0.15s ease;
+  transition: all 0.15s ease;
+  vertical-align: middle;
+  background: rgba(59, 179, 82, 0.12);
+  border: 1px solid rgba(59, 179, 82, 0.3);
+  color: #4ade80;
 }
 
 .card-tvdb-link:hover {
-  opacity: 1;
-  text-decoration: underline;
+  background: rgba(59, 179, 82, 0.25);
+  border-color: #4ade80;
+  color: #86efac;
 }
 
 .card-external-links {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
   margin-left: auto;
 }
 
@@ -4067,11 +4130,17 @@ select option,
 
 .scrobble-card-director,
 .scrobble-card-cinematographer {
-  margin-top: 4px;
+  margin-top: 3px;
   font-size: 0.72rem;
   display: flex;
   align-items: center;
   gap: 4px;
+  min-width: 0;
+}
+
+.scrobble-card-director span,
+.scrobble-card-cinematographer span {
+  flex-shrink: 0;
 }
 
 .person-tag-card {
@@ -4082,6 +4151,12 @@ select option,
   font-size: 0.72rem;
   padding: 1px 5px;
   cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  max-width: 100%;
+  display: inline-block;
   transition: all 0.15s ease;
   font-family: inherit;
 }
@@ -5085,22 +5160,30 @@ body[data-theme="rose"] .heatmap-cell[data-level="4"] { background: rgba(244, 63
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
-  margin-top: 4px;
+  min-width: 0;
 }
 
 .tag-chip-card {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  height: 19px;
+  box-sizing: border-box;
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.12);
   color: #e2e8f0;
-  font-size: 0.68rem;
+  font-size: 0.65rem;
   font-weight: 500;
-  padding: 2px 6px;
+  padding: 0 6px;
   border-radius: 4px;
   cursor: pointer;
   transition: all 0.15s ease;
-  line-height: 1.2;
+  line-height: 1;
+  white-space: nowrap;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
 }
 
 .tag-chip-card:hover {
@@ -5112,7 +5195,6 @@ body[data-theme="rose"] .heatmap-cell[data-level="4"] { background: rgba(244, 63
 .scrobble-card-notes {
   font-size: 0.72rem;
   color: var(--text-muted);
-  margin-top: 4px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -5375,8 +5457,8 @@ body[data-theme="rose"] .heatmap-cell[data-level="4"] { background: rgba(244, 63
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 5px;
-  margin-top: 4px;
+  gap: 4px;
+  min-width: 0;
 }
 
 .service-icon {
@@ -5388,21 +5470,33 @@ body[data-theme="rose"] .heatmap-cell[data-level="4"] { background: rgba(244, 63
 .source-tag-card {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  justify-content: center;
+  gap: 3px;
+  height: 19px;
+  box-sizing: border-box;
   font-size: 0.65rem;
   font-weight: 700;
-  letter-spacing: 0.03em;
-  padding: 1px 6px;
+  letter-spacing: 0.02em;
+  padding: 0 6px;
   border-radius: 4px;
   border: 1px solid transparent;
   cursor: pointer;
-  line-height: 1.3;
+  line-height: 1;
   transition: all 0.15s ease;
   background: rgba(255, 255, 255, 0.08);
   color: #cbd5e1;
+  white-space: nowrap;
+  vertical-align: middle;
 }
 
-.source-tag-card svg,
+.source-tag-card svg {
+  width: 11px;
+  height: 11px;
+  flex-shrink: 0;
+  display: inline-block;
+  vertical-align: middle;
+}
+
 .detail-source-badge svg {
   flex-shrink: 0;
   display: inline-block;
@@ -5503,17 +5597,25 @@ body[data-theme="rose"] .heatmap-cell[data-level="4"] { background: rgba(244, 63
 .user-tag-card {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 3px;
-  font-size: 0.68rem;
+  height: 19px;
+  box-sizing: border-box;
+  font-size: 0.65rem;
   font-weight: 600;
-  padding: 1px 6px;
+  padding: 0 6px;
   border-radius: 4px;
   background: rgba(147, 51, 234, 0.12);
   border: 1px solid rgba(147, 51, 234, 0.3);
   color: #d8b4fe;
   cursor: pointer;
-  line-height: 1.3;
+  line-height: 1;
   transition: all 0.15s ease;
+  white-space: nowrap;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
 }
 
 .user-tag-card:hover {
@@ -5525,29 +5627,45 @@ body[data-theme="rose"] .heatmap-cell[data-level="4"] { background: rgba(244, 63
 .import-tag-card {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 2px;
+  height: 19px;
+  box-sizing: border-box;
   font-size: 0.65rem;
   font-weight: 600;
-  padding: 1px 5px;
+  padding: 0 5px;
   border-radius: 4px;
   background: rgba(56, 189, 248, 0.12);
   border: 1px solid rgba(56, 189, 248, 0.28);
   color: #7dd3fc;
-  line-height: 1.3;
+  line-height: 1;
+  white-space: nowrap;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
 }
 
 .device-tag-card {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 3px;
+  height: 19px;
+  box-sizing: border-box;
   font-size: 0.65rem;
   font-weight: 600;
-  padding: 1px 6px;
+  padding: 0 6px;
   border-radius: 4px;
   background: rgba(168, 85, 247, 0.12);
   border: 1px solid rgba(168, 85, 247, 0.28);
   color: #c084fc;
-  line-height: 1.3;
+  line-height: 1;
+  white-space: nowrap;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
 }
 
 .scrobble-card-specs {
@@ -5555,19 +5673,27 @@ body[data-theme="rose"] .heatmap-cell[data-level="4"] { background: rgba(244, 63
   align-items: center;
   gap: 4px;
   flex-wrap: wrap;
-  margin-top: 4px;
+  min-width: 0;
 }
 
 .spec-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 19px;
+  box-sizing: border-box;
   font-size: 0.65rem;
   font-weight: 700;
-  letter-spacing: 0.03em;
-  padding: 1px 5px;
+  letter-spacing: 0.02em;
+  padding: 0 5px;
   border-radius: 3px;
   background: rgba(56, 189, 248, 0.12);
   border: 1px solid rgba(56, 189, 248, 0.25);
   color: #38bdf8;
   text-transform: uppercase;
+  line-height: 1;
+  white-space: nowrap;
+  vertical-align: middle;
 }
 
 .scrobble-badge.badge-rewatch {
@@ -5586,29 +5712,39 @@ body[data-theme="rose"] .heatmap-cell[data-level="4"] { background: rgba(244, 63
 }
 
 .badge-mini-local {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   font-size: 0.62rem;
-  padding: 1px 4px;
+  padding: 1px 5px;
   border-radius: 3px;
   background: rgba(34, 197, 94, 0.18);
   color: #4ade80;
   border: 1px solid rgba(34, 197, 94, 0.35);
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.03em;
   vertical-align: middle;
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .badge-mini-remote {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   font-size: 0.62rem;
-  padding: 1px 4px;
+  padding: 1px 5px;
   border-radius: 3px;
   background: rgba(59, 130, 246, 0.18);
   color: #60a5fa;
   border: 1px solid rgba(59, 130, 246, 0.35);
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.03em;
   vertical-align: middle;
+  line-height: 1;
+  white-space: nowrap;
 }
 
 /* Server Users Multi-Select Picker (Plex & Jellyfin) */

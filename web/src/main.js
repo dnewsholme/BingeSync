@@ -1840,7 +1840,7 @@ function renderScrobbleCard(item, isHistory = false) {
     ? `<span class="device-tag-card" title="Played on ${escapeHtml(deviceName)}${item.platform ? ` (${escapeHtml(item.platform)})` : ''}${item.is_local === true ? ' • Local LAN' : item.is_local === false ? ' • Remote' : ''}">📱 ${escapeHtml(deviceName)}</span>`
     : '';
   const sourceBarHtml = (item.source || item.source_user || item.imported_from || deviceName)
-    ? `<div class="scrobble-card-source-bar" onclick="event.stopPropagation()">${sourceHtml}${importHtml}${userHtml}${deviceHtml}</div>`
+    ? `<div class="scrobble-card-source-bar">${sourceHtml}${importHtml}${userHtml}${deviceHtml}</div>`
     : '';
 
   return `
@@ -1854,33 +1854,37 @@ function renderScrobbleCard(item, isHistory = false) {
         ${ratingHtml}
         ${contentRatingBadgeHtml}
         ${missingBadgeHtml}
-        <div class="card-external-links">
-          <a href="${imdbUrl}" target="_blank" rel="noopener noreferrer" class="card-imdb-link" title="Open on IMDb" onclick="event.stopPropagation()">IMDb ↗</a>
-          <a href="${tvdbUrl}" target="_blank" rel="noopener noreferrer" class="card-tvdb-link" title="View on TheTVDB" onclick="event.stopPropagation()">TVDB ↗</a>
-        </div>
       </div>
-      <div class="scrobble-card-title">${escapeHtml(item.title)}</div>
-      ${subTitle ? `<div class="scrobble-card-sub">${escapeHtml(subTitle)}</div>` : ''}
-      ${(item.director || item.directors) ? `<div class="scrobble-card-director" onclick="event.stopPropagation()"><span style="font-size:0.72rem;color:var(--text-dim);">Dir:</span> <button type="button" class="person-tag-card" data-person="${escapeHtml((item.director || item.directors).split(',')[0].trim())}" title="Show history with ${escapeHtml((item.director || item.directors).split(',')[0].trim())}">${escapeHtml((item.director || item.directors).split(',')[0].trim())}</button></div>` : ''}
-      ${item.cinematographer ? `<div class="scrobble-card-cinematographer" onclick="event.stopPropagation()"><span style="font-size:0.72rem;color:var(--text-dim);">Cinematography:</span> <button type="button" class="person-tag-card" data-person="${escapeHtml(item.cinematographer.split(',')[0].trim())}" title="Show history with ${escapeHtml(item.cinematographer.split(',')[0].trim())}">${escapeHtml(item.cinematographer.split(',')[0].trim())}</button></div>` : ''}
-      <div class="scrobble-card-meta">
-        <span>${formatTime(item.watched_at)}</span>
-        <span>${durationMin}</span>
+      <div class="scrobble-card-body">
+        <div class="scrobble-card-title">${escapeHtml(item.title)}</div>
+        ${subTitle ? `<div class="scrobble-card-sub">${escapeHtml(subTitle)}</div>` : ''}
+        ${(item.director || item.directors) ? `<div class="scrobble-card-director"><span style="font-size:0.72rem;color:var(--text-dim);">Dir:</span> <button type="button" class="person-tag-card" data-person="${escapeHtml((item.director || item.directors).split(',')[0].trim())}" title="Show history with ${escapeHtml((item.director || item.directors).split(',')[0].trim())}">${escapeHtml((item.director || item.directors).split(',')[0].trim())}</button></div>` : ''}
+        ${item.cinematographer ? `<div class="scrobble-card-cinematographer"><span style="font-size:0.72rem;color:var(--text-dim);">Cinematography:</span> <button type="button" class="person-tag-card" data-person="${escapeHtml(item.cinematographer.split(',')[0].trim())}" title="Show history with ${escapeHtml(item.cinematographer.split(',')[0].trim())}">${escapeHtml(item.cinematographer.split(',')[0].trim())}</button></div>` : ''}
       </div>
-      ${specsHtml}
-      ${sourceBarHtml}
-      ${item.tags ? `
-        <div class="scrobble-card-tags" onclick="event.stopPropagation()">
-          ${item.tags.split(',').map(t => t.trim()).filter(Boolean).map(t => `
-            <button type="button" class="tag-chip-card" data-tag="${escapeHtml(t)}" title="Filter by tag: ${escapeHtml(t)}">🏷️ ${escapeHtml(t)}</button>
-          `).join('')}
+      <div class="scrobble-card-footer">
+        <div class="scrobble-card-meta">
+          <span>${formatTime(item.watched_at)}</span>
+          <div class="card-external-links">
+            <a href="${imdbUrl}" target="_blank" rel="noopener noreferrer" class="card-imdb-link" title="Open on IMDb" onclick="event.stopPropagation()">IMDb ↗</a>
+            <a href="${tvdbUrl}" target="_blank" rel="noopener noreferrer" class="card-tvdb-link" title="View on TheTVDB" onclick="event.stopPropagation()">TVDB ↗</a>
+          </div>
+          <span>${durationMin}</span>
         </div>
-      ` : ''}
-      ${item.notes ? `
-        <div class="scrobble-card-notes" title="${escapeHtml(item.notes)}">
-          <span style="opacity:0.8;">📝</span> <em>${escapeHtml(item.notes.length > 55 ? item.notes.substring(0, 52) + '...' : item.notes)}</em>
-        </div>
-      ` : ''}
+        ${specsHtml}
+        ${sourceBarHtml}
+        ${item.tags ? `
+          <div class="scrobble-card-tags">
+            ${item.tags.split(',').map(t => t.trim()).filter(Boolean).map(t => `
+              <button type="button" class="tag-chip-card" data-tag="${escapeHtml(t)}" title="Filter by tag: ${escapeHtml(t)}">🏷️ ${escapeHtml(t)}</button>
+            `).join('')}
+          </div>
+        ` : ''}
+        ${item.notes ? `
+          <div class="scrobble-card-notes" title="${escapeHtml(item.notes)}">
+            <span style="opacity:0.8;">📝</span> <em>${escapeHtml(item.notes.length > 55 ? item.notes.substring(0, 52) + '...' : item.notes)}</em>
+          </div>
+        ` : ''}
+      </div>
       ${progressBarHtml}
     </div>
   `;
