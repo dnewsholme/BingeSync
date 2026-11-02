@@ -102,6 +102,22 @@ impl Scrobble {
     pub fn is_rewatch(&self) -> bool {
         self.is_rewatch.unwrap_or(false)
     }
+
+    pub fn is_completed(&self) -> bool {
+        if self.watch_status.as_deref() == Some("in_progress") {
+            return false;
+        }
+        if let Some(pct) = self.progress_percent {
+            if pct < 80 {
+                return false;
+            }
+        }
+        true
+    }
+
+    pub fn is_incomplete(&self) -> bool {
+        !self.is_completed()
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

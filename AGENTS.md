@@ -130,7 +130,7 @@ Plex webhooks send:
 ```bash
 cargo test
 ```
-Tests in `tests/api_tests.rs` (69 integration tests) cover:
+Tests in `tests/api_tests.rs` (70 integration tests) cover:
 - Dev login and `/api/v1/auth/me`
 - Plex movie and TV episode scrobbling
 - Plex and Jellyfin pre-play trailer, cinema intro, and clip filtering and exclusion
@@ -260,6 +260,7 @@ Playwright tests in `web/tests/e2e.spec.js` (50 browser E2E tests) cover:
 - Live application log explorer: structured key-value tag syntax highlighting, service filtering, time range selector, result limit dropdown, log entry counter badge, one-click clipboard copying, and text log file downloads
 - Background maintenance workers (13 total): Stale Active Session Reaper (`session_reaper`), Orphaned Poster & Cache Pruning (`image_prune`), Auto Duplicate Scrobble Cleaner (`duplicate_pruner`), Metadata Backfill & Stale Rating Refresh (`metadata_backfill`), GitHub Release & Update Check (`version_check`), and Radarr & Sonarr Library Desync Audit (`library_audit`) with customizable schedules, manual run triggers, per-task log routing, and persistent database tracking
 - Collapsible background task cards: streamlined single-line summary rows displaying icon, name, category, stat badge, schedule pill, status badge, and chevron rotation, expanding to full detail cards on click with toolbar "Expand All" / "Collapse All" controls
+- Incomplete watch exclusion for rewatch and duplicate detection: incomplete or in-progress watches (< 80% progress or `watch_status = 'in_progress'`) never count as previous watches for rewatch detection and are never grouped or flagged as duplicate scrobbles
 
 
 ### Run the App Locally

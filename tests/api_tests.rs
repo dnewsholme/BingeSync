@@ -10348,3 +10348,166 @@ async fn test_legacy_database_migration_with_null_columns_and_history_fetch() {
     assert_eq!(days[0]["items"][0]["title"], "Legacy Classic Movie");
     assert_eq!(days[0]["items"][0]["is_rewatch"], false);
 }
+
+#[tokio::test]
+async fn test_incomplete_watch_does_not_count_as_rewatch_or_duplicate() {
+    let (app, pool, config) = setup_test_app().await;
+
+    let user_id = uuid::Uuid::new_v4().to_string();
+    let token = "test-token-incomplete-123";
+    sqlx::query("INSERT INTO users (id, email, display_name, webhook_token, role) VALUES (?, ?, ?, ?, 'user')")
+        .bind(&user_id)
+        .bind("incomplete_tester@example.com")
+        .bind("Incomplete Tester")
+        .bind(token)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let auth_token = create_jwt(&user_id, "incomplete_tester@example.com", &config.jwt_secret).unwrap();
+
+    // 1. Ingest an incomplete watch for Dune (2021): watch_status = 'in_progress', progress = 35%
+    let inc_id = uuid::Uuid::new_v4().to_string();
+    sqlx::query(
+        r#"
+        INSERT INTO scrobbles (
+            id, user_id, title, media_type, year, watched_at, created_at, watch_status, progress_percent
+        ) VALUES (?, ?, 'Dune', 'movie', 2021, '2024-06-01T10:00:00Z', '2024-06-01T10:00:00Z', 'in_progress', 35)
+        "#
+    )
+    .bind(&inc_id)
+    .bind(&user_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    // Verify 0 duplicate groups for the single incomplete watch
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/history/duplicates?window_hours=24")
+        .header(header::AUTHORIZATION, format!("Bearer {}", auth_token))
+        .body(Body::empty())
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let dup_json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    assert_eq!(dup_json["total_duplicate_groups"], 0);
+
+    // 2. Log subsequent completed watch for Dune: MUST NOT be flagged as rewatch!
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/history")
+        .header(header::AUTHORIZATION, format!("Bearer {}", auth_token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(
+            json!({
+                "title": "Dune",
+                "media_type": "movie",
+                "year": 2021,
+                "watch_status": "completed",
+                "progress_percent": 100
+            })
+            .to_string(),
+        ))
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::CREATED);
+    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let s_completed: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    assert_eq!(s_completed["is_rewatch"], false, "First completed watch after an incomplete watch must not be a rewatch");
+
+    // 3. Verify duplicate detection ignores the incomplete watch and does not group it with the completed watch
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/history/duplicates?window_hours=24")
+        .header(header::AUTHORIZATION, format!("Bearer {}", auth_token))
+        .body(Body::empty())
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let dup_json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    assert_eq!(dup_json["total_duplicate_groups"], 0, "Incomplete watch must not count as a duplicate of a completed watch");
+
+    // 4. Log a SECOND completed watch for Dune: MUST be detected as rewatch and duplicate!
+    tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/history")
+        .header(header::AUTHORIZATION, format!("Bearer {}", auth_token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(
+            json!({
+                "title": "Dune",
+                "media_type": "movie",
+                "year": 2021,
+                "watch_status": "completed",
+                "progress_percent": 100
+            })
+            .to_string(),
+        ))
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::CREATED);
+    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let s_rewatch: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    assert_eq!(s_rewatch["is_rewatch"], true, "Second completed watch must be detected as a rewatch");
+
+    // 5. Duplicate detector should now detect 1 duplicate group with ONLY the 2 completed watches (excluding the 35% incomplete one)
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/history/duplicates?window_hours=24")
+        .header(header::AUTHORIZATION, format!("Bearer {}", auth_token))
+        .body(Body::empty())
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let dup_json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    assert_eq!(dup_json["total_duplicate_groups"], 1);
+    let group = &dup_json["groups"][0];
+    assert_eq!(group["scrobbles"].as_array().unwrap().len(), 2);
+    for scrobble in group["scrobbles"].as_array().unwrap() {
+        assert_ne!(scrobble["id"], inc_id, "Incomplete scrobble must never be included in duplicate group");
+    }
+
+    // 6. Test TV Episode: incomplete watch first -> subsequent completed watch must not be rewatch
+    let ep_inc_id = uuid::Uuid::new_v4().to_string();
+    sqlx::query(
+        r#"
+        INSERT INTO scrobbles (
+            id, user_id, title, media_type, grandparent_title, season_number, episode_number, watched_at, created_at, watch_status, progress_percent
+        ) VALUES (?, ?, 'Good News About Hell', 'episode', 'Severance', 1, 1, '2024-06-01T15:00:00Z', '2024-06-01T15:00:00Z', 'in_progress', 20)
+        "#
+    )
+    .bind(&ep_inc_id)
+    .bind(&user_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/history")
+        .header(header::AUTHORIZATION, format!("Bearer {}", auth_token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(
+            json!({
+                "title": "Good News About Hell",
+                "media_type": "episode",
+                "grandparent_title": "Severance",
+                "season_number": 1,
+                "episode_number": 1,
+                "watch_status": "completed",
+                "progress_percent": 100
+            })
+            .to_string(),
+        ))
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::CREATED);
+    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let ep_completed: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    assert_eq!(ep_completed["is_rewatch"], false, "First completed episode watch after incomplete watch must not be rewatch");
+}

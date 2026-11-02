@@ -376,11 +376,13 @@ pub async fn insert_tautulli_watch_items(
         episode_number: Option<i32>,
         watched_at: String,
         rating_key: Option<String>,
+        watch_status: Option<String>,
+        progress_percent: Option<i64>,
     }
 
     let existing_records: Vec<ExistingScrobble> = sqlx::query_as(
         r#"
-        SELECT title, media_type, grandparent_title, season_number, episode_number, watched_at, rating_key
+        SELECT title, media_type, grandparent_title, season_number, episode_number, watched_at, rating_key, watch_status, progress_percent
         FROM scrobbles
         WHERE user_id = ?
         "#
@@ -397,19 +399,25 @@ pub async fn insert_tautulli_watch_items(
 
     for rec in existing_records {
         let day_prefix = if rec.watched_at.len() >= 10 { &rec.watched_at[..10] } else { "" };
+        let is_completed = rec.watch_status.as_deref() != Some("in_progress") && rec.progress_percent.unwrap_or(100) >= 80;
+
         if rec.media_type == "episode" {
             let show = rec.grandparent_title.as_deref().unwrap_or("").to_lowercase().trim().to_string();
             let s = rec.season_number.unwrap_or(0);
             let ep = rec.episode_number.unwrap_or(0);
             exact_set.insert(format!("ep:{}:{}:{}:{}", show, s, ep, rec.watched_at));
-            seen_media_items.insert(format!("ep:{}:{}:{}", show, s, ep));
+            if is_completed {
+                seen_media_items.insert(format!("ep:{}:{}:{}", show, s, ep));
+            }
             if !day_prefix.is_empty() {
                 day_set.insert(format!("ep_day:{}:{}:{}:{}", show, s, ep, day_prefix));
             }
         } else {
             let t = rec.title.to_lowercase().trim().to_string();
             exact_set.insert(format!("mv:{}:{}", t, rec.watched_at));
-            seen_media_items.insert(format!("mv:{}", t));
+            if is_completed {
+                seen_media_items.insert(format!("mv:{}", t));
+            }
             if !day_prefix.is_empty() {
                 day_set.insert(format!("mv_day:{}:{}", t, day_prefix));
             }
@@ -477,8 +485,11 @@ pub async fn insert_tautulli_watch_items(
         } else {
             format!("mv:{}", item.title.to_lowercase().trim())
         };
-        let is_rewatch = seen_media_items.contains(&media_item_key);
-        seen_media_items.insert(media_item_key);
+        let is_completed = item.progress_percent.unwrap_or(100) >= 80;
+        let is_rewatch = is_completed && seen_media_items.contains(&media_item_key);
+        if is_completed {
+            seen_media_items.insert(media_item_key);
+        }
 
         let insert_res = sqlx::query(
             r#"

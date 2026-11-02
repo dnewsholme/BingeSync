@@ -987,9 +987,13 @@ pub fn find_duplicate_groups(scrobbles: &[Scrobble], window_hours: i64) -> Vec<D
     let window_hours = window_hours.clamp(1, 720);
     let window_seconds = window_hours * 3600;
 
-    // Group scrobbles by unique media item key
+    // Group scrobbles by unique media item key.
+    // Incomplete or in-progress watches (< 80% or watch_status = 'in_progress') must never count as duplicates.
     let mut media_buckets: BTreeMap<String, Vec<Scrobble>> = BTreeMap::new();
     for s in scrobbles {
+        if !s.is_completed() {
+            continue;
+        }
         let key = if s.media_type == "episode" {
             let show = s.grandparent_title.as_deref().unwrap_or(&s.title).trim().to_lowercase();
             format!("episode:{}:{}:{}", show, s.season_number.unwrap_or(0), s.episode_number.unwrap_or(0))

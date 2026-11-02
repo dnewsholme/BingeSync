@@ -104,6 +104,8 @@ pub async fn check_is_rewatch(
     year: Option<i32>,
     watched_at: &str,
 ) -> bool {
+    // Only previous completed watches qualify an item as a rewatch.
+    // Incomplete or in-progress watches (< 80% or watch_status = 'in_progress') must never trigger rewatch status.
     if media_type == "episode" {
         if let (Some(gp), Some(s), Some(e)) = (grandparent_title, season_number, episode_number) {
             let count: i64 = sqlx::query_scalar(
@@ -111,14 +113,16 @@ pub async fn check_is_rewatch(
                 SELECT COUNT(*) FROM scrobbles
                 WHERE user_id = ?
                   AND media_type = 'episode'
-                  AND grandparent_title = ?
+                  AND (grandparent_title = ? OR title = ?)
                   AND season_number = ?
                   AND episode_number = ?
                   AND watched_at < ?
+                  AND (watch_status = 'completed' OR (watch_status != 'in_progress' AND (progress_percent IS NULL OR progress_percent >= 80)))
                 "#,
             )
             .bind(user_id)
             .bind(gp)
+            .bind(title)
             .bind(s)
             .bind(e)
             .bind(watched_at)
@@ -137,6 +141,7 @@ pub async fn check_is_rewatch(
                   AND LOWER(TRIM(title)) = LOWER(TRIM(?))
                   AND (year = ? OR year IS NULL)
                   AND watched_at < ?
+                  AND (watch_status = 'completed' OR (watch_status != 'in_progress' AND (progress_percent IS NULL OR progress_percent >= 80)))
                 "#,
             )
             .bind(user_id)
@@ -154,6 +159,7 @@ pub async fn check_is_rewatch(
                   AND media_type = 'movie'
                   AND LOWER(TRIM(title)) = LOWER(TRIM(?))
                   AND watched_at < ?
+                  AND (watch_status = 'completed' OR (watch_status != 'in_progress' AND (progress_percent IS NULL OR progress_percent >= 80)))
                 "#,
             )
             .bind(user_id)

@@ -6,7 +6,7 @@ use axum::{
 };
 use chrono::{DateTime, NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::Read;
 use uuid::Uuid;
 
@@ -131,11 +131,13 @@ pub async fn import_trakt_handler(
         episode_number: Option<i32>,
         watched_at: String,
         user_rating: Option<i32>,
+        watch_status: Option<String>,
+        progress_percent: Option<i64>,
     }
 
     let existing_records = sqlx::query_as::<_, ExistingScrobble>(
         r#"
-        SELECT id, media_type, title, grandparent_title, season_number, episode_number, watched_at, user_rating
+        SELECT id, media_type, title, grandparent_title, season_number, episode_number, watched_at, user_rating, watch_status, progress_percent
         FROM scrobbles
         WHERE user_id = ?
         "#,
@@ -146,17 +148,24 @@ pub async fn import_trakt_handler(
     .unwrap_or_default();
 
     let mut existing_map: HashMap<String, (String, Option<i32>)> = HashMap::new();
+    let mut seen_media_items: HashSet<String> = HashSet::new();
+
     for rec in existing_records {
+        let is_completed = rec.watch_status.as_deref() != Some("in_progress") && rec.progress_percent.unwrap_or(100) >= 80;
         let key = if rec.media_type == "episode" {
-            format!(
-                "ep:{}:{}:{}:{}",
-                rec.grandparent_title.as_deref().unwrap_or("").to_lowercase().trim(),
-                rec.season_number.unwrap_or(0),
-                rec.episode_number.unwrap_or(0),
-                rec.watched_at
-            )
+            let show = rec.grandparent_title.as_deref().unwrap_or("").to_lowercase().trim().to_string();
+            let s = rec.season_number.unwrap_or(0);
+            let ep = rec.episode_number.unwrap_or(0);
+            if is_completed {
+                seen_media_items.insert(format!("ep:{}:{}:{}", show, s, ep));
+            }
+            format!("ep:{}:{}:{}:{}", show, s, ep, rec.watched_at)
         } else {
-            format!("mv:{}:{}", rec.title.to_lowercase().trim(), rec.watched_at)
+            let t = rec.title.to_lowercase().trim().to_string();
+            if is_completed {
+                seen_media_items.insert(format!("mv:{}", t));
+            }
+            format!("mv:{}:{}", t, rec.watched_at)
         };
         existing_map.insert(key, (rec.id, rec.user_rating));
     }
@@ -209,7 +218,14 @@ pub async fn import_trakt_handler(
         let source_name = Some("trakt".to_string());
         let source_user = Some(auth.email.clone());
         let imported_from = Some("trakt".to_string());
-        let is_rewatch = existing_map.contains_key(&key);
+        let media_item_key = if item.media_type == "episode" {
+            let show = item.grandparent_title.as_deref().unwrap_or("").to_lowercase().trim().to_string();
+            format!("ep:{}:{}:{}", show, item.season_number.unwrap_or(0), item.episode_number.unwrap_or(0))
+        } else {
+            format!("mv:{}", item.title.to_lowercase().trim())
+        };
+        let is_rewatch = seen_media_items.contains(&media_item_key);
+        seen_media_items.insert(media_item_key);
         let imdb_id = item.guid.as_ref().and_then(|g| {
             if let Some(idx) = g.find("tt") {
                 let sub = &g[idx..];
