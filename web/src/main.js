@@ -4283,7 +4283,6 @@ async function openDetailModal(item) {
           ${item.studio ? `<div style="font-size:0.85rem;color:var(--text-dim);" id="detail-studio-display">Studio/Network: <strong style="color:#fff;">🏢 ${escapeHtml(item.studio)}</strong></div>` : ''}
           ${item.original_language ? `<div style="font-size:0.85rem;color:var(--text-dim);" id="detail-lang-display">Language: <strong style="color:#fff;">🌐 ${escapeHtml(item.original_language.toUpperCase())}</strong></div>` : ''}
           ${item.content_rating ? `<div style="font-size:0.85rem;color:var(--text-dim);" id="detail-content-rating-display">Rating: <strong style="color:#fff;border:1px solid rgba(255,255,255,0.25);padding:1px 5px;border-radius:4px;font-size:0.75rem;">${escapeHtml(item.content_rating)}</strong></div>` : ''}
-          ${item.imdb_id ? `<div style="font-size:0.85rem;color:var(--text-dim);" id="detail-imdb-id-display">IMDb: <a href="https://www.imdb.com/title/${encodeURIComponent(item.imdb_id)}/" target="_blank" rel="noopener noreferrer" style="color:#fbbf24;font-family:monospace;font-weight:600;">${escapeHtml(item.imdb_id)} ↗</a></div>` : ''}
           ${statusBadge}
           ${ratingBadge}
           ${genresBadge}

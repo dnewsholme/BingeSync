@@ -376,7 +376,6 @@
           ${e.studio?`<div style="font-size:0.85rem;color:var(--text-dim);" id="detail-studio-display">Studio/Network: <strong style="color:#fff;">🏢 ${W(e.studio)}</strong></div>`:``}
           ${e.original_language?`<div style="font-size:0.85rem;color:var(--text-dim);" id="detail-lang-display">Language: <strong style="color:#fff;">🌐 ${W(e.original_language.toUpperCase())}</strong></div>`:``}
           ${e.content_rating?`<div style="font-size:0.85rem;color:var(--text-dim);" id="detail-content-rating-display">Rating: <strong style="color:#fff;border:1px solid rgba(255,255,255,0.25);padding:1px 5px;border-radius:4px;font-size:0.75rem;">${W(e.content_rating)}</strong></div>`:``}
-          ${e.imdb_id?`<div style="font-size:0.85rem;color:var(--text-dim);" id="detail-imdb-id-display">IMDb: <a href="https://www.imdb.com/title/${encodeURIComponent(e.imdb_id)}/" target="_blank" rel="noopener noreferrer" style="color:#fbbf24;font-family:monospace;font-weight:600;">${W(e.imdb_id)} ↗</a></div>`:``}
           ${S}
           ${c}
           ${l}
