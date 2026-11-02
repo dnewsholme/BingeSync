@@ -1826,6 +1826,7 @@ function renderScrobbleCard(item, isHistory = false) {
 
   const imdbUrl = getImdbUrl(item);
   const tvdbUrl = getTvdbUrl(item);
+  const tmdbUrl = getTmdbUrl(item);
 
   const isInProgress = item.watch_status === 'in_progress';
   const progressBadgeHtml = isInProgress
@@ -1901,6 +1902,7 @@ function renderScrobbleCard(item, isHistory = false) {
           <div class="card-external-links">
             <a href="${imdbUrl}" target="_blank" rel="noopener noreferrer" class="card-imdb-link" title="Open on IMDb" onclick="event.stopPropagation()">IMDb ↗</a>
             <a href="${tvdbUrl}" target="_blank" rel="noopener noreferrer" class="card-tvdb-link" title="View on TheTVDB" onclick="event.stopPropagation()">TVDB ↗</a>
+            <a href="${tmdbUrl}" target="_blank" rel="noopener noreferrer" class="card-tmdb-link" title="View on TMDB" onclick="event.stopPropagation()">TMDB ↗</a>
           </div>
         </div>
         ${specsHtml}
