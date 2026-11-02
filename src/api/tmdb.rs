@@ -258,7 +258,7 @@ impl TmdbClient {
         Ok(results.into_iter().next())
     }
 
-    /// Fetch movie details and credits from TMDB: /movie/{id}?append_to_response=credits
+    /// Fetch movie details and credits from TMDB: /movie/{id}?append_to_response=credits,external_ids
     pub async fn get_movie_details(&self, movie_id: &str) -> Result<TvdbMetadata, String> {
         let clean_id = movie_id
             .strip_prefix("movie-")
@@ -270,7 +270,7 @@ impl TmdbClient {
         let url = format!("{}/movie/{}", self.base_url, clean_id);
         let mut req = self.client.get(&url);
         req = self.apply_auth(req);
-        req = req.query(&[("append_to_response", "credits")]);
+        req = req.query(&[("append_to_response", "credits,external_ids")]);
 
         let resp = req
             .send()
@@ -294,7 +294,7 @@ impl TmdbClient {
         Ok(parse_tmdb_metadata(&json_val))
     }
 
-    /// Fetch series details and credits from TMDB: /tv/{id}?append_to_response=credits
+    /// Fetch series details and credits from TMDB: /tv/{id}?append_to_response=credits,external_ids
     pub async fn get_series_details(&self, series_id: &str) -> Result<TvdbMetadata, String> {
         let clean_id = series_id
             .strip_prefix("series-")
@@ -306,7 +306,7 @@ impl TmdbClient {
         let url = format!("{}/tv/{}", self.base_url, clean_id);
         let mut req = self.client.get(&url);
         req = self.apply_auth(req);
-        req = req.query(&[("append_to_response", "credits")]);
+        req = req.query(&[("append_to_response", "credits,external_ids")]);
 
         let resp = req
             .send()
@@ -475,8 +475,36 @@ fn parse_tmdb_metadata(data: &serde_json::Value) -> TvdbMetadata {
 
     let imdb_id = data
         .get("imdb_id")
+        .or_else(|| data.get("external_ids").and_then(|ext| ext.get("imdb_id")))
         .and_then(|v| v.as_str())
         .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+
+    let tmdb_id = data
+        .get("id")
+        .and_then(|v| {
+            if let Some(s) = v.as_str() {
+                Some(s.trim().to_string())
+            } else if let Some(n) = v.as_i64() {
+                Some(n.to_string())
+            } else {
+                None
+            }
+        })
+        .filter(|s| !s.is_empty());
+
+    let tvdb_id = data
+        .get("external_ids")
+        .and_then(|ext| ext.get("tvdb_id"))
+        .and_then(|v| {
+            if let Some(s) = v.as_str() {
+                Some(s.trim().to_string())
+            } else if let Some(n) = v.as_i64() {
+                Some(n.to_string())
+            } else {
+                None
+            }
+        })
         .filter(|s| !s.is_empty());
 
     let original_language = data
@@ -527,6 +555,8 @@ fn parse_tmdb_metadata(data: &serde_json::Value) -> TvdbMetadata {
         cinematographer,
         image_url,
         imdb_id,
+        tvdb_id,
+        tmdb_id,
         studio,
         original_language,
         content_rating,

@@ -578,7 +578,7 @@ impl BackgroundTaskTracker {
         .unwrap_or(0);
 
         let pending_metadata: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM scrobbles WHERE metadata_updated_at IS NULL AND ((genres IS NULL OR genres = '') OR (overview IS NULL OR overview = '') OR (actors IS NULL OR actors = ''))"
+            "SELECT COUNT(*) FROM scrobbles WHERE metadata_updated_at IS NULL AND ((genres IS NULL OR genres = '') OR (overview IS NULL OR overview = '') OR (actors IS NULL OR actors = '') OR (tvdb_id IS NULL OR tvdb_id = '') OR (tmdb_id IS NULL OR tmdb_id = ''))"
         )
         .fetch_one(pool)
         .await
@@ -949,7 +949,7 @@ impl BackgroundTaskTracker {
         let metadata_backfill_interval = state.get_task_interval_hours("metadata_backfill").await;
         let metadata_backfill_sched_str = format!("Every {} hour{}", metadata_backfill_interval, if metadata_backfill_interval == 1 { "" } else { "s" });
         let pending_backfill: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM scrobbles WHERE metadata_updated_at IS NULL AND ((overview IS NULL OR overview = '') OR (genres IS NULL OR genres = '') OR (actors IS NULL OR actors = ''))"
+            "SELECT COUNT(*) FROM scrobbles WHERE metadata_updated_at IS NULL AND ((overview IS NULL OR overview = '') OR (genres IS NULL OR genres = '') OR (actors IS NULL OR actors = '') OR (tvdb_id IS NULL OR tvdb_id = '') OR (tmdb_id IS NULL OR tmdb_id = ''))"
         )
         .fetch_one(pool)
         .await
@@ -1130,9 +1130,9 @@ pub async fn trigger_admin_task_handler(
                     "message": "TheTVDB metadata worker signaled to re-download metadata for all records"
                 })))
             } else {
-                // Reset metadata_updated_at for scrobbles still missing core metadata so they get re-evaluated
+                // Reset metadata_updated_at for scrobbles still missing core metadata or IDs so they get re-evaluated
                 let _ = sqlx::query(
-                    "UPDATE scrobbles SET metadata_updated_at = NULL WHERE (overview IS NULL OR overview = '') OR (genres IS NULL OR genres = '') OR (actors IS NULL OR actors = '')"
+                    "UPDATE scrobbles SET metadata_updated_at = NULL WHERE (overview IS NULL OR overview = '') OR (genres IS NULL OR genres = '') OR (actors IS NULL OR actors = '') OR (tvdb_id IS NULL OR tvdb_id = '') OR (tmdb_id IS NULL OR tmdb_id = '')"
                 )
                 .execute(&state.pool)
                 .await;

@@ -1908,6 +1908,9 @@ pub async fn fix_match_handler(
                     cinematographer = COALESCE(NULLIF(?, ''), NULLIF(cinematographer, '')),
                     overview = COALESCE(NULLIF(?, ''), NULLIF(overview, '')),
                     thumb_url = COALESCE(NULLIF(?, ''), thumb_url),
+                    tvdb_id = COALESCE(NULLIF(?, ''), tvdb_id),
+                    tmdb_id = COALESCE(NULLIF(?, ''), tmdb_id),
+                    imdb_id = COALESCE(NULLIF(?, ''), imdb_id),
                     metadata_updated_at = ?
                 WHERE id = ? OR (grandparent_title IS NOT NULL AND LOWER(TRIM(grandparent_title)) = LOWER(TRIM(?))) OR (media_type = 'episode' AND LOWER(TRIM(title)) = LOWER(TRIM(?)))
                 "#
@@ -1919,6 +1922,9 @@ pub async fn fix_match_handler(
             .bind(&meta.cinematographer)
             .bind(&meta.overview)
             .bind(&meta.image_url)
+            .bind(&meta.tvdb_id)
+            .bind(&meta.tmdb_id)
+            .bind(&meta.imdb_id)
             .bind(&now_str)
             .bind(&scrobble.id)
             .bind(show_name)
@@ -1936,6 +1942,9 @@ pub async fn fix_match_handler(
                     cinematographer = COALESCE(NULLIF(?, ''), NULLIF(cinematographer, '')),
                     overview = COALESCE(NULLIF(?, ''), NULLIF(overview, '')),
                     thumb_url = COALESCE(NULLIF(?, ''), thumb_url),
+                    tvdb_id = COALESCE(NULLIF(?, ''), tvdb_id),
+                    tmdb_id = COALESCE(NULLIF(?, ''), tmdb_id),
+                    imdb_id = COALESCE(NULLIF(?, ''), imdb_id),
                     metadata_updated_at = ?
                 WHERE id = ?
                 "#,
@@ -1947,6 +1956,9 @@ pub async fn fix_match_handler(
             .bind(&meta.cinematographer)
             .bind(&meta.overview)
             .bind(&meta.image_url)
+            .bind(&meta.tvdb_id)
+            .bind(&meta.tmdb_id)
+            .bind(&meta.imdb_id)
             .bind(&now_str)
             .bind(&scrobble.id)
             .execute(&state.pool)

@@ -245,7 +245,7 @@ pub async fn run_metadata_backfill(state: &AppState) -> Result<String, String> {
     tracing::info!("Starting missing metadata backfill & stale rating refresh");
 
     let res1 = sqlx::query(
-        "UPDATE scrobbles SET metadata_updated_at = NULL WHERE (overview IS NULL OR overview = '') OR (genres IS NULL OR genres = '') OR (actors IS NULL OR actors = '')"
+        "UPDATE scrobbles SET metadata_updated_at = NULL WHERE (overview IS NULL OR overview = '') OR (genres IS NULL OR genres = '') OR (actors IS NULL OR actors = '') OR (tvdb_id IS NULL OR tvdb_id = '') OR (tmdb_id IS NULL OR tmdb_id = '')"
     )
     .execute(&state.pool)
     .await
@@ -262,7 +262,7 @@ pub async fn run_metadata_backfill(state: &AppState) -> Result<String, String> {
 
     // Directly process batches to enrich missing metadata
     let mut total_enriched = 0usize;
-    for _ in 0..15 {
+    for _ in 0..50 {
         let processed = crate::api::tvdb::process_missing_metadata_once(state).await;
         if processed == 0 {
             break;
@@ -276,7 +276,7 @@ pub async fn run_metadata_backfill(state: &AppState) -> Result<String, String> {
     }
 
     let still_pending: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM scrobbles WHERE metadata_updated_at IS NULL AND ((overview IS NULL OR overview = '') OR (genres IS NULL OR genres = '') OR (actors IS NULL OR actors = ''))"
+        "SELECT COUNT(*) FROM scrobbles WHERE metadata_updated_at IS NULL AND ((overview IS NULL OR overview = '') OR (genres IS NULL OR genres = '') OR (actors IS NULL OR actors = '') OR (tvdb_id IS NULL OR tvdb_id = '') OR (tmdb_id IS NULL OR tmdb_id = ''))"
     )
     .fetch_one(&state.pool)
     .await
