@@ -13,3 +13,4 @@ bingesync.yaml
 trakt-export-*.zip
 data/images/
 images/
+.kube/*
