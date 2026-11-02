@@ -2254,10 +2254,13 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     await page.click('#btn-open-duplicates-modal');
     await expect(page.locator('#modal-duplicates')).toBeVisible();
 
-    // 4. Verify duplicate detector finds Interstellar duplicate group
+    // 4. Verify duplicate detector finds Interstellar duplicate group and renders poster element
     const dupCard = page.locator('#dup-groups-list .dup-group-card', { hasText: 'Interstellar' });
     await expect(dupCard).toBeVisible({ timeout: 5000 });
     await expect(dupCard).toContainText('2 watches');
+    const dupPoster = dupCard.locator('.dup-group-poster');
+    await expect(dupPoster).toBeVisible();
+    await expect(dupCard.locator('img[src*="favicon.svg"]')).toHaveCount(0);
     await expect(page.locator('#btn-clean-keep-oldest')).toBeVisible();
 
     // 5. Click "Keep Oldest (Prune Redundant)"

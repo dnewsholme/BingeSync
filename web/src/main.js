@@ -6565,7 +6565,11 @@ function renderCleanupItems() {
     const serviceBadgeClass = item.service === 'radarr' ? 'badge-radarr' : 'badge-sonarr';
     const serviceName = item.service === 'radarr' ? 'Radarr' : 'Sonarr';
     const watchedDateStr = item.last_watched_at ? new Date(item.last_watched_at).toLocaleDateString() : 'Watched';
-    const posterImg = resolveImageUrl(item.poster_url) || './favicon.svg';
+    const fallbackEmoji = isMovie ? '🎬' : '📺';
+    const posterImg = resolveImageUrl(item.poster_url);
+    const posterHtml = posterImg
+      ? `<img src="${escapeHtml(posterImg)}" alt="${escapeHtml(item.title)}" class="cleanup-card-poster" loading="lazy" onerror="this.outerHTML='<div class=\\'cleanup-card-poster\\' style=\\'display:flex;align-items:center;justify-content:center;background:var(--bg-elevated);font-size:1.5rem;\\'>${fallbackEmoji}</div>'" />`
+      : `<div class="cleanup-card-poster" style="display:flex;align-items:center;justify-content:center;background:var(--bg-elevated);font-size:1.5rem;">${fallbackEmoji}</div>`;
 
     let extraBadge = '';
     if (!isMovie) {
@@ -6576,7 +6580,7 @@ function renderCleanupItems() {
     return `
       <div class="cleanup-card" data-item-id="${escapeHtml(item.id)}">
         <div class="cleanup-card-body">
-          <img src="${escapeHtml(posterImg)}" alt="${escapeHtml(item.title)}" class="cleanup-card-poster" loading="lazy" onerror="this.src='./favicon.svg'" />
+          ${posterHtml}
           <div class="cleanup-card-info">
             <div>
               <div class="cleanup-card-title">${escapeHtml(item.title)}${item.year ? ` <span style="font-size:0.8rem;color:var(--text-dim);">(${item.year})</span>` : ''}</div>
@@ -7300,10 +7304,12 @@ function renderDuplicateGroups() {
       ? `S${String(group.season_number ?? 1).padStart(2, '0')}E${String(group.episode_number ?? 1).padStart(2, '0')}: ${group.title}`
       : (group.year ? `(${group.year})` : '');
 
-    const posterSrc = group.thumb_url || '';
-    const posterHtml = posterSrc
-      ? `<img src="${posterSrc}" class="dup-group-poster" alt="${escapeHtml(mainTitle)}" onerror="this.onerror=null;this.src='/favicon.svg';" />`
-      : `<div class="dup-group-poster" style="display:flex;align-items:center;justify-content:center;color:var(--text-muted);"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="2" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg></div>`;
+    const rawThumb = group.thumb_url || group.scrobbles?.find(s => s.thumb_url)?.thumb_url || '';
+    const resolvedThumb = resolveImageUrl(rawThumb);
+    const fallbackEmoji = isEpisode ? '📺' : '🎬';
+    const posterHtml = resolvedThumb
+      ? `<img src="${escapeHtml(resolvedThumb)}" class="dup-group-poster" alt="${escapeHtml(mainTitle)}" onerror="this.outerHTML='<div class=\\'dup-group-poster\\'>${fallbackEmoji}</div>';" />`
+      : `<div class="dup-group-poster">${fallbackEmoji}</div>`;
 
     let scrobblesHtml = '';
     group.scrobbles.forEach((s, idx) => {

@@ -1028,6 +1028,13 @@ pub fn find_duplicate_groups(scrobbles: &[Scrobble], window_hours: i64) -> Vec<D
                         let total_diff = (t_end - t_first).abs();
                         let time_diff_disp = format_time_difference(total_diff);
 
+                        let best_thumb = current_cluster
+                            .iter()
+                            .filter_map(|s| s.thumb_url.as_ref())
+                            .find(|t| t.starts_with("/api/v1/images/") || t.starts_with("http"))
+                            .or_else(|| current_cluster.iter().find_map(|s| s.thumb_url.as_ref()))
+                            .cloned();
+
                         result_groups.push(DuplicateGroup {
                             group_key: group_key.clone(),
                             media_type: rep.media_type.clone(),
@@ -1036,7 +1043,7 @@ pub fn find_duplicate_groups(scrobbles: &[Scrobble], window_hours: i64) -> Vec<D
                             season_number: rep.season_number,
                             episode_number: rep.episode_number,
                             year: rep.year,
-                            thumb_url: rep.thumb_url.clone(),
+                            thumb_url: best_thumb,
                             time_difference_display: time_diff_disp,
                             scrobbles: current_cluster,
                         });
@@ -1055,6 +1062,13 @@ pub fn find_duplicate_groups(scrobbles: &[Scrobble], window_hours: i64) -> Vec<D
             let total_diff = (t_end - t_first).abs();
             let time_diff_disp = format_time_difference(total_diff);
 
+            let best_thumb = current_cluster
+                .iter()
+                .filter_map(|s| s.thumb_url.as_ref())
+                .find(|t| t.starts_with("/api/v1/images/") || t.starts_with("http"))
+                .or_else(|| current_cluster.iter().find_map(|s| s.thumb_url.as_ref()))
+                .cloned();
+
             result_groups.push(DuplicateGroup {
                 group_key: group_key.clone(),
                 media_type: rep.media_type.clone(),
@@ -1063,7 +1077,7 @@ pub fn find_duplicate_groups(scrobbles: &[Scrobble], window_hours: i64) -> Vec<D
                 season_number: rep.season_number,
                 episode_number: rep.episode_number,
                 year: rep.year,
-                thumb_url: rep.thumb_url.clone(),
+                thumb_url: best_thumb,
                 time_difference_display: time_diff_disp,
                 scrobbles: current_cluster,
             });
