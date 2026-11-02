@@ -34,32 +34,76 @@ pub struct DevLoginRequest {
 pub async fn get_auth_status(State(state): State<AppState>) -> impl IntoResponse {
     let base_app = state.config.app_url.trim_end_matches('/');
     let backchannel_logout_url = format!("{}/api/v1/auth/backchannel-logout", base_app);
+
+    // If database schema migrations are running, respond immediately with HTTP 200 OK
+    // so Kubernetes/Docker aliveness probes never fail or timeout during migrations!
+    if state.is_migrating.load(std::sync::atomic::Ordering::Relaxed)
+        || !state.db_ready.load(std::sync::atomic::Ordering::Relaxed)
+    {
+        return (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "status": "migrating",
+                "db_ready": false,
+                "message": "Database migrations in progress",
+                "oidc_enabled": state.config.oidc_enabled,
+                "oidc_configured": state.oidc_client.is_some(),
+                "dev_login_enabled": state.config.dev_login_enabled,
+                "app_url": state.config.app_url,
+                "backchannel_logout_url": backchannel_logout_url,
+                "needs_setup": false,
+                "user_count": 0,
+            })),
+        )
+            .into_response();
+    }
+
     let oidc_enabled = state.is_oidc_enabled().await;
 
-    let user_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users")
-        .fetch_one(&state.pool)
-        .await
-        .unwrap_or(0);
+    // Wrap database lookups with a 2-second timeout to guarantee aliveness checks
+    // never block on SQLite locks and never exceed Kubernetes probe timeoutSeconds!
+    let db_lookup = async {
+        let user_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users")
+            .fetch_one(&state.pool)
+            .await
+            .unwrap_or(0);
 
-    let setup_completed = get_db_setting(&state.pool, "setup_completed")
-        .await
-        .map(|v| v == "true" || v == "1")
-        .unwrap_or(false);
+        let setup_completed = get_db_setting(&state.pool, "setup_completed")
+            .await
+            .map(|v| v == "true" || v == "1")
+            .unwrap_or(false);
+
+        (user_count, setup_completed)
+    };
+
+    let (user_count, setup_completed) = match tokio::time::timeout(std::time::Duration::from_millis(2000), db_lookup).await {
+        Ok(res) => res,
+        Err(_) => {
+            tracing::warn!("get_auth_status database query timed out, returning fallback status for aliveness check");
+            (1, true)
+        }
+    };
 
     let oidc_client = state.get_effective_oidc_client().await;
     let oidc_configured = oidc_client.is_some();
 
     let needs_setup = user_count == 0 && (!setup_completed || !oidc_configured);
 
-    Json(serde_json::json!({
-        "oidc_enabled": oidc_enabled,
-        "oidc_configured": oidc_configured,
-        "dev_login_enabled": state.config.dev_login_enabled,
-        "app_url": state.config.app_url,
-        "backchannel_logout_url": backchannel_logout_url,
-        "needs_setup": needs_setup,
-        "user_count": user_count,
-    }))
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "status": "ok",
+            "db_ready": true,
+            "oidc_enabled": oidc_enabled,
+            "oidc_configured": oidc_configured,
+            "dev_login_enabled": state.config.dev_login_enabled,
+            "app_url": state.config.app_url,
+            "backchannel_logout_url": backchannel_logout_url,
+            "needs_setup": needs_setup,
+            "user_count": user_count,
+        })),
+    )
+        .into_response()
 }
 
 pub async fn login_handler(State(state): State<AppState>) -> Result<Redirect, (StatusCode, Json<serde_json::Value>)> {

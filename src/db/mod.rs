@@ -4,11 +4,11 @@ use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use sqlx::SqlitePool;
 use std::str::FromStr;
 
-pub async fn init_db(database_url: &str) -> Result<SqlitePool, sqlx::Error> {
+pub async fn create_pool(database_url: &str) -> Result<SqlitePool, sqlx::Error> {
     let connection_options = SqliteConnectOptions::from_str(database_url)?
         .create_if_missing(true)
         .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
-        .busy_timeout(std::time::Duration::from_secs(15))
+        .busy_timeout(std::time::Duration::from_secs(30))
         .foreign_keys(true)
         .pragma("synchronous", "NORMAL")
         .pragma("mmap_size", "268435456")
@@ -20,7 +20,11 @@ pub async fn init_db(database_url: &str) -> Result<SqlitePool, sqlx::Error> {
         .connect_with(connection_options)
         .await?;
 
-    migrations::run_migrations(&pool).await?;
+    Ok(pool)
+}
 
+pub async fn init_db(database_url: &str) -> Result<SqlitePool, sqlx::Error> {
+    let pool = create_pool(database_url).await?;
+    migrations::run_migrations(&pool).await?;
     Ok(pool)
 }

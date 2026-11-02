@@ -10511,3 +10511,94 @@ async fn test_incomplete_watch_does_not_count_as_rewatch_or_duplicate() {
     let ep_completed: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
     assert_eq!(ep_completed["is_rewatch"], false, "First completed episode watch after incomplete watch must not be rewatch");
 }
+
+#[tokio::test]
+async fn test_aliveness_healthchecks_succeed_during_migrations() {
+    let pool = bingesync::db::create_pool("sqlite::memory:")
+        .await
+        .expect("Failed to create in-memory sqlite pool");
+
+    let mut config = Config::from_env();
+    config.jwt_secret = "test-secret-key-12345".to_string();
+    config.app_url = "http://localhost:8080".to_string();
+    config.dev_login_enabled = true;
+    let config = Arc::new(config);
+
+    let is_migrating = Arc::new(std::sync::atomic::AtomicBool::new(true));
+    let db_ready = Arc::new(std::sync::atomic::AtomicBool::new(false));
+
+    let state = AppState {
+        pool: pool.clone(),
+        config: config.clone(),
+        oidc_client: None,
+        is_migrating: is_migrating.clone(),
+        db_ready: db_ready.clone(),
+        image_notify: Arc::new(tokio::sync::Notify::new()),
+        metadata_notify: Arc::new(tokio::sync::Notify::new()),
+        user_sync_notify: Arc::new(tokio::sync::Notify::new()),
+        log_buffer: Arc::new(bingesync::api::logs::LogBuffer::new(500)),
+        task_tracker: Arc::new(bingesync::api::jobs::BackgroundTaskTracker::new()),
+        db_backup_notify: Arc::new(tokio::sync::Notify::new()),
+        db_maintenance_notify: Arc::new(tokio::sync::Notify::new()),
+        tautulli_sync_notify: Arc::new(tokio::sync::Notify::new()),
+        media_sync_notify: Arc::new(tokio::sync::Notify::new()),
+        session_reaper_notify: Arc::new(tokio::sync::Notify::new()),
+        image_prune_notify: Arc::new(tokio::sync::Notify::new()),
+        duplicate_pruner_notify: Arc::new(tokio::sync::Notify::new()),
+        metadata_backfill_notify: Arc::new(tokio::sync::Notify::new()),
+        version_check_notify: Arc::new(tokio::sync::Notify::new()),
+        library_audit_notify: Arc::new(tokio::sync::Notify::new()),
+        http_client: reqwest::Client::new(),
+    };
+
+    let router = create_api_router(state);
+
+    // 1. While migrating (is_migrating = true, db_ready = false):
+    // Auth status (used as livenessProbe in Kubernetes / Docker) MUST return HTTP 200 OK without blocking!
+    let req = Request::builder()
+        .uri("/api/v1/auth/status")
+        .body(Body::empty())
+        .unwrap();
+    let res = router.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let status_json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    assert_eq!(status_json["status"], "migrating");
+    assert_eq!(status_json["db_ready"], false);
+
+    // 2. Dedicated health and liveness probes MUST succeed
+    let req = Request::builder().uri("/healthz").body(Body::empty()).unwrap();
+    let res = router.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let req = Request::builder().uri("/livez").body(Body::empty()).unwrap();
+    let res = router.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    // 3. Readiness probe reports 503 while migrating
+    let req = Request::builder().uri("/readyz").body(Body::empty()).unwrap();
+    let res = router.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::SERVICE_UNAVAILABLE);
+
+    // 4. Now simulate migrations completing:
+    bingesync::db::migrations::run_migrations(&pool).await.unwrap();
+    is_migrating.store(false, std::sync::atomic::Ordering::SeqCst);
+    db_ready.store(true, std::sync::atomic::Ordering::SeqCst);
+
+    // Auth status now queries cleanly and returns 200 OK with db_ready: true
+    let req = Request::builder()
+        .uri("/api/v1/auth/status")
+        .body(Body::empty())
+        .unwrap();
+    let res = router.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let status_json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    assert_eq!(status_json["status"], "ok");
+    assert_eq!(status_json["db_ready"], true);
+
+    // Readiness probe now returns 200 OK
+    let req = Request::builder().uri("/readyz").body(Body::empty()).unwrap();
+    let res = router.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+}

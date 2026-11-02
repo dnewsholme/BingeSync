@@ -45,6 +45,8 @@ pub struct AppState {
     pub pool: SqlitePool,
     pub config: Arc<Config>,
     pub oidc_client: Option<Arc<OidcClient>>,
+    pub is_migrating: Arc<std::sync::atomic::AtomicBool>,
+    pub db_ready: Arc<std::sync::atomic::AtomicBool>,
     pub image_notify: Arc<tokio::sync::Notify>,
     pub metadata_notify: Arc<tokio::sync::Notify>,
     pub user_sync_notify: Arc<tokio::sync::Notify>,
@@ -69,6 +71,8 @@ impl AppState {
             pool,
             config,
             oidc_client,
+            is_migrating: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            db_ready: Arc::new(std::sync::atomic::AtomicBool::new(true)),
             image_notify: Arc::new(tokio::sync::Notify::new()),
             metadata_notify: Arc::new(tokio::sync::Notify::new()),
             user_sync_notify: Arc::new(tokio::sync::Notify::new()),
@@ -334,6 +338,51 @@ async fn security_headers_middleware(
     resp
 }
 
+async fn healthz_handler(axum::extract::State(state): axum::extract::State<AppState>) -> impl axum::response::IntoResponse {
+    let db_ready = state.db_ready.load(std::sync::atomic::Ordering::Relaxed);
+    let is_migrating = state.is_migrating.load(std::sync::atomic::Ordering::Relaxed);
+    (
+        axum::http::StatusCode::OK,
+        axum::Json(serde_json::json!({
+            "status": "ok",
+            "alive": true,
+            "db_ready": db_ready,
+            "is_migrating": is_migrating,
+        })),
+    )
+}
+
+async fn livez_handler() -> impl axum::response::IntoResponse {
+    (
+        axum::http::StatusCode::OK,
+        axum::Json(serde_json::json!({
+            "status": "alive"
+        })),
+    )
+}
+
+async fn readyz_handler(axum::extract::State(state): axum::extract::State<AppState>) -> impl axum::response::IntoResponse {
+    let db_ready = state.db_ready.load(std::sync::atomic::Ordering::Relaxed);
+    if db_ready {
+        (
+            axum::http::StatusCode::OK,
+            axum::Json(serde_json::json!({
+                "status": "ready",
+                "db_ready": true
+            })),
+        )
+    } else {
+        (
+            axum::http::StatusCode::SERVICE_UNAVAILABLE,
+            axum::Json(serde_json::json!({
+                "status": "migrating",
+                "db_ready": false,
+                "message": "Database migrations in progress"
+            })),
+        )
+    }
+}
+
 pub fn create_api_router(state: AppState) -> Router {
     let cors = CorsLayer::new()
         .allow_origin(Any)
@@ -386,6 +435,11 @@ pub fn create_api_router(state: AppState) -> Router {
         .layer(axum::middleware::from_fn(rate_limit::import_rate_limit_middleware));
 
     Router::new()
+        // Health & aliveness probes (instant responses for Kubernetes & Docker without blocking on database)
+        .route("/healthz", get(healthz_handler))
+        .route("/livez", get(livez_handler))
+        .route("/readyz", get(readyz_handler))
+        .route("/api/v1/health", get(healthz_handler))
         // Initial First-Run Setup Flow
         .route("/api/v1/setup/status", get(setup::get_setup_status_handler))
         .route("/api/v1/setup/test-oidc", post(setup::test_oidc_discovery_handler))

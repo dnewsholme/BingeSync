@@ -366,5 +366,45 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
     let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_scrobbles_tvdb_id ON scrobbles(tvdb_id)").execute(pool).await;
     let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_scrobbles_tmdb_id ON scrobbles(tmdb_id)").execute(pool).await;
 
+    // Fast local extraction of tvdb_id, tmdb_id, and imdb_id from guid values where missing
+    let _ = sqlx::query(
+        r#"
+        UPDATE scrobbles
+        SET tvdb_id = CASE
+            WHEN guid LIKE 'tvdb://%' THEN SUBSTR(guid, 8)
+            WHEN guid LIKE 'com.plexapp.agents.thetvdb://%?%' THEN SUBSTR(SUBSTR(guid, 30), 1, INSTR(SUBSTR(guid, 30), '?') - 1)
+            WHEN guid LIKE 'com.plexapp.agents.thetvdb://%' THEN SUBSTR(guid, 30)
+            ELSE tvdb_id
+        END
+        WHERE (tvdb_id IS NULL OR tvdb_id = '') AND (guid LIKE 'tvdb://%' OR guid LIKE 'com.plexapp.agents.thetvdb://%');
+        "#
+    ).execute(pool).await;
+
+    let _ = sqlx::query(
+        r#"
+        UPDATE scrobbles
+        SET tmdb_id = CASE
+            WHEN guid LIKE 'tmdb://%' THEN SUBSTR(guid, 8)
+            WHEN guid LIKE 'com.plexapp.agents.themoviedb://%?%' THEN SUBSTR(SUBSTR(guid, 33), 1, INSTR(SUBSTR(guid, 33), '?') - 1)
+            WHEN guid LIKE 'com.plexapp.agents.themoviedb://%' THEN SUBSTR(guid, 33)
+            ELSE tmdb_id
+        END
+        WHERE (tmdb_id IS NULL OR tmdb_id = '') AND (guid LIKE 'tmdb://%' OR guid LIKE 'com.plexapp.agents.themoviedb://%');
+        "#
+    ).execute(pool).await;
+
+    let _ = sqlx::query(
+        r#"
+        UPDATE scrobbles
+        SET imdb_id = CASE
+            WHEN guid LIKE 'imdb://%' THEN SUBSTR(guid, 8)
+            WHEN guid LIKE 'com.plexapp.agents.imdb://%?%' THEN SUBSTR(SUBSTR(guid, 27), 1, INSTR(SUBSTR(guid, 27), '?') - 1)
+            WHEN guid LIKE 'com.plexapp.agents.imdb://%' THEN SUBSTR(guid, 27)
+            ELSE imdb_id
+        END
+        WHERE (imdb_id IS NULL OR imdb_id = '') AND (guid LIKE 'imdb://%' OR guid LIKE 'com.plexapp.agents.imdb://%');
+        "#
+    ).execute(pool).await;
+
     Ok(())
 }
