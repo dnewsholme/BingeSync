@@ -61,7 +61,8 @@ pub async fn list_history(
     let is_missing_metadata_keyword = search_filter.eq_ignore_ascii_case("missing:metadata")
         || search_filter.eq_ignore_ascii_case("missing_metadata")
         || search_filter.eq_ignore_ascii_case("missing");
-    let missing_metadata_filter = query.missing_metadata.unwrap_or(false) || is_missing_metadata_keyword;
+    let missing_metadata_filter =
+        query.missing_metadata.unwrap_or(false) || is_missing_metadata_keyword;
 
     let date_filter = if all_dates {
         ""
@@ -145,8 +146,12 @@ pub async fn list_history(
 
     if !person_filter.is_empty() {
         let pattern = format!("%{}%", person_filter);
-        count_sql.push_str(" AND (director LIKE ? OR directors LIKE ? OR cinematographer LIKE ? OR actors LIKE ?)");
-        data_sql.push_str(" AND (director LIKE ? OR directors LIKE ? OR cinematographer LIKE ? OR actors LIKE ?)");
+        count_sql.push_str(
+            " AND (director LIKE ? OR directors LIKE ? OR cinematographer LIKE ? OR actors LIKE ?)",
+        );
+        data_sql.push_str(
+            " AND (director LIKE ? OR directors LIKE ? OR cinematographer LIKE ? OR actors LIKE ?)",
+        );
         bind_params.push(pattern.clone());
         bind_params.push(pattern.clone());
         bind_params.push(pattern.clone());
@@ -207,15 +212,12 @@ pub async fn list_history(
     for p in &bind_params {
         count_query = count_query.bind(p);
     }
-    let total = count_query
-        .fetch_one(&state.pool)
-        .await
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({ "error": format!("Database count error: {}", e) })),
-            )
-        })?;
+    let total = count_query.fetch_one(&state.pool).await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": format!("Database count error: {}", e) })),
+        )
+    })?;
 
     // Data query with ordering and optional pagination
     if all_results {
@@ -232,15 +234,12 @@ pub async fn list_history(
         fetch_query = fetch_query.bind(limit).bind(offset);
     }
 
-    let items = fetch_query
-        .fetch_all(&state.pool)
-        .await
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({ "error": format!("Database fetch error: {}", e) })),
-            )
-        })?;
+    let items = fetch_query.fetch_all(&state.pool).await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": format!("Database fetch error: {}", e) })),
+        )
+    })?;
 
     let (final_page, total_pages, final_limit) = if all_results {
         (1, 1, total)
@@ -265,10 +264,17 @@ pub async fn create_scrobble(
     Json(payload): Json<NewScrobbleRequest>,
 ) -> Result<(StatusCode, Json<Scrobble>), (StatusCode, Json<serde_json::Value>)> {
     let scrobble_id = Uuid::new_v4().to_string();
-    let watched_at = payload.watched_at.unwrap_or_else(|| Utc::now().to_rfc3339());
+    let watched_at = payload
+        .watched_at
+        .unwrap_or_else(|| Utc::now().to_rfc3339());
     let now = Utc::now().to_rfc3339();
-    let watch_status = payload.watch_status.unwrap_or_else(|| "completed".to_string());
-    let director = payload.director.clone().or_else(|| payload.directors.clone());
+    let watch_status = payload
+        .watch_status
+        .unwrap_or_else(|| "completed".to_string());
+    let director = payload
+        .director
+        .clone()
+        .or_else(|| payload.directors.clone());
     let directors = payload.directors.or_else(|| director.clone());
     let cinematographer = payload.cinematographer;
     let tags = payload.tags;
@@ -384,7 +390,9 @@ pub async fn create_scrobble(
     }
     state.metadata_notify.notify_one();
 
-    if scrobble.watch_status.as_deref() == Some("completed") || scrobble.progress_percent.unwrap_or(0) >= 80 {
+    if scrobble.watch_status.as_deref() == Some("completed")
+        || scrobble.progress_percent.unwrap_or(0) >= 80
+    {
         crate::api::media_writeback::dispatch_media_writeback(
             state.pool.clone(),
             auth.user_id.clone(),
@@ -532,8 +540,18 @@ pub async fn update_scrobble_user_data(
     Path(id): Path<String>,
     Json(payload): Json<UpdateUserDataRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
-    let clean_tags = payload.tags.as_deref().map(|s| s.trim()).filter(|s| !s.is_empty()).map(|s| s.to_string());
-    let clean_notes = payload.notes.as_deref().map(|s| s.trim()).filter(|s| !s.is_empty()).map(|s| s.to_string());
+    let clean_tags = payload
+        .tags
+        .as_deref()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
+    let clean_notes = payload
+        .notes
+        .as_deref()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
 
     let res = sqlx::query("UPDATE scrobbles SET tags = ?, notes = ? WHERE id = ? AND user_id = ?")
         .bind(&clean_tags)
@@ -578,7 +596,7 @@ pub async fn get_item_watches(
 ) -> Result<Json<ItemWatchesResponse>, (StatusCode, Json<serde_json::Value>)> {
     // 1. Fetch current target scrobble for the authenticated user
     let current = sqlx::query_as::<_, Scrobble>(
-        "SELECT * FROM scrobbles WHERE id = ? AND user_id = ?"
+        "SELECT * FROM scrobbles WHERE id = ? AND user_id = ?",
     )
     .bind(&id)
     .bind(&auth.user_id)
@@ -587,7 +605,9 @@ pub async fn get_item_watches(
     .map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({ "error": format!("Database error fetching scrobble: {}", e) })),
+            Json(
+                serde_json::json!({ "error": format!("Database error fetching scrobble: {}", e) }),
+            ),
         )
     })?
     .ok_or_else(|| {
@@ -886,7 +906,9 @@ pub async fn delete_batch(
     Json(payload): Json<DeleteBatchRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
     if payload.ids.is_empty() {
-        return Ok(Json(serde_json::json!({ "status": "deleted", "deleted_count": 0 })));
+        return Ok(Json(
+            serde_json::json!({ "status": "deleted", "deleted_count": 0 }),
+        ));
     }
 
     let mut deleted = 0;
@@ -953,7 +975,9 @@ fn parse_timestamp_epoch(raw: &str) -> Option<i64> {
     }
     if let Ok(date) = chrono::NaiveDate::parse_from_str(trimmed, "%Y-%m-%d") {
         if let Some(naive) = date.and_hms_opt(12, 0, 0) {
-            return Some(chrono::DateTime::<Utc>::from_naive_utc_and_offset(naive, Utc).timestamp());
+            return Some(
+                chrono::DateTime::<Utc>::from_naive_utc_and_offset(naive, Utc).timestamp(),
+            );
         }
     }
     None
@@ -998,10 +1022,24 @@ pub fn find_duplicate_groups(scrobbles: &[Scrobble], window_hours: i64) -> Vec<D
             continue;
         }
         let key = if s.media_type == "episode" {
-            let show = s.grandparent_title.as_deref().unwrap_or(&s.title).trim().to_lowercase();
-            format!("episode:{}:{}:{}", show, s.season_number.unwrap_or(0), s.episode_number.unwrap_or(0))
+            let show = s
+                .grandparent_title
+                .as_deref()
+                .unwrap_or(&s.title)
+                .trim()
+                .to_lowercase();
+            format!(
+                "episode:{}:{}:{}",
+                show,
+                s.season_number.unwrap_or(0),
+                s.episode_number.unwrap_or(0)
+            )
         } else {
-            format!("movie:{}:{}", s.title.trim().to_lowercase(), s.year.unwrap_or(0))
+            format!(
+                "movie:{}:{}",
+                s.title.trim().to_lowercase(),
+                s.year.unwrap_or(0)
+            )
         };
         media_buckets.entry(key).or_default().push(s.clone());
     }
@@ -1030,8 +1068,12 @@ pub fn find_duplicate_groups(scrobbles: &[Scrobble], window_hours: i64) -> Vec<D
                 } else {
                     if current_cluster.len() > 1 {
                         let rep = &current_cluster[0];
-                        let t_first = parse_timestamp_epoch(&current_cluster.first().unwrap().watched_at).unwrap_or(0);
-                        let t_end = parse_timestamp_epoch(&current_cluster.last().unwrap().watched_at).unwrap_or(0);
+                        let t_first =
+                            parse_timestamp_epoch(&current_cluster.first().unwrap().watched_at)
+                                .unwrap_or(0);
+                        let t_end =
+                            parse_timestamp_epoch(&current_cluster.last().unwrap().watched_at)
+                                .unwrap_or(0);
                         let total_diff = (t_end - t_first).abs();
                         let time_diff_disp = format_time_difference(total_diff);
 
@@ -1064,8 +1106,10 @@ pub fn find_duplicate_groups(scrobbles: &[Scrobble], window_hours: i64) -> Vec<D
 
         if current_cluster.len() > 1 {
             let rep = &current_cluster[0];
-            let t_first = parse_timestamp_epoch(&current_cluster.first().unwrap().watched_at).unwrap_or(0);
-            let t_end = parse_timestamp_epoch(&current_cluster.last().unwrap().watched_at).unwrap_or(0);
+            let t_first =
+                parse_timestamp_epoch(&current_cluster.first().unwrap().watched_at).unwrap_or(0);
+            let t_end =
+                parse_timestamp_epoch(&current_cluster.last().unwrap().watched_at).unwrap_or(0);
             let total_diff = (t_end - t_first).abs();
             let time_diff_disp = format_time_difference(total_diff);
 
@@ -1093,8 +1137,16 @@ pub fn find_duplicate_groups(scrobbles: &[Scrobble], window_hours: i64) -> Vec<D
 
     // Sort result groups so most recent duplicate clusters appear first
     result_groups.sort_by(|a, b| {
-        let t_a = a.scrobbles.last().and_then(|s| parse_timestamp_epoch(&s.watched_at)).unwrap_or(0);
-        let t_b = b.scrobbles.last().and_then(|s| parse_timestamp_epoch(&s.watched_at)).unwrap_or(0);
+        let t_a = a
+            .scrobbles
+            .last()
+            .and_then(|s| parse_timestamp_epoch(&s.watched_at))
+            .unwrap_or(0);
+        let t_b = b
+            .scrobbles
+            .last()
+            .and_then(|s| parse_timestamp_epoch(&s.watched_at))
+            .unwrap_or(0);
         t_b.cmp(&t_a)
     });
 
@@ -1109,7 +1161,7 @@ pub async fn get_duplicates_handler(
     let window_hours = query.window_hours.unwrap_or(24).clamp(1, 720);
 
     let all_scrobbles = sqlx::query_as::<_, Scrobble>(
-        "SELECT * FROM scrobbles WHERE user_id = ? ORDER BY watched_at ASC, created_at ASC"
+        "SELECT * FROM scrobbles WHERE user_id = ? ORDER BY watched_at ASC, created_at ASC",
     )
     .bind(&auth.user_id)
     .fetch_all(&state.pool)
@@ -1117,12 +1169,17 @@ pub async fn get_duplicates_handler(
     .map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({ "error": format!("Database error fetching scrobbles: {}", e) })),
+            Json(
+                serde_json::json!({ "error": format!("Database error fetching scrobbles: {}", e) }),
+            ),
         )
     })?;
 
     let groups = find_duplicate_groups(&all_scrobbles, window_hours);
-    let total_redundant: usize = groups.iter().map(|g| g.scrobbles.len().saturating_sub(1)).sum();
+    let total_redundant: usize = groups
+        .iter()
+        .map(|g| g.scrobbles.len().saturating_sub(1))
+        .sum();
 
     Ok(Json(DuplicateScanResponse {
         total_duplicate_groups: groups.len(),
@@ -1149,7 +1206,7 @@ pub async fn clean_duplicates_for_user(
 
     if to_delete_ids.is_empty() && strategy != "custom" {
         let all_scrobbles = sqlx::query_as::<_, Scrobble>(
-            "SELECT * FROM scrobbles WHERE user_id = ? ORDER BY watched_at ASC, created_at ASC"
+            "SELECT * FROM scrobbles WHERE user_id = ? ORDER BY watched_at ASC, created_at ASC",
         )
         .bind(user_id)
         .fetch_all(pool)
@@ -1249,7 +1306,7 @@ pub async fn refresh_scrobble_metadata(
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
     let scrobble: Scrobble = match sqlx::query_as::<_, Scrobble>(
-        "SELECT * FROM scrobbles WHERE id = ? AND (user_id = ? OR ? = 'admin')"
+        "SELECT * FROM scrobbles WHERE id = ? AND (user_id = ? OR ? = 'admin')",
     )
     .bind(&id)
     .bind(&auth.user_id)
@@ -1274,7 +1331,10 @@ pub async fn refresh_scrobble_metadata(
 
     let is_episode = scrobble.media_type == "episode";
     let raw_search_title = if is_episode {
-        scrobble.grandparent_title.as_deref().unwrap_or(&scrobble.title)
+        scrobble
+            .grandparent_title
+            .as_deref()
+            .unwrap_or(&scrobble.title)
     } else {
         &scrobble.title
     };
@@ -1294,24 +1354,48 @@ pub async fn refresh_scrobble_metadata(
     // 1. Fetch metadata from active provider (TheTVDB or TMDB) if configured
     let metadata_source = state.get_effective_metadata_source().await;
     let provider_owned = if metadata_source == "tmdb" {
-        if let Some(key) = state.get_effective_tmdb_api_key().await.filter(|k| !k.trim().is_empty()) {
+        if let Some(key) = state
+            .get_effective_tmdb_api_key()
+            .await
+            .filter(|k| !k.trim().is_empty())
+        {
             let base_url = state.get_effective_tmdb_base_url().await;
-            Some(crate::api::tvdb::MetadataProviderOwned::Tmdb(crate::api::tmdb::TmdbClient::new(base_url, key)))
-        } else if let Some(key) = state.get_effective_tvdb_api_key().await.filter(|k| !k.trim().is_empty()) {
+            Some(crate::api::tvdb::MetadataProviderOwned::Tmdb(
+                crate::api::tmdb::TmdbClient::new(base_url, key),
+            ))
+        } else if let Some(key) = state
+            .get_effective_tvdb_api_key()
+            .await
+            .filter(|k| !k.trim().is_empty())
+        {
             let pin = state.get_effective_tvdb_pin().await;
             let base_url = state.get_effective_tvdb_base_url().await;
-            Some(crate::api::tvdb::MetadataProviderOwned::Tvdb(crate::api::tvdb::TvdbClient::new(base_url, key, pin)))
+            Some(crate::api::tvdb::MetadataProviderOwned::Tvdb(
+                crate::api::tvdb::TvdbClient::new(base_url, key, pin),
+            ))
         } else {
             None
         }
     } else {
-        if let Some(key) = state.get_effective_tvdb_api_key().await.filter(|k| !k.trim().is_empty()) {
+        if let Some(key) = state
+            .get_effective_tvdb_api_key()
+            .await
+            .filter(|k| !k.trim().is_empty())
+        {
             let pin = state.get_effective_tvdb_pin().await;
             let base_url = state.get_effective_tvdb_base_url().await;
-            Some(crate::api::tvdb::MetadataProviderOwned::Tvdb(crate::api::tvdb::TvdbClient::new(base_url, key, pin)))
-        } else if let Some(key) = state.get_effective_tmdb_api_key().await.filter(|k| !k.trim().is_empty()) {
+            Some(crate::api::tvdb::MetadataProviderOwned::Tvdb(
+                crate::api::tvdb::TvdbClient::new(base_url, key, pin),
+            ))
+        } else if let Some(key) = state
+            .get_effective_tmdb_api_key()
+            .await
+            .filter(|k| !k.trim().is_empty())
+        {
             let base_url = state.get_effective_tmdb_base_url().await;
-            Some(crate::api::tvdb::MetadataProviderOwned::Tmdb(crate::api::tmdb::TmdbClient::new(base_url, key)))
+            Some(crate::api::tvdb::MetadataProviderOwned::Tmdb(
+                crate::api::tmdb::TmdbClient::new(base_url, key),
+            ))
         } else {
             None
         }
@@ -1336,17 +1420,31 @@ pub async fn refresh_scrobble_metadata(
         }
 
         if meta_opt.is_none() {
-            if let Ok(Some(search_match)) = provider.search(&search_title, if is_episode { "series" } else { "movie" }, effective_year).await {
-                let match_is_series = search_match.entity_type.as_deref() == Some("series") || is_episode;
+            if let Ok(Some(search_match)) = provider
+                .search(
+                    &search_title,
+                    if is_episode { "series" } else { "movie" },
+                    effective_year,
+                )
+                .await
+            {
+                let match_is_series =
+                    search_match.entity_type.as_deref() == Some("series") || is_episode;
                 let mut meta = if match_is_series {
                     match provider.get_series_extended(&search_match.id).await {
                         Ok(m) => m,
-                        Err(_) => provider.get_movie_extended(&search_match.id).await.unwrap_or_default(),
+                        Err(_) => provider
+                            .get_movie_extended(&search_match.id)
+                            .await
+                            .unwrap_or_default(),
                     }
                 } else {
                     match provider.get_movie_extended(&search_match.id).await {
                         Ok(m) => m,
-                        Err(_) => provider.get_series_extended(&search_match.id).await.unwrap_or_default(),
+                        Err(_) => provider
+                            .get_series_extended(&search_match.id)
+                            .await
+                            .unwrap_or_default(),
                     }
                 };
 
@@ -1360,11 +1458,14 @@ pub async fn refresh_scrobble_metadata(
             }
         }
 
-            if let Some(meta) = meta_opt {
-                let now_str = Utc::now().to_rfc3339();
-                if is_episode {
-                    let show_name = scrobble.grandparent_title.as_deref().unwrap_or(&scrobble.title);
-                    let _ = sqlx::query(
+        if let Some(meta) = meta_opt {
+            let now_str = Utc::now().to_rfc3339();
+            if is_episode {
+                let show_name = scrobble
+                    .grandparent_title
+                    .as_deref()
+                    .unwrap_or(&scrobble.title);
+                let _ = sqlx::query(
                         r#"
                         UPDATE scrobbles
                         SET genres = COALESCE(NULLIF(?, ''), NULLIF(genres, '')),
@@ -1396,8 +1497,8 @@ pub async fn refresh_scrobble_metadata(
                     .bind(show_name)
                     .execute(&state.pool)
                     .await;
-                } else {
-                    let _ = sqlx::query(
+            } else {
+                let _ = sqlx::query(
                         r#"
                         UPDATE scrobbles
                         SET genres = COALESCE(NULLIF(?, ''), NULLIF(genres, '')),
@@ -1427,16 +1528,18 @@ pub async fn refresh_scrobble_metadata(
                     .bind(&scrobble.id)
                     .execute(&state.pool)
                     .await;
-                }
+            }
 
-                if meta.image_url.is_some() {
-                    state.image_notify.notify_waiters();
-                }
+            if meta.image_url.is_some() {
+                state.image_notify.notify_waiters();
             }
         }
+    }
 
     // 2. Fetch/update poster if missing or Plex relative path
-    let needs_poster = scrobble.thumb_url.as_deref()
+    let needs_poster = scrobble
+        .thumb_url
+        .as_deref()
         .map(|u| u.is_empty() || u.starts_with("/library/") || u.starts_with("/photo/"))
         .unwrap_or(true);
 
@@ -1518,7 +1621,10 @@ pub async fn search_match_handler(
 
     let is_episode = scrobble.media_type == "episode";
     let default_title = if is_episode {
-        scrobble.grandparent_title.as_deref().unwrap_or(&scrobble.title)
+        scrobble
+            .grandparent_title
+            .as_deref()
+            .unwrap_or(&scrobble.title)
     } else {
         &scrobble.title
     };
@@ -1539,35 +1645,58 @@ pub async fn search_match_handler(
     let mut results: Vec<crate::api::tvdb::TvdbSearchResult> = Vec::new();
     let effective_source = state.get_effective_metadata_source().await;
 
-    let should_query_tmdb = requested_provider == "tmdb" || (requested_provider == "auto" && effective_source == "tmdb");
-    let should_query_tvdb = requested_provider == "tvdb" || (requested_provider == "auto" && effective_source == "tvdb");
+    let should_query_tmdb = requested_provider == "tmdb"
+        || (requested_provider == "auto" && effective_source == "tmdb");
+    let should_query_tvdb = requested_provider == "tvdb"
+        || (requested_provider == "auto" && effective_source == "tvdb");
 
     if should_query_tmdb {
-        if let Some(key) = state.get_effective_tmdb_api_key().await.filter(|k| !k.trim().is_empty()) {
+        if let Some(key) = state
+            .get_effective_tmdb_api_key()
+            .await
+            .filter(|k| !k.trim().is_empty())
+        {
             let base_url = state.get_effective_tmdb_base_url().await;
             let client = crate::api::tmdb::TmdbClient::new(base_url, key);
-            if let Ok(cands) = client.search_candidates(search_query, &scrobble.media_type, scrobble.year).await {
+            if let Ok(cands) = client
+                .search_candidates(search_query, &scrobble.media_type, scrobble.year)
+                .await
+            {
                 results.extend(cands);
             }
         }
     }
 
     if should_query_tvdb || (requested_provider == "auto" && results.is_empty()) {
-        if let Some(key) = state.get_effective_tvdb_api_key().await.filter(|k| !k.trim().is_empty()) {
+        if let Some(key) = state
+            .get_effective_tvdb_api_key()
+            .await
+            .filter(|k| !k.trim().is_empty())
+        {
             let pin = state.get_effective_tvdb_pin().await;
             let base_url = state.get_effective_tvdb_base_url().await;
             let client = crate::api::tvdb::TvdbClient::new(base_url, key, pin);
-            if let Ok(cands) = client.search_candidates(search_query, &scrobble.media_type, scrobble.year).await {
+            if let Ok(cands) = client
+                .search_candidates(search_query, &scrobble.media_type, scrobble.year)
+                .await
+            {
                 results.extend(cands);
             }
         }
     }
 
     if results.is_empty() && requested_provider == "auto" && effective_source == "tvdb" {
-        if let Some(key) = state.get_effective_tmdb_api_key().await.filter(|k| !k.trim().is_empty()) {
+        if let Some(key) = state
+            .get_effective_tmdb_api_key()
+            .await
+            .filter(|k| !k.trim().is_empty())
+        {
             let base_url = state.get_effective_tmdb_base_url().await;
             let client = crate::api::tmdb::TmdbClient::new(base_url, key);
-            if let Ok(cands) = client.search_candidates(search_query, &scrobble.media_type, scrobble.year).await {
+            if let Ok(cands) = client
+                .search_candidates(search_query, &scrobble.media_type, scrobble.year)
+                .await
+            {
                 results.extend(cands);
             }
         }
@@ -1667,7 +1796,10 @@ pub async fn fix_match_handler(
 
     // 2. Update tvdb_id or tmdb_id on scrobble (and sibling episodes if it's a TV show)
     if is_episode {
-        let show_name = scrobble.grandparent_title.as_deref().unwrap_or(&scrobble.title);
+        let show_name = scrobble
+            .grandparent_title
+            .as_deref()
+            .unwrap_or(&scrobble.title);
         if is_tmdb {
             let _ = sqlx::query(
                 "UPDATE scrobbles SET tmdb_id = ? WHERE id = ? OR (grandparent_title IS NOT NULL AND LOWER(TRIM(grandparent_title)) = LOWER(TRIM(?))) OR (media_type = 'episode' AND LOWER(TRIM(title)) = LOWER(TRIM(?)))"
@@ -1709,7 +1841,11 @@ pub async fn fix_match_handler(
     let mut fetched_meta: Option<crate::api::tvdb::TvdbMetadata> = None;
 
     if is_tmdb {
-        if let Some(key) = state.get_effective_tmdb_api_key().await.filter(|k| !k.trim().is_empty()) {
+        if let Some(key) = state
+            .get_effective_tmdb_api_key()
+            .await
+            .filter(|k| !k.trim().is_empty())
+        {
             let base_url = state.get_effective_tmdb_base_url().await;
             let client = crate::api::tmdb::TmdbClient::new(base_url, key);
             let meta_res = if is_episode {
@@ -1728,7 +1864,11 @@ pub async fn fix_match_handler(
             }
         }
     } else {
-        if let Some(key) = state.get_effective_tvdb_api_key().await.filter(|k| !k.trim().is_empty()) {
+        if let Some(key) = state
+            .get_effective_tvdb_api_key()
+            .await
+            .filter(|k| !k.trim().is_empty())
+        {
             let pin = state.get_effective_tvdb_pin().await;
             let base_url = state.get_effective_tvdb_base_url().await;
             let client = crate::api::tvdb::TvdbClient::new(base_url, key, pin);
@@ -1754,7 +1894,10 @@ pub async fn fix_match_handler(
     if let Some(meta) = fetched_meta {
         let has_image = meta.image_url.is_some();
         if is_episode {
-            let show_name = scrobble.grandparent_title.as_deref().unwrap_or(&scrobble.title);
+            let show_name = scrobble
+                .grandparent_title
+                .as_deref()
+                .unwrap_or(&scrobble.title);
             let _ = sqlx::query(
                 r#"
                 UPDATE scrobbles
@@ -1795,7 +1938,7 @@ pub async fn fix_match_handler(
                     thumb_url = COALESCE(NULLIF(?, ''), thumb_url),
                     metadata_updated_at = ?
                 WHERE id = ?
-                "#
+                "#,
             )
             .bind(&meta.genres)
             .bind(&meta.actors)
@@ -1817,7 +1960,9 @@ pub async fn fix_match_handler(
     }
 
     // 4. Notify background workers if poster or metadata needs processing
-    let needs_poster = scrobble.thumb_url.as_deref()
+    let needs_poster = scrobble
+        .thumb_url
+        .as_deref()
         .map(|u| u.is_empty() || u.starts_with("/library/") || u.starts_with("/photo/"))
         .unwrap_or(true);
     if needs_poster {
