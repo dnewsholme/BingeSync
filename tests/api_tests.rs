@@ -1962,8 +1962,8 @@ async fn test_sonarr_delete_options() {
             "/api/v3/episode",
             axum::routing::get(|| async {
                 axum::Json(serde_json::json!([
-                    { "id": 1001, "seasonNumber": 1 },
-                    { "id": 1002, "seasonNumber": 1 }
+                    { "id": 1001, "seasonNumber": 1, "episodeNumber": 1, "episodeFileId": 101 },
+                    { "id": 1002, "seasonNumber": 1, "episodeNumber": 2, "episodeFileId": 102 }
                 ]))
             }),
         )
@@ -2109,6 +2109,52 @@ async fn test_sonarr_delete_options() {
         .unwrap();
     let res4 = app.clone().oneshot(req4).await.unwrap();
     assert_eq!(res4.status(), StatusCode::BAD_REQUEST);
+
+    // 5. Test Option 4: delete_episode (delete only that episode and unmonitor it)
+    let req5 = Request::builder()
+        .method("POST")
+        .uri("/api/v1/integrations/sonarr/delete-series")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(
+            serde_json::json!({
+                "series_id": 42,
+                "action": "delete_episode",
+                "season_number": 1,
+                "episode_number": 1
+            })
+            .to_string(),
+        ))
+        .unwrap();
+    let res5 = app.clone().oneshot(req5).await.unwrap();
+    assert_eq!(res5.status(), StatusCode::OK);
+    let b5 = axum::body::to_bytes(res5.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let json5: serde_json::Value = serde_json::from_slice(&b5).unwrap();
+    assert_eq!(json5["action"], "delete_episode");
+    assert_eq!(json5["season_number"], 1);
+    assert_eq!(json5["episode_number"], 1);
+    assert_eq!(json5["deleted_file"], true);
+    assert_eq!(json5["status"], "deleted");
+
+    // 6. Test missing episode_number validation for delete_episode
+    let req6 = Request::builder()
+        .method("POST")
+        .uri("/api/v1/integrations/sonarr/delete-series")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(
+            serde_json::json!({
+                "series_id": 42,
+                "action": "delete_episode",
+                "season_number": 1
+            })
+            .to_string(),
+        ))
+        .unwrap();
+    let res6 = app.clone().oneshot(req6).await.unwrap();
+    assert_eq!(res6.status(), StatusCode::BAD_REQUEST);
 }
 
 #[tokio::test]

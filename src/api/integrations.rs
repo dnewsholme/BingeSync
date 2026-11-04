@@ -105,6 +105,7 @@ pub struct SonarrDeleteRequest {
     pub delete_files: Option<bool>,
     pub action: Option<String>,
     pub season_number: Option<i32>,
+    pub episode_number: Option<i32>,
 }
 
 pub async fn get_integrations_status(
@@ -412,6 +413,141 @@ pub async fn delete_from_sonarr(
     let action = payload.action.as_deref().unwrap_or("delete_series");
 
     match action {
+        "delete_episode" => {
+            let episode = match payload.episode_number {
+                Some(e) => e,
+                None => {
+                    return Err((
+                        StatusCode::BAD_REQUEST,
+                        Json(serde_json::json!({ "error": "episode_number is required for delete_episode action" })),
+                    ));
+                }
+            };
+            let season_opt = payload.season_number;
+
+            tracing::info!(
+                service = "sonarr",
+                user_id = %auth.user_id,
+                series_id = payload.series_id,
+                season_number = ?season_opt,
+                episode_number = episode,
+                "Deleting episode file and unmonitoring episode in Sonarr"
+            );
+
+            // 1. Fetch episodes for this series
+            let ep_url = if let Some(s) = season_opt {
+                format!("{}/api/v3/episode?seriesId={}&seasonNumber={}", base_url, payload.series_id, s)
+            } else {
+                format!("{}/api/v3/episode?seriesId={}", base_url, payload.series_id)
+            };
+
+            let ep_res = client
+                .get(&ep_url)
+                .header("X-Api-Key", api_key)
+                .send()
+                .await
+                .map_err(|e| {
+                    tracing::warn!(service = "sonarr", error = %e, series_id = payload.series_id, "Failed to fetch episodes from Sonarr");
+                    (
+                        StatusCode::BAD_GATEWAY,
+                        Json(serde_json::json!({ "error": format!("Failed to fetch episodes from Sonarr: {}", e) })),
+                    )
+                })?;
+
+            if !ep_res.status().is_success() {
+                tracing::warn!(service = "sonarr", status = %ep_res.status(), series_id = payload.series_id, "Sonarr returned error fetching episodes");
+                return Err((
+                    StatusCode::BAD_GATEWAY,
+                    Json(serde_json::json!({ "error": format!("Sonarr returned error status: {}", ep_res.status()) })),
+                ));
+            }
+
+            let episodes: Vec<serde_json::Value> = ep_res.json().await.map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({ "error": format!("Failed to parse Sonarr episodes response: {}", e) })),
+                )
+            })?;
+
+            let target_ep = episodes.iter().find(|e| {
+                let ep_match = e.get("episodeNumber").and_then(|v| v.as_i64()) == Some(episode as i64);
+                let s_match = match season_opt {
+                    Some(s) => e.get("seasonNumber").and_then(|v| v.as_i64()) == Some(s as i64),
+                    None => true,
+                };
+                ep_match && s_match
+            });
+
+            let target_ep = match target_ep {
+                Some(ep) => ep,
+                None => {
+                    let s_label = season_opt.map(|s| format!("S{:02}", s)).unwrap_or_default();
+                    return Err((
+                        StatusCode::NOT_FOUND,
+                        Json(serde_json::json!({ "error": format!("Episode {}E{:02} not found in Sonarr for series {}", s_label, episode, payload.series_id) })),
+                    ));
+                }
+            };
+
+            let resolved_season = target_ep.get("seasonNumber").and_then(|v| v.as_i64()).unwrap_or(season_opt.unwrap_or(1) as i64);
+
+            // 2. Delete episode file from disk if it exists
+            let mut deleted_file = false;
+            let ep_file_id = target_ep.get("episodeFileId").and_then(|v| v.as_i64()).filter(|&id| id > 0);
+            if let Some(file_id) = ep_file_id {
+                let del_url = format!("{}/api/v3/episodefile/{}", base_url, file_id);
+                let del_res = client
+                    .delete(&del_url)
+                    .header("X-Api-Key", api_key)
+                    .send()
+                    .await;
+                if let Ok(resp) = del_res {
+                    if resp.status().is_success() {
+                        deleted_file = true;
+                    } else {
+                        tracing::warn!(service = "sonarr", status = %resp.status(), file_id = file_id, "Sonarr returned error deleting episode file");
+                    }
+                } else if let Err(ref e) = del_res {
+                    tracing::warn!(service = "sonarr", error = %e, file_id = file_id, "Network error deleting episode file from Sonarr");
+                }
+            }
+
+            // 3. Unmonitor the episode in Sonarr
+            if let Some(ep_id) = target_ep.get("id").and_then(|v| v.as_i64()) {
+                let mon_url = format!("{}/api/v3/episode/monitor", base_url);
+                let _ = client
+                    .put(&mon_url)
+                    .header("X-Api-Key", api_key)
+                    .json(&serde_json::json!({
+                        "episodeIds": [ep_id],
+                        "monitored": false
+                    }))
+                    .send()
+                    .await;
+            }
+
+            tracing::info!(
+                service = "sonarr",
+                user_id = %auth.user_id,
+                series_id = payload.series_id,
+                season_number = resolved_season,
+                episode_number = episode,
+                deleted_file = deleted_file,
+                "Episode file deleted and episode unmonitored in Sonarr"
+            );
+
+            Ok(Json(serde_json::json!({
+                "status": "deleted",
+                "service": "sonarr",
+                "series_id": payload.series_id,
+                "action": "delete_episode",
+                "season_number": resolved_season,
+                "episode_number": episode,
+                "deleted_file": deleted_file,
+                "message": format!("Episode S{:02}E{:02} file deleted and unmonitored in Sonarr", resolved_season, episode)
+            })))
+        }
+
         "delete_season" => {
             let season = match payload.season_number {
                 Some(s) => s,

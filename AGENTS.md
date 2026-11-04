@@ -147,7 +147,7 @@ Tests in `tests/api_tests.rs` (72 integration tests) cover:
 - Admin user management, list users, and cascading data deletion
 - OpenID Connect Back-Channel Logout token validation, session termination, and token invalidation
 - Disk-based media poster caching and image serving with traversal protection
-- Sonarr delete options (delete series & files, delete season files & unmonitor season, and delete all files & unmonitor all seasons)
+- Sonarr delete options (delete episode file & unmonitor episode, delete series & files, delete season files & unmonitor season, and delete all files & unmonitor all seasons)
 - TheTVDB v4 metadata enrichment worker (genres, cast, plot overview, and directors)
 - Movie TVDB metadata fallback and manual scrobble metadata refresh
 - Item other watches query: movies and exact same TV episode matching with multi-user isolation
@@ -216,7 +216,7 @@ Playwright tests in `web/tests/e2e.spec.js` (50 browser E2E tests) cover:
 - Show detail modal IMDb link and delete all scrobbles for show
 - Multi-select batch delete in History view
 - Admin role and user management: list users, verify backchannel URL, and delete user
-- Sonarr cleanup options: delete show and files, delete & unmonitor season files, and delete all files & unmonitor all seasons
+- Sonarr cleanup options: delete episode file & unmonitor episode, delete show and files, delete & unmonitor season files, and delete all files & unmonitor all seasons
 - TheTVDB attribution: global footer, settings integration card, and scrobble detail modal footnote
 - Item other watches: other watches table in scrobble detail modal strictly matching exact same episode
 - Stats page top watched movies, extended metrics, and type/range filter tabs

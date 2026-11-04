@@ -539,14 +539,15 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     const actionSelect = page.locator('#sonarr-action-select');
     await expect(actionSelect).toBeVisible();
 
-    // Verify the 3 options exist
+    // Verify the options exist, including the delete_episode option
     const optionsText = await actionSelect.locator('option').allTextContents();
     expect(optionsText).toContain('Delete show and files');
     expect(optionsText.some(t => t.includes('Delete and unmonitor season 2 files'))).toBe(true);
+    expect(optionsText.some(t => t.includes('Delete and unmonitor episode S2E3 file'))).toBe(true);
     expect(optionsText).toContain('Delete all files and unmonitor all seasons');
 
-    // Test executing "delete_season"
-    await actionSelect.selectOption('delete_season');
+    // Test executing "delete_episode"
+    await actionSelect.selectOption('delete_episode');
     page.once('dialog', dialog => dialog.accept());
     await page.click('#btn-arr-cleanup');
 
@@ -554,8 +555,9 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     await expect(page.locator('#detail-arr-container')).toContainText('Successfully processed Sonarr action');
     expect(lastDeletePayload).toEqual({
       series_id: 88,
-      action: 'delete_season',
+      action: 'delete_episode',
       season_number: 2,
+      episode_number: 3,
       delete_files: true,
     });
   });

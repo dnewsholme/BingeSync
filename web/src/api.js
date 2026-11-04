@@ -304,6 +304,9 @@ export const api = {
       if (options.season_number != null) {
         body.season_number = Number(options.season_number);
       }
+      if (options.episode_number != null) {
+        body.episode_number = Number(options.episode_number);
+      }
     }
     return request('/integrations/sonarr/delete-series', {
       method: 'POST',

@@ -744,7 +744,7 @@ pub const OPENAPI_SPEC_JSON: &str = r###"{
             "/api/v1/integrations/sonarr/delete-series": {
                 "post": {
                     "tags": ["Integrations"],
-                    "summary": "Delete series or season files from Sonarr",
+                    "summary": "Delete series, season, or episode files from Sonarr",
                     "security": [{ "BearerAuth": [] }],
                     "requestBody": {
                         "required": true,
@@ -752,11 +752,12 @@ pub const OPENAPI_SPEC_JSON: &str = r###"{
                             "application/json": {
                                 "schema": {
                                     "type": "object",
-                                    "required": ["sonarr_id"],
+                                    "required": ["series_id"],
                                     "properties": {
-                                        "sonarr_id": { "type": "integer" },
-                                        "action": { "type": "string", "enum": ["delete_all", "delete_season_files", "delete_all_files_keep_series"] },
-                                        "season_number": { "type": "integer" }
+                                        "series_id": { "type": "integer" },
+                                        "action": { "type": "string", "enum": ["delete_series", "delete_season", "delete_episode", "delete_all_files_unmonitor"] },
+                                        "season_number": { "type": "integer" },
+                                        "episode_number": { "type": "integer" }
                                     }
                                 }
                             }

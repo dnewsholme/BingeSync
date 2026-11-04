@@ -4814,6 +4814,9 @@ async function checkLibraryIntegrations(item) {
       } else {
         const hasSeason = item.season_number != null;
         const seasonNum = hasSeason ? item.season_number : 1;
+        const hasEpisode = item.episode_number != null;
+        const episodeNum = hasEpisode ? item.episode_number : 1;
+        const epLabel = hasSeason && hasEpisode ? `S${seasonNum}E${episodeNum}` : (hasEpisode ? `Episode ${episodeNum}` : '');
 
         container.innerHTML = `
           <div class="arr-cleanup-card arr-cleanup-card-sonarr">
@@ -4827,9 +4830,10 @@ async function checkLibraryIntegrations(item) {
             <div class="arr-sonarr-actions">
               <div class="arr-select-group">
                 <select id="sonarr-action-select" class="form-control form-control-sm arr-select">
-                  <option value="delete_series">Delete show and files</option>
-                  <option value="delete_season"${hasSeason ? ' selected' : ''}>Delete and unmonitor season ${hasSeason ? seasonNum + ' ' : ''}files</option>
+                  ${hasEpisode ? `<option value="delete_episode" selected>Delete and unmonitor episode ${epLabel ? epLabel + ' ' : ''}file</option>` : ''}
+                  <option value="delete_season"${!hasEpisode && hasSeason ? ' selected' : ''}>Delete and unmonitor season ${hasSeason ? seasonNum + ' ' : ''}files</option>
                   <option value="delete_all_files_unmonitor">Delete all files and unmonitor all seasons</option>
+                  <option value="delete_series">Delete show and files</option>
                 </select>
                 <button class="btn btn-danger btn-sm" id="btn-arr-cleanup">
                   Clean Up
@@ -4847,8 +4851,23 @@ async function checkLibraryIntegrations(item) {
             const action = selectAction.value;
             let confirmMsg = '';
             let targetSeason = seasonNum;
+            let targetEpisode = episodeNum;
 
-            if (action === 'delete_series') {
+            if (action === 'delete_episode') {
+              if (!hasEpisode) {
+                const inputEp = prompt('Enter episode number to delete and unmonitor:', '1');
+                if (!inputEp) return;
+                targetEpisode = parseInt(inputEp, 10);
+                if (isNaN(targetEpisode)) {
+                  alert('Invalid episode number');
+                  return;
+                }
+              }
+              const displayLabel = hasSeason
+                ? `S${targetSeason}E${targetEpisode}`
+                : `Episode ${targetEpisode}`;
+              confirmMsg = `Delete episode file for ${displayLabel} of "${showTitle}" from disk and unmonitor ${displayLabel} in Sonarr?`;
+            } else if (action === 'delete_series') {
               confirmMsg = `Remove "${showTitle}" from Sonarr and delete all series media files from disk?`;
             } else if (action === 'delete_season') {
               if (!hasSeason) {
@@ -4873,7 +4892,8 @@ async function checkLibraryIntegrations(item) {
 
               const deleteRes = await api.deleteFromSonarr(res.series_id, {
                 action: action,
-                season_number: action === 'delete_season' ? targetSeason : undefined,
+                season_number: (action === 'delete_season' || action === 'delete_episode') ? targetSeason : undefined,
+                episode_number: action === 'delete_episode' ? targetEpisode : undefined,
                 delete_files: true,
               });
 
