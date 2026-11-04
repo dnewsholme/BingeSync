@@ -288,7 +288,7 @@ impl AppState {
     }
 }
 
-async fn security_headers_middleware(
+pub async fn security_headers_middleware(
     req: axum::extract::Request,
     next: axum::middleware::Next,
 ) -> axum::response::Response {
@@ -297,7 +297,20 @@ async fn security_headers_middleware(
         .get("x-forwarded-proto")
         .and_then(|v| v.to_str().ok())
         .map(|s| s.eq_ignore_ascii_case("https"))
-        .unwrap_or(false);
+        .unwrap_or(false)
+        || req
+            .headers()
+            .get("x-forwarded-ssl")
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.eq_ignore_ascii_case("on"))
+            .unwrap_or(false)
+        || req
+            .headers()
+            .get("cf-visitor")
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.contains("\"scheme\":\"https\""))
+            .unwrap_or(false)
+        || req.uri().scheme_str().map(|s| s.eq_ignore_ascii_case("https")).unwrap_or(false);
 
     let mut resp = next.run(req).await;
     let headers = resp.headers_mut();

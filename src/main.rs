@@ -166,7 +166,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         app
     }
-    .layer(tower_http::compression::CompressionLayer::new());
+    .layer(tower_http::compression::CompressionLayer::new())
+    .layer(axum::middleware::from_fn(bingesync::api::security_headers_middleware));
 
     // 7. Start server
     let bind_addr = format!("{}:{}", config.host, config.port);

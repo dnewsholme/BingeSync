@@ -266,8 +266,13 @@ pub async fn callback_handler(
     })?;
 
     let is_https = is_https_request(&state.config.app_url, Some(&headers));
+    let cookie_path = if !state.config.base_path.is_empty() {
+        format!("{}/", state.config.base_path.trim_end_matches('/'))
+    } else {
+        "/".to_string()
+    };
     let mut cookie_builder = Cookie::build(("bingesync_token", token))
-        .path("/")
+        .path(cookie_path)
         .http_only(true)
         .same_site(SameSite::Lax)
         .max_age(time::Duration::days(30));
@@ -349,8 +354,13 @@ pub async fn dev_login_handler(
     })?;
 
     let is_https = is_https_request(&state.config.app_url, Some(&headers));
+    let cookie_path = if !state.config.base_path.is_empty() {
+        format!("{}/", state.config.base_path.trim_end_matches('/'))
+    } else {
+        "/".to_string()
+    };
     let mut cookie_builder = Cookie::build(("bingesync_token", token.clone()))
-        .path("/")
+        .path(cookie_path)
         .http_only(true)
         .same_site(SameSite::Lax)
         .max_age(time::Duration::days(30));
@@ -400,8 +410,13 @@ pub async fn logout_handler(
     headers: axum::http::HeaderMap,
 ) -> (CookieJar, Json<serde_json::Value>) {
     let is_https = is_https_request(&state.config.app_url, Some(&headers));
+    let cookie_path = if !state.config.base_path.is_empty() {
+        format!("{}/", state.config.base_path.trim_end_matches('/'))
+    } else {
+        "/".to_string()
+    };
     let mut removal_builder = Cookie::build(("bingesync_token", ""))
-        .path("/")
+        .path(cookie_path.clone())
         .http_only(true)
         .same_site(SameSite::Lax)
         .max_age(time::Duration::seconds(0));
@@ -410,9 +425,20 @@ pub async fn logout_handler(
     }
     let removal_cookie = removal_builder.build();
 
+    // Also clear root path cookie if previously set
+    let mut root_removal_builder = Cookie::build(("bingesync_token", ""))
+        .path("/")
+        .http_only(true)
+        .same_site(SameSite::Lax)
+        .max_age(time::Duration::seconds(0));
+    if is_https {
+        root_removal_builder = root_removal_builder.secure(true);
+    }
+    let root_removal_cookie = root_removal_builder.build();
+
     tracing::info!("User logged out successfully");
 
-    (jar.add(removal_cookie), Json(serde_json::json!({ "status": "logged_out" })))
+    (jar.add(removal_cookie).add(root_removal_cookie), Json(serde_json::json!({ "status": "logged_out" })))
 }
 
 pub async fn get_or_create_user(

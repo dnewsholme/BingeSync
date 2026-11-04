@@ -27,7 +27,13 @@ pub async fn static_handler(uri: Uri) -> Response {
                 .header(header::CONTENT_TYPE, HeaderValue::from_str(mime.as_ref()).unwrap())
                 .header("X-Content-Type-Options", "nosniff")
                 .header("X-Frame-Options", "SAMEORIGIN")
-                .header("Referrer-Policy", "strict-origin-when-cross-origin");
+                .header("Referrer-Policy", "strict-origin-when-cross-origin")
+                .header("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=()")
+                .header("Cross-Origin-Opener-Policy", "same-origin")
+                .header(
+                    "Content-Security-Policy",
+                    "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https: http:; connect-src 'self' https://api.github.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com; object-src 'none'; frame-ancestors 'self'; base-uri 'self';"
+                );
 
             if file_path == "sw.js" || file_path.ends_with("/sw.js") {
                 builder = builder
@@ -58,6 +64,12 @@ pub async fn static_handler(uri: Uri) -> Response {
                     .header("X-Content-Type-Options", "nosniff")
                     .header("X-Frame-Options", "SAMEORIGIN")
                     .header("Referrer-Policy", "strict-origin-when-cross-origin")
+                    .header("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=()")
+                    .header("Cross-Origin-Opener-Policy", "same-origin")
+                    .header(
+                        "Content-Security-Policy",
+                        "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https: http:; connect-src 'self' https://api.github.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com; object-src 'none'; frame-ancestors 'self'; base-uri 'self';"
+                    )
                     .body(Body::from(content.data.into_owned()))
                     .unwrap_or_else(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Error").into_response())
             } else {
