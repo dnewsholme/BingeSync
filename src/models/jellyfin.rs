@@ -59,6 +59,9 @@ pub struct JellyfinWebhookPayload {
     #[serde(alias = "ProviderIds", alias = "providerIds")]
     pub provider_ids: Option<serde_json::Value>,
 
+    #[serde(alias = "SeriesProviderIds", alias = "seriesProviderIds")]
+    pub series_provider_ids: Option<serde_json::Value>,
+
     #[serde(alias = "ItemId", alias = "itemId", alias = "Id", alias = "id")]
     pub item_id: Option<String>,
 
@@ -270,6 +273,27 @@ impl JellyfinWebhookPayload {
     }
 
     pub fn resolved_tmdb_id(&self) -> Option<String> {
+        let is_episode = self.item_type.as_deref().map(|t| t.eq_ignore_ascii_case("Episode")).unwrap_or(false)
+            || self.series_name.is_some();
+
+        if is_episode {
+            // For TV episodes, check series_provider_ids first for the show's TMDB ID
+            let s_ids = self.series_provider_ids.as_ref().or_else(|| self.item.as_ref().and_then(|it| it.get("SeriesProviderIds")));
+            if let Some(serde_json::Value::Object(map)) = s_ids {
+                for key in ["Tmdb", "tmdb", "TMDB"] {
+                    if let Some(serde_json::Value::String(s)) = map.get(key) {
+                        if !s.trim().is_empty() {
+                            return Some(s.trim().to_string());
+                        }
+                    }
+                    if let Some(serde_json::Value::Number(n)) = map.get(key) {
+                        return Some(n.to_string());
+                    }
+                }
+            }
+            return None;
+        }
+
         if let Some(ref id) = self.provider_tmdb {
             if !id.trim().is_empty() {
                 return Some(id.trim().to_string());

@@ -10602,3 +10602,125 @@ async fn test_aliveness_healthchecks_succeed_during_migrations() {
     let res = router.clone().oneshot(req).await.unwrap();
     assert_eq!(res.status(), StatusCode::OK);
 }
+
+#[tokio::test]
+async fn test_episode_tvdb_and_tmdb_id_resolution_and_links() {
+    let (app, pool, config) = setup_test_app().await;
+
+    let user_id = "user_episode_links_test";
+    let token = "token_episode_links_test";
+    let user_jwt = create_jwt(user_id, "knife_edge@test.local", &config.jwt_secret).unwrap();
+
+    sqlx::query("INSERT INTO users (id, email, display_name, webhook_token, role) VALUES (?, ?, ?, ?, 'user')")
+        .bind(user_id)
+        .bind("knife_edge@test.local")
+        .bind("Knife Edge User")
+        .bind(token)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    // 1. Send Plex webhook for Knife Edge: Chasing Michelin Stars S1E1
+    // The payload has episode guid tmdb://6550574, tvdb://11141079, and grandparentGuid tmdb://291361
+    let plex_payload = serde_json::json!({
+        "event": "media.scrobble",
+        "user": true,
+        "Account": { "title": "Knife Edge User" },
+        "Metadata": {
+            "type": "episode",
+            "title": "Episode 1",
+            "grandparentTitle": "Knife Edge: Chasing Michelin Stars",
+            "parentTitle": "Season 1",
+            "parentIndex": 1,
+            "index": 1,
+            "year": 2024,
+            "guid": "plex://episode/6550574",
+            "grandparentGuid": "tmdb://291361",
+            "Guid": [
+                { "id": "tvdb://11141079" },
+                { "id": "tmdb://6550574" }
+            ],
+            "duration": 3600000,
+            "viewOffset": 3600000
+        }
+    });
+
+    let req = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/webhooks/plex/{}", token))
+        .header("content-type", "application/json")
+        .body(Body::from(plex_payload.to_string()))
+        .unwrap();
+
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::CREATED);
+
+    // 2. Query history to verify tvdb_id is 11141079 (episode ID) and tmdb_id is 291361 (series ID, NOT 6550574)
+    let req = Request::builder()
+        .uri("/api/v1/history?page=1&limit=10")
+        .header("Authorization", format!("Bearer {}", user_jwt))
+        .body(Body::empty())
+        .unwrap();
+
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let history_json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    let items = history_json["items"].as_array().unwrap();
+    assert_eq!(items.len(), 1);
+
+    let ep1 = &items[0];
+    assert_eq!(ep1["title"], "Episode 1");
+    assert_eq!(ep1["grandparent_title"], "Knife Edge: Chasing Michelin Stars");
+    assert_eq!(ep1["tvdb_id"], "11141079");
+    assert_eq!(ep1["tmdb_id"], "291361");
+
+    // 3. Send S1E2 without grandparentGuid: should inherit tmdb_id 291361 from existing show scrobbles
+    let plex_payload_e2 = serde_json::json!({
+        "event": "media.scrobble",
+        "user": true,
+        "Account": { "title": "Knife Edge User" },
+        "Metadata": {
+            "type": "episode",
+            "title": "Episode 2",
+            "grandparentTitle": "Knife Edge: Chasing Michelin Stars",
+            "parentTitle": "Season 1",
+            "parentIndex": 1,
+            "index": 2,
+            "year": 2024,
+            "guid": "plex://episode/6550575",
+            "Guid": [
+                { "id": "tvdb://11141080" },
+                { "id": "tmdb://6550575" }
+            ],
+            "duration": 3600000,
+            "viewOffset": 3600000
+        }
+    });
+
+    let req = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/webhooks/plex/{}", token))
+        .header("content-type", "application/json")
+        .body(Body::from(plex_payload_e2.to_string()))
+        .unwrap();
+
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::CREATED);
+
+    let req = Request::builder()
+        .uri("/api/v1/history?page=1&limit=10")
+        .header("Authorization", format!("Bearer {}", user_jwt))
+        .body(Body::empty())
+        .unwrap();
+
+    let res = app.clone().oneshot(req).await.unwrap();
+    let bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let history_json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    let items = history_json["items"].as_array().unwrap();
+    assert_eq!(items.len(), 2);
+
+    let ep2 = items.iter().find(|i| i["title"] == "Episode 2").unwrap();
+    assert_eq!(ep2["tvdb_id"], "11141080");
+    assert_eq!(ep2["tmdb_id"], "291361");
+}

@@ -130,7 +130,7 @@ Plex webhooks send:
 ```bash
 cargo test
 ```
-Tests in `tests/api_tests.rs` (70 integration tests) cover:
+Tests in `tests/api_tests.rs` (72 integration tests) cover:
 - Dev login and `/api/v1/auth/me`
 - Plex movie and TV episode scrobbling
 - Plex and Jellyfin pre-play trailer, cinema intro, and clip filtering and exclusion
@@ -182,6 +182,7 @@ Tests in `tests/api_tests.rs` (70 integration tests) cover:
 - Full metadata enrichment resolution using TMDB and TVDB with automatic missing metadata clearing
 - Scrobble custom tags and personal review notes CRUD, history search/filtering, and CSV/JSON export
 - Duplicate watch detector & cleanup tool: detection within configurable time windows, auto-pruning (keep oldest/newest), selective deletion, and multi-user isolation
+- TV show and episode direct entity link routing for TheTVDB (`/series/{slug}/episodes/{id}`) and TMDB (`/tv/{id}-{slug}/season/{s}/episode/{e}`), canonical TV show series ID extraction on scrobbles, and sibling episode series ID inheritance
 - History and timeline rating threshold filters: arbitrary minimum rating thresholds (1+..10), rated, and unrated, combined with media type filters
 - OpenID Connect custom admin group configuration via `OIDC_ADMIN_GROUP` and Admin Settings with case-insensitive evaluation
 - OpenID Connect custom standard user group restriction via `OIDC_USER_GROUP` and Admin Settings

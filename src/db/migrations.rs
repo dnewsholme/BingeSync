@@ -389,7 +389,19 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
             WHEN guid LIKE 'com.plexapp.agents.themoviedb://%' THEN SUBSTR(guid, 33)
             ELSE tmdb_id
         END
-        WHERE (tmdb_id IS NULL OR tmdb_id = '') AND (guid LIKE 'tmdb://%' OR guid LIKE 'com.plexapp.agents.themoviedb://%');
+        WHERE (tmdb_id IS NULL OR tmdb_id = '') AND media_type = 'movie' AND (guid LIKE 'tmdb://%' OR guid LIKE 'com.plexapp.agents.themoviedb://%');
+        "#
+    ).execute(pool).await;
+
+    // For TV episodes, clear any tmdb_id that was erroneously set to the individual episode's guid
+    let _ = sqlx::query(
+        r#"
+        UPDATE scrobbles
+        SET tmdb_id = NULL, metadata_updated_at = NULL
+        WHERE media_type = 'episode' AND tmdb_id IS NOT NULL AND (
+            guid = 'tmdb://' || tmdb_id
+            OR guid LIKE 'com.plexapp.agents.themoviedb://' || tmdb_id || '%'
+        );
         "#
     ).execute(pool).await;
 

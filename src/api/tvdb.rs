@@ -1124,21 +1124,28 @@ pub async fn process_missing_metadata_batch_provider(
             item.tvdb_id.as_deref()
         };
 
-        let matched_id: Option<String>;
+        let mut matched_id: Option<String> = None;
+        let mut meta_opt: Option<TvdbMetadata> = None;
 
-        let meta = if let Some(clean_tid) = known_id.map(|s| s.trim()).filter(|s| !s.is_empty()) {
-            matched_id = Some(clean_tid.to_string());
-            if is_episode {
-                match client.get_series_extended(clean_tid).await {
-                    Ok(m) => m,
-                    Err(_) => client.get_movie_extended(clean_tid).await.unwrap_or_default(),
-                }
+        if let Some(clean_tid) = known_id.map(|s| s.trim()).filter(|s| !s.is_empty()) {
+            let res = if is_episode {
+                client.get_series_extended(clean_tid).await
             } else {
-                match client.get_movie_extended(clean_tid).await {
-                    Ok(m) => m,
-                    Err(_) => client.get_series_extended(clean_tid).await.unwrap_or_default(),
+                client.get_movie_extended(clean_tid).await
+            };
+            if let Ok(m) = res {
+                matched_id = Some(clean_tid.to_string());
+                meta_opt = Some(m);
+            } else if !is_episode {
+                if let Ok(m) = client.get_series_extended(clean_tid).await {
+                    matched_id = Some(clean_tid.to_string());
+                    meta_opt = Some(m);
                 }
             }
+        }
+
+        let meta = if let Some(m) = meta_opt {
+            m
         } else {
             let provider_prefix = if is_tmdb { "tmdb" } else { "tvdb" };
             let cache_key = format!("{}:{}:{}:{:?}", provider_prefix, item.media_type, search_title.to_lowercase(), effective_year);
@@ -1209,9 +1216,17 @@ pub async fn process_missing_metadata_batch_provider(
         };
 
         let effective_tvdb_id = if !is_tmdb && matched_id.is_some() {
-            matched_id.clone()
+            if is_episode && item.tvdb_id.is_some() {
+                item.tvdb_id.clone()
+            } else {
+                matched_id.clone()
+            }
         } else {
-            meta.tvdb_id.clone().or_else(|| item.tvdb_id.clone())
+            if is_episode && item.tvdb_id.is_some() {
+                item.tvdb_id.clone()
+            } else {
+                meta.tvdb_id.clone().or_else(|| item.tvdb_id.clone())
+            }
         };
 
         let effective_tmdb_id = if is_tmdb && matched_id.is_some() {

@@ -450,6 +450,21 @@ async fn process_webhook(
     let title = metadata.title.unwrap_or_else(|| "Unknown Title".to_string());
     let media_type = metadata.media_type.unwrap_or_else(|| "movie".to_string());
     let grandparent_title = metadata.grandparent_title;
+    let mut tmdb_id = tmdb_id;
+    if media_type == "episode" && tmdb_id.is_none() {
+        if let Some(ref gp) = grandparent_title {
+            if let Ok(Some(cached_tmdb)) = sqlx::query_scalar::<_, String>(
+                "SELECT tmdb_id FROM scrobbles WHERE user_id = ? AND grandparent_title IS NOT NULL AND LOWER(TRIM(grandparent_title)) = LOWER(TRIM(?)) AND tmdb_id IS NOT NULL AND tmdb_id != '' ORDER BY watched_at DESC LIMIT 1"
+            )
+            .bind(&user.id)
+            .bind(gp)
+            .fetch_optional(&state.pool)
+            .await
+            {
+                tmdb_id = Some(cached_tmdb);
+            }
+        }
+    }
     let parent_title = metadata.parent_title;
     let season_number = metadata.parent_index;
     let episode_number = metadata.index;
@@ -1397,7 +1412,21 @@ async fn process_jellyfin_or_emby_webhook(
 
     let imdb_id = payload.resolved_imdb_id();
     let tvdb_id = payload.resolved_tvdb_id();
-    let tmdb_id = payload.resolved_tmdb_id();
+    let mut tmdb_id = payload.resolved_tmdb_id();
+    if is_episode && tmdb_id.is_none() {
+        if let Some(ref gp) = grandparent_title {
+            if let Ok(Some(cached_tmdb)) = sqlx::query_scalar::<_, String>(
+                "SELECT tmdb_id FROM scrobbles WHERE user_id = ? AND grandparent_title IS NOT NULL AND LOWER(TRIM(grandparent_title)) = LOWER(TRIM(?)) AND tmdb_id IS NOT NULL AND tmdb_id != '' ORDER BY watched_at DESC LIMIT 1"
+            )
+            .bind(&user.id)
+            .bind(gp)
+            .fetch_optional(&state.pool)
+            .await
+            {
+                tmdb_id = Some(cached_tmdb);
+            }
+        }
+    }
     let (resolution, hdr_format, audio_codec, audio_channels, video_codec) = payload.resolved_media_specs();
     let studio = payload.resolved_studio();
     let original_language = payload.resolved_original_language();

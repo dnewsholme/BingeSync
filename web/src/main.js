@@ -133,25 +133,42 @@ function getImdbUrl(item) {
 
 // Helper: TheTVDB URL generator
 function getTvdbUrl(item) {
+  const showTitle = item.grandparent_title || item.title;
+  const slug = showTitle ? showTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') : '';
+
   if (item.tvdb_id) {
     const raw = String(item.tvdb_id).trim();
     const isEpisodePrefix = /^(?:episode|ep)-/i.test(raw);
     const isMoviePrefix = /^movie-/i.test(raw);
     const cleanId = raw.replace(/^(?:series|movie|tvdb|episode|ep)-/i, '').trim();
     if (cleanId) {
-      if (isEpisodePrefix) {
+      if (item.media_type === 'episode' || isEpisodePrefix) {
+        if (slug) {
+          return `https://www.thetvdb.com/series/${slug}/episodes/${cleanId}`;
+        }
         return `https://thetvdb.com/dereferrer/episode/${cleanId}`;
       } else if (item.media_type === 'movie' || isMoviePrefix) {
+        const movieTitle = item.title;
+        const movieSlug = movieTitle ? movieTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') : '';
+        if (movieSlug) {
+          return `https://www.thetvdb.com/movies/${movieSlug}`;
+        }
         return `https://thetvdb.com/dereferrer/movie/${cleanId}`;
       } else {
+        if (slug) {
+          return `https://www.thetvdb.com/series/${slug}`;
+        }
         return `https://thetvdb.com/dereferrer/series/${cleanId}`;
       }
     }
   }
   if (item.guid) {
-    const epMatch = item.guid.match(/(?:the)?tvdb:\/\/(?:episode\/)(\d+)/i)
+    const epMatch = item.guid.match(/(?:the)?tvdb:\/\/(?:episode\/)?(\d+)/i)
       || item.guid.match(/thetvdb\.com\/dereferrer\/episode\/(\d+)/i);
-    if (epMatch) {
+    if (epMatch && item.media_type === 'episode') {
+      if (slug) {
+        return `https://www.thetvdb.com/series/${slug}/episodes/${epMatch[1]}`;
+      }
       return `https://thetvdb.com/dereferrer/episode/${epMatch[1]}`;
     }
     const match = item.guid.match(/(?:com\.plexapp\.agents\.)?(?:the)?tvdb:\/\/(?:series\/|movie\/)?(\d+)/i)
@@ -159,8 +176,21 @@ function getTvdbUrl(item) {
       || item.guid.match(/tvdb-(\d+)/i);
     if (match) {
       if (item.media_type === 'movie') {
+        const movieTitle = item.title;
+        const movieSlug = movieTitle ? movieTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') : '';
+        if (movieSlug) {
+          return `https://www.thetvdb.com/movies/${movieSlug}`;
+        }
         return `https://thetvdb.com/dereferrer/movie/${match[1]}`;
+      } else if (item.media_type === 'episode') {
+        if (slug) {
+          return `https://www.thetvdb.com/series/${slug}/episodes/${match[1]}`;
+        }
+        return `https://thetvdb.com/dereferrer/episode/${match[1]}`;
       } else {
+        if (slug) {
+          return `https://www.thetvdb.com/series/${slug}`;
+        }
         return `https://thetvdb.com/dereferrer/series/${match[1]}`;
       }
     }
@@ -177,11 +207,24 @@ function getTmdbUrl(item) {
     const cleanId = String(item.tmdb_id).replace(/^(?:tmdb|movie|tv|series)-/i, '').trim();
     if (cleanId) {
       if (item.media_type === 'movie') {
-        return `https://www.themoviedb.org/movie/${cleanId}`;
-      } else if (item.media_type === 'episode' && item.season_number != null && item.episode_number != null) {
-        return `https://www.themoviedb.org/tv/${cleanId}/season/${item.season_number}/episode/${item.episode_number}`;
+        const movieTitle = item.title;
+        const slug = movieTitle ? movieTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') : '';
+        const idPart = slug ? `${cleanId}-${slug}` : cleanId;
+        return `https://www.themoviedb.org/movie/${idPart}`;
+      } else if (item.media_type === 'episode') {
+        const showTitle = item.grandparent_title || item.title;
+        const slug = showTitle ? showTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') : '';
+        const idPart = slug ? `${cleanId}-${slug}` : cleanId;
+        if (item.season_number != null && item.episode_number != null) {
+          return `https://www.themoviedb.org/tv/${idPart}/season/${item.season_number}/episode/${item.episode_number}`;
+        } else {
+          return `https://www.themoviedb.org/tv/${idPart}`;
+        }
       } else {
-        return `https://www.themoviedb.org/tv/${cleanId}`;
+        const showTitle = item.grandparent_title || item.title;
+        const slug = showTitle ? showTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') : '';
+        const idPart = slug ? `${cleanId}-${slug}` : cleanId;
+        return `https://www.themoviedb.org/tv/${idPart}`;
       }
     }
   }
@@ -192,11 +235,24 @@ function getTmdbUrl(item) {
     if (match) {
       const tmdbId = match[1];
       if (item.media_type === 'movie') {
-        return `https://www.themoviedb.org/movie/${tmdbId}`;
-      } else if (item.media_type === 'episode' && item.season_number != null && item.episode_number != null) {
-        return `https://www.themoviedb.org/tv/${tmdbId}/season/${item.season_number}/episode/${item.episode_number}`;
+        const movieTitle = item.title;
+        const slug = movieTitle ? movieTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') : '';
+        const idPart = slug ? `${tmdbId}-${slug}` : tmdbId;
+        return `https://www.themoviedb.org/movie/${idPart}`;
+      } else if (item.media_type === 'episode') {
+        const showTitle = item.grandparent_title || item.title;
+        const slug = showTitle ? showTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') : '';
+        const idPart = slug ? `${tmdbId}-${slug}` : tmdbId;
+        if (item.season_number != null && item.episode_number != null) {
+          return `https://www.themoviedb.org/tv/${idPart}/season/${item.season_number}/episode/${item.episode_number}`;
+        } else {
+          return `https://www.themoviedb.org/tv/${idPart}`;
+        }
       } else {
-        return `https://www.themoviedb.org/tv/${tmdbId}`;
+        const showTitle = item.grandparent_title || item.title;
+        const slug = showTitle ? showTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') : '';
+        const idPart = slug ? `${tmdbId}-${slug}` : tmdbId;
+        return `https://www.themoviedb.org/tv/${idPart}`;
       }
     }
   }

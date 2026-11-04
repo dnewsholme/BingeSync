@@ -93,6 +93,10 @@ pub struct PlexMetadata {
     #[serde(rename = "ratingKey")]
     pub rating_key: Option<String>,
     pub guid: Option<String>,
+    #[serde(rename = "grandparentGuid")]
+    pub grandparent_guid: Option<String>,
+    #[serde(rename = "parentGuid")]
+    pub parent_guid: Option<String>,
     pub duration: Option<i64>,
     #[serde(rename = "viewOffset")]
     pub view_offset: Option<i64>,
@@ -230,7 +234,36 @@ impl PlexMetadata {
     }
 
     /// Resolves canonical TMDB ID from Plex GUIDs or main guid.
+    /// For TV episodes, TMDB requires the series ID (e.g. 291361) rather than the episode's
+    /// individual ID (e.g. 6550574), because TMDB links episodes via /tv/{series_id}/season/{s}/episode/{e}.
     pub fn resolved_tmdb_id(&self) -> Option<String> {
+        let is_episode = self.media_type.as_deref() == Some("episode");
+
+        if is_episode {
+            // Check grandparent_guid for the series TMDB ID (e.g. tmdb://291361 or com.plexapp.agents.themoviedb://291361?lang=en)
+            if let Some(ref g) = self.grandparent_guid {
+                if let Some(idx) = g.find("tmdb://") {
+                    let sub = &g[idx + 7..];
+                    let num_len = sub.chars().take_while(|c| c.is_ascii_digit()).count();
+                    if num_len > 0 {
+                        return Some(sub[..num_len].to_string());
+                    }
+                }
+                if let Some(idx) = g.find("themoviedb://") {
+                    let sub = &g[idx + 13..];
+                    let num_len = sub.chars().take_while(|c| c.is_ascii_digit()).count();
+                    if num_len > 0 {
+                        return Some(sub[..num_len].to_string());
+                    }
+                }
+            }
+            // For an episode, self.guids and self.guid contain the EPISODE'S individual tmdb id,
+            // NOT the series tmdb id. TMDB URLs and API endpoints require the series id.
+            // Returning the episode id causes 404 broken links and failed API lookups.
+            // Return None so the series TMDB ID can be resolved via title search or existing show scrobbles.
+            return None;
+        }
+
         if let Some(ref list) = self.guids {
             for item in list {
                 if let Some(ref gid) = item.id {
