@@ -277,8 +277,28 @@ pub async fn create_scrobble(
         .or_else(|| payload.directors.clone());
     let directors = payload.directors.or_else(|| director.clone());
     let cinematographer = payload.cinematographer;
-    let tags = payload.tags;
-    let notes = payload.notes;
+    let (existing_tags, existing_notes) = if payload.tags.is_none() || payload.notes.is_none() {
+        find_existing_user_data_for_item(
+            &state.pool,
+            &auth.user_id,
+            &payload.media_type,
+            &payload.title,
+            payload.grandparent_title.as_deref(),
+            payload.season_number,
+            payload.episode_number,
+            payload.year,
+            None,
+            payload.tvdb_id.as_deref(),
+            payload.tmdb_id.as_deref(),
+            payload.imdb_id.as_deref(),
+        )
+        .await
+    } else {
+        (None, None)
+    };
+    let has_explicit_user_data = payload.tags.is_some() || payload.notes.is_some();
+    let tags = payload.tags.or(existing_tags);
+    let notes = payload.notes.or(existing_notes);
     let source = payload.source.unwrap_or_else(|| "manual".to_string());
     let source_user = payload.source_user.or_else(|| Some(auth.email.clone()));
     let imported_from = payload.imported_from;
@@ -296,6 +316,27 @@ pub async fn create_scrobble(
                 payload.episode_number,
                 payload.year,
                 &watched_at,
+            )
+            .await
+        }
+    };
+
+    let rating_to_use = match payload.user_rating {
+        Some(r) => Some(r),
+        None => {
+            find_existing_rating_for_item(
+                &state.pool,
+                &auth.user_id,
+                &payload.media_type,
+                &payload.title,
+                payload.grandparent_title.as_deref(),
+                payload.season_number,
+                payload.episode_number,
+                payload.year,
+                None,
+                payload.tvdb_id.as_deref(),
+                payload.tmdb_id.as_deref(),
+                payload.imdb_id.as_deref(),
             )
             .await
         }
@@ -331,7 +372,7 @@ pub async fn create_scrobble(
     .bind(None::<String>)
     .bind(None::<String>)
     .bind(payload.duration_ms)
-    .bind(payload.user_rating)
+    .bind(rating_to_use)
     .bind(&payload.genres)
     .bind(&directors)
     .bind(&director)
@@ -384,6 +425,21 @@ pub async fn create_scrobble(
             Json(serde_json::json!({ "error": format!("Database error fetching created scrobble: {}", e) })),
         )
     })?;
+
+    if payload.user_rating.is_some() {
+        let _ = propagate_rating_for_item(&state.pool, &auth.user_id, &scrobble, payload.user_rating).await;
+    }
+
+    if has_explicit_user_data {
+        let _ = propagate_user_data_for_item(
+            &state.pool,
+            &auth.user_id,
+            &scrobble,
+            scrobble.tags.as_deref(),
+            scrobble.notes.as_deref(),
+        )
+        .await;
+    }
 
     if scrobble.thumb_url.is_none() {
         state.image_notify.notify_one();
@@ -459,6 +515,335 @@ pub struct RateScrobbleRequest {
     pub rating: Option<i32>,
 }
 
+pub async fn propagate_rating_for_item(
+    pool: &sqlx::SqlitePool,
+    user_id: &str,
+    current: &Scrobble,
+    rating: Option<i32>,
+) -> Result<u64, sqlx::Error> {
+    let res = if current.media_type == "episode" {
+        let gp = current.grandparent_title.as_deref().unwrap_or("").trim();
+        if let (Some(s), Some(e)) = (current.season_number, current.episode_number) {
+            if !gp.is_empty() {
+                sqlx::query(
+                    r#"
+                    UPDATE scrobbles
+                    SET user_rating = ?
+                    WHERE user_id = ?
+                      AND media_type = 'episode'
+                      AND (
+                        id = ?
+                        OR (
+                            TRIM(LOWER(COALESCE(grandparent_title, ''))) = TRIM(LOWER(?))
+                            AND season_number = ?
+                            AND episode_number = ?
+                        )
+                        OR (? IS NOT NULL AND guid IS NOT NULL AND guid = ?)
+                        OR (? IS NOT NULL AND tvdb_id IS NOT NULL AND tvdb_id = ? AND tvdb_id NOT LIKE 'series-%')
+                        OR (? IS NOT NULL AND tmdb_id IS NOT NULL AND tmdb_id = ?)
+                      )
+                    "#
+                )
+                .bind(rating)
+                .bind(user_id)
+                .bind(&current.id)
+                .bind(gp)
+                .bind(s)
+                .bind(e)
+                .bind(&current.guid)
+                .bind(&current.guid)
+                .bind(&current.tvdb_id)
+                .bind(&current.tvdb_id)
+                .bind(&current.tmdb_id)
+                .bind(&current.tmdb_id)
+                .execute(pool)
+                .await?
+            } else {
+                sqlx::query(
+                    r#"
+                    UPDATE scrobbles
+                    SET user_rating = ?
+                    WHERE user_id = ?
+                      AND media_type = 'episode'
+                      AND (
+                        id = ?
+                        OR (
+                            TRIM(LOWER(title)) = TRIM(LOWER(?))
+                            AND season_number = ?
+                            AND episode_number = ?
+                        )
+                        OR (? IS NOT NULL AND guid IS NOT NULL AND guid = ?)
+                        OR (? IS NOT NULL AND tvdb_id IS NOT NULL AND tvdb_id = ? AND tvdb_id NOT LIKE 'series-%')
+                        OR (? IS NOT NULL AND tmdb_id IS NOT NULL AND tmdb_id = ?)
+                      )
+                    "#
+                )
+                .bind(rating)
+                .bind(user_id)
+                .bind(&current.id)
+                .bind(&current.title)
+                .bind(s)
+                .bind(e)
+                .bind(&current.guid)
+                .bind(&current.guid)
+                .bind(&current.tvdb_id)
+                .bind(&current.tvdb_id)
+                .bind(&current.tmdb_id)
+                .bind(&current.tmdb_id)
+                .execute(pool)
+                .await?
+            }
+        } else {
+            if !gp.is_empty() {
+                sqlx::query(
+                    r#"
+                    UPDATE scrobbles
+                    SET user_rating = ?
+                    WHERE user_id = ?
+                      AND media_type = 'episode'
+                      AND (
+                        id = ?
+                        OR (
+                            TRIM(LOWER(COALESCE(grandparent_title, ''))) = TRIM(LOWER(?))
+                            AND TRIM(LOWER(title)) = TRIM(LOWER(?))
+                        )
+                        OR (? IS NOT NULL AND guid IS NOT NULL AND guid = ?)
+                        OR (? IS NOT NULL AND tvdb_id IS NOT NULL AND tvdb_id = ? AND tvdb_id NOT LIKE 'series-%')
+                        OR (? IS NOT NULL AND tmdb_id IS NOT NULL AND tmdb_id = ?)
+                      )
+                    "#
+                )
+                .bind(rating)
+                .bind(user_id)
+                .bind(&current.id)
+                .bind(gp)
+                .bind(&current.title)
+                .bind(&current.guid)
+                .bind(&current.guid)
+                .bind(&current.tvdb_id)
+                .bind(&current.tvdb_id)
+                .bind(&current.tmdb_id)
+                .bind(&current.tmdb_id)
+                .execute(pool)
+                .await?
+            } else {
+                sqlx::query(
+                    r#"
+                    UPDATE scrobbles
+                    SET user_rating = ?
+                    WHERE user_id = ?
+                      AND media_type = 'episode'
+                      AND (
+                        id = ?
+                        OR TRIM(LOWER(title)) = TRIM(LOWER(?))
+                        OR (? IS NOT NULL AND guid IS NOT NULL AND guid = ?)
+                        OR (? IS NOT NULL AND tvdb_id IS NOT NULL AND tvdb_id = ? AND tvdb_id NOT LIKE 'series-%')
+                        OR (? IS NOT NULL AND tmdb_id IS NOT NULL AND tmdb_id = ?)
+                      )
+                    "#
+                )
+                .bind(rating)
+                .bind(user_id)
+                .bind(&current.id)
+                .bind(&current.title)
+                .bind(&current.guid)
+                .bind(&current.guid)
+                .bind(&current.tvdb_id)
+                .bind(&current.tvdb_id)
+                .bind(&current.tmdb_id)
+                .bind(&current.tmdb_id)
+                .execute(pool)
+                .await?
+            }
+        }
+    } else if current.media_type == "movie" {
+        let title = current.title.trim();
+        sqlx::query(
+            r#"
+            UPDATE scrobbles
+            SET user_rating = ?
+            WHERE user_id = ?
+              AND media_type = 'movie'
+              AND (
+                id = ?
+                OR (
+                    TRIM(LOWER(title)) = TRIM(LOWER(?))
+                    AND (? IS NULL OR year IS NULL OR year = ?)
+                )
+                OR (? IS NOT NULL AND guid IS NOT NULL AND guid = ?)
+                OR (? IS NOT NULL AND tmdb_id IS NOT NULL AND tmdb_id = ?)
+                OR (? IS NOT NULL AND imdb_id IS NOT NULL AND imdb_id = ?)
+              )
+            "#
+        )
+        .bind(rating)
+        .bind(user_id)
+        .bind(&current.id)
+        .bind(title)
+        .bind(current.year)
+        .bind(current.year)
+        .bind(&current.guid)
+        .bind(&current.guid)
+        .bind(&current.tmdb_id)
+        .bind(&current.tmdb_id)
+        .bind(&current.imdb_id)
+        .bind(&current.imdb_id)
+        .execute(pool)
+        .await?
+    } else {
+        let title = current.title.trim();
+        sqlx::query(
+            r#"
+            UPDATE scrobbles
+            SET user_rating = ?
+            WHERE user_id = ?
+              AND media_type = ?
+              AND (
+                id = ?
+                OR TRIM(LOWER(title)) = TRIM(LOWER(?))
+                OR (? IS NOT NULL AND guid IS NOT NULL AND guid = ?)
+              )
+            "#
+        )
+        .bind(rating)
+        .bind(user_id)
+        .bind(&current.media_type)
+        .bind(&current.id)
+        .bind(title)
+        .bind(&current.guid)
+        .bind(&current.guid)
+        .execute(pool)
+        .await?
+    };
+
+    Ok(res.rows_affected())
+}
+
+pub async fn find_existing_rating_for_item(
+    pool: &sqlx::SqlitePool,
+    user_id: &str,
+    media_type: &str,
+    title: &str,
+    grandparent_title: Option<&str>,
+    season_number: Option<i32>,
+    episode_number: Option<i32>,
+    year: Option<i32>,
+    guid: Option<&str>,
+    tvdb_id: Option<&str>,
+    tmdb_id: Option<&str>,
+    imdb_id: Option<&str>,
+) -> Option<i32> {
+    if media_type == "episode" {
+        let gp = grandparent_title.unwrap_or("").trim();
+        if let (Some(s), Some(e)) = (season_number, episode_number) {
+            if !gp.is_empty() {
+                sqlx::query_scalar::<_, i32>(
+                    r#"
+                    SELECT user_rating FROM scrobbles
+                    WHERE user_id = ?
+                      AND media_type = 'episode'
+                      AND user_rating IS NOT NULL
+                      AND (
+                        (TRIM(LOWER(COALESCE(grandparent_title, ''))) = TRIM(LOWER(?))
+                         AND season_number = ?
+                         AND episode_number = ?)
+                        OR (? IS NOT NULL AND guid IS NOT NULL AND guid = ?)
+                        OR (? IS NOT NULL AND tvdb_id IS NOT NULL AND tvdb_id = ? AND tvdb_id NOT LIKE 'series-%')
+                        OR (? IS NOT NULL AND tmdb_id IS NOT NULL AND tmdb_id = ?)
+                      )
+                    ORDER BY watched_at DESC
+                    LIMIT 1
+                    "#
+                )
+                .bind(user_id)
+                .bind(gp)
+                .bind(s)
+                .bind(e)
+                .bind(guid)
+                .bind(guid)
+                .bind(tvdb_id)
+                .bind(tvdb_id)
+                .bind(tmdb_id)
+                .bind(tmdb_id)
+                .fetch_optional(pool)
+                .await
+                .ok()
+                .flatten()
+            } else {
+                sqlx::query_scalar::<_, i32>(
+                    r#"
+                    SELECT user_rating FROM scrobbles
+                    WHERE user_id = ?
+                      AND media_type = 'episode'
+                      AND user_rating IS NOT NULL
+                      AND (
+                        (TRIM(LOWER(title)) = TRIM(LOWER(?))
+                         AND season_number = ?
+                         AND episode_number = ?)
+                        OR (? IS NOT NULL AND guid IS NOT NULL AND guid = ?)
+                        OR (? IS NOT NULL AND tvdb_id IS NOT NULL AND tvdb_id = ? AND tvdb_id NOT LIKE 'series-%')
+                        OR (? IS NOT NULL AND tmdb_id IS NOT NULL AND tmdb_id = ?)
+                      )
+                    ORDER BY watched_at DESC
+                    LIMIT 1
+                    "#
+                )
+                .bind(user_id)
+                .bind(title.trim())
+                .bind(s)
+                .bind(e)
+                .bind(guid)
+                .bind(guid)
+                .bind(tvdb_id)
+                .bind(tvdb_id)
+                .bind(tmdb_id)
+                .bind(tmdb_id)
+                .fetch_optional(pool)
+                .await
+                .ok()
+                .flatten()
+            }
+        } else {
+            None
+        }
+    } else if media_type == "movie" {
+        let t = title.trim();
+        sqlx::query_scalar::<_, i32>(
+            r#"
+            SELECT user_rating FROM scrobbles
+            WHERE user_id = ?
+              AND media_type = 'movie'
+              AND user_rating IS NOT NULL
+              AND (
+                (TRIM(LOWER(title)) = TRIM(LOWER(?))
+                 AND (? IS NULL OR year IS NULL OR year = ?))
+                OR (? IS NOT NULL AND guid IS NOT NULL AND guid = ?)
+                OR (? IS NOT NULL AND tmdb_id IS NOT NULL AND tmdb_id = ?)
+                OR (? IS NOT NULL AND imdb_id IS NOT NULL AND imdb_id = ?)
+              )
+            ORDER BY watched_at DESC
+            LIMIT 1
+            "#
+        )
+        .bind(user_id)
+        .bind(t)
+        .bind(year)
+        .bind(year)
+        .bind(guid)
+        .bind(guid)
+        .bind(tmdb_id)
+        .bind(tmdb_id)
+        .bind(imdb_id)
+        .bind(imdb_id)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()
+    } else {
+        None
+    }
+}
+
 pub async fn rate_scrobble(
     State(state): State<AppState>,
     auth: AuthUser,
@@ -474,11 +859,27 @@ pub async fn rate_scrobble(
         }
     }
 
-    let res = sqlx::query("UPDATE scrobbles SET user_rating = ? WHERE id = ? AND user_id = ?")
-        .bind(payload.rating)
-        .bind(&id)
-        .bind(&auth.user_id)
-        .execute(&state.pool)
+    let current = sqlx::query_as::<_, Scrobble>(
+        "SELECT * FROM scrobbles WHERE id = ? AND user_id = ?"
+    )
+    .bind(&id)
+    .bind(&auth.user_id)
+    .fetch_optional(&state.pool)
+    .await
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": format!("Database error fetching scrobble: {}", e) })),
+        )
+    })?
+    .ok_or_else(|| {
+        (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": "Scrobble not found" })),
+        )
+    })?;
+
+    let rows_affected = propagate_rating_for_item(&state.pool, &auth.user_id, &current, payload.rating)
         .await
         .map_err(|e| {
             (
@@ -487,45 +888,372 @@ pub async fn rate_scrobble(
             )
         })?;
 
-    if res.rows_affected() == 0 {
-        return Err((
-            StatusCode::NOT_FOUND,
-            Json(serde_json::json!({ "error": "Scrobble not found" })),
-        ));
-    }
-
     if let Some(rating_val) = payload.rating {
-        if let Ok(Some(row)) = sqlx::query_as::<_, (String, Option<String>, String, Option<i32>, Option<i32>, Option<i32>, Option<String>, Option<i64>)>(
-            "SELECT title, grandparent_title, media_type, season_number, episode_number, year, thumb_url, progress_percent FROM scrobbles WHERE id = ?"
-        )
-        .bind(&id)
-        .fetch_optional(&state.pool)
-        .await
-        {
-            crate::api::outbound_webhooks::dispatch_notification(
-                state.pool.clone(),
-                auth.user_id.clone(),
-                crate::api::outbound_webhooks::NotificationData {
-                    event: crate::api::outbound_webhooks::NotificationEvent::Rate,
-                    title: row.0,
-                    grandparent_title: row.1,
-                    media_type: row.2,
-                    season_number: row.3,
-                    episode_number: row.4,
-                    year: row.5,
-                    thumb_url: row.6,
-                    progress_percent: row.7.unwrap_or(100),
-                    user_rating: Some(rating_val),
-                },
-            );
-        }
+        crate::api::outbound_webhooks::dispatch_notification(
+            state.pool.clone(),
+            auth.user_id.clone(),
+            crate::api::outbound_webhooks::NotificationData {
+                event: crate::api::outbound_webhooks::NotificationEvent::Rate,
+                title: current.title,
+                grandparent_title: current.grandparent_title,
+                media_type: current.media_type,
+                season_number: current.season_number,
+                episode_number: current.episode_number,
+                year: current.year,
+                thumb_url: current.thumb_url,
+                progress_percent: current.progress_percent.unwrap_or(100),
+                user_rating: Some(rating_val),
+            },
+        );
     }
 
     Ok(Json(serde_json::json!({
         "status": "success",
         "id": id,
-        "rating": payload.rating
+        "rating": payload.rating,
+        "rows_affected": rows_affected
     })))
+}
+
+pub async fn propagate_user_data_for_item(
+    pool: &sqlx::SqlitePool,
+    user_id: &str,
+    current: &Scrobble,
+    tags: Option<&str>,
+    notes: Option<&str>,
+) -> Result<u64, sqlx::Error> {
+    let res = if current.media_type == "episode" {
+        let gp = current.grandparent_title.as_deref().unwrap_or("").trim();
+        if let (Some(s), Some(e)) = (current.season_number, current.episode_number) {
+            if !gp.is_empty() {
+                sqlx::query(
+                    r#"
+                    UPDATE scrobbles
+                    SET tags = ?, notes = ?
+                    WHERE user_id = ?
+                      AND media_type = 'episode'
+                      AND (
+                        id = ?
+                        OR (
+                            TRIM(LOWER(COALESCE(grandparent_title, ''))) = TRIM(LOWER(?))
+                            AND season_number = ?
+                            AND episode_number = ?
+                        )
+                        OR (? IS NOT NULL AND guid IS NOT NULL AND guid = ?)
+                        OR (? IS NOT NULL AND tvdb_id IS NOT NULL AND tvdb_id = ? AND tvdb_id NOT LIKE 'series-%')
+                        OR (? IS NOT NULL AND tmdb_id IS NOT NULL AND tmdb_id = ?)
+                      )
+                    "#
+                )
+                .bind(tags)
+                .bind(notes)
+                .bind(user_id)
+                .bind(&current.id)
+                .bind(gp)
+                .bind(s)
+                .bind(e)
+                .bind(&current.guid)
+                .bind(&current.guid)
+                .bind(&current.tvdb_id)
+                .bind(&current.tvdb_id)
+                .bind(&current.tmdb_id)
+                .bind(&current.tmdb_id)
+                .execute(pool)
+                .await?
+            } else {
+                sqlx::query(
+                    r#"
+                    UPDATE scrobbles
+                    SET tags = ?, notes = ?
+                    WHERE user_id = ?
+                      AND media_type = 'episode'
+                      AND (
+                        id = ?
+                        OR (
+                            TRIM(LOWER(title)) = TRIM(LOWER(?))
+                            AND season_number = ?
+                            AND episode_number = ?
+                        )
+                        OR (? IS NOT NULL AND guid IS NOT NULL AND guid = ?)
+                        OR (? IS NOT NULL AND tvdb_id IS NOT NULL AND tvdb_id = ? AND tvdb_id NOT LIKE 'series-%')
+                        OR (? IS NOT NULL AND tmdb_id IS NOT NULL AND tmdb_id = ?)
+                      )
+                    "#
+                )
+                .bind(tags)
+                .bind(notes)
+                .bind(user_id)
+                .bind(&current.id)
+                .bind(&current.title)
+                .bind(s)
+                .bind(e)
+                .bind(&current.guid)
+                .bind(&current.guid)
+                .bind(&current.tvdb_id)
+                .bind(&current.tvdb_id)
+                .bind(&current.tmdb_id)
+                .bind(&current.tmdb_id)
+                .execute(pool)
+                .await?
+            }
+        } else {
+            if !gp.is_empty() {
+                sqlx::query(
+                    r#"
+                    UPDATE scrobbles
+                    SET tags = ?, notes = ?
+                    WHERE user_id = ?
+                      AND media_type = 'episode'
+                      AND (
+                        id = ?
+                        OR (
+                            TRIM(LOWER(COALESCE(grandparent_title, ''))) = TRIM(LOWER(?))
+                            AND TRIM(LOWER(title)) = TRIM(LOWER(?))
+                        )
+                        OR (? IS NOT NULL AND guid IS NOT NULL AND guid = ?)
+                        OR (? IS NOT NULL AND tvdb_id IS NOT NULL AND tvdb_id = ? AND tvdb_id NOT LIKE 'series-%')
+                        OR (? IS NOT NULL AND tmdb_id IS NOT NULL AND tmdb_id = ?)
+                      )
+                    "#
+                )
+                .bind(tags)
+                .bind(notes)
+                .bind(user_id)
+                .bind(&current.id)
+                .bind(gp)
+                .bind(&current.title)
+                .bind(&current.guid)
+                .bind(&current.guid)
+                .bind(&current.tvdb_id)
+                .bind(&current.tvdb_id)
+                .bind(&current.tmdb_id)
+                .bind(&current.tmdb_id)
+                .execute(pool)
+                .await?
+            } else {
+                sqlx::query(
+                    r#"
+                    UPDATE scrobbles
+                    SET tags = ?, notes = ?
+                    WHERE user_id = ?
+                      AND media_type = 'episode'
+                      AND (
+                        id = ?
+                        OR TRIM(LOWER(title)) = TRIM(LOWER(?))
+                        OR (? IS NOT NULL AND guid IS NOT NULL AND guid = ?)
+                        OR (? IS NOT NULL AND tvdb_id IS NOT NULL AND tvdb_id = ? AND tvdb_id NOT LIKE 'series-%')
+                        OR (? IS NOT NULL AND tmdb_id IS NOT NULL AND tmdb_id = ?)
+                      )
+                    "#
+                )
+                .bind(tags)
+                .bind(notes)
+                .bind(user_id)
+                .bind(&current.id)
+                .bind(&current.title)
+                .bind(&current.guid)
+                .bind(&current.guid)
+                .bind(&current.tvdb_id)
+                .bind(&current.tvdb_id)
+                .bind(&current.tmdb_id)
+                .bind(&current.tmdb_id)
+                .execute(pool)
+                .await?
+            }
+        }
+    } else if current.media_type == "movie" {
+        let title = current.title.trim();
+        sqlx::query(
+            r#"
+            UPDATE scrobbles
+            SET tags = ?, notes = ?
+            WHERE user_id = ?
+              AND media_type = 'movie'
+              AND (
+                id = ?
+                OR (
+                    TRIM(LOWER(title)) = TRIM(LOWER(?))
+                    AND (? IS NULL OR year IS NULL OR year = ?)
+                )
+                OR (? IS NOT NULL AND guid IS NOT NULL AND guid = ?)
+                OR (? IS NOT NULL AND tmdb_id IS NOT NULL AND tmdb_id = ?)
+                OR (? IS NOT NULL AND imdb_id IS NOT NULL AND imdb_id = ?)
+              )
+            "#
+        )
+        .bind(tags)
+        .bind(notes)
+        .bind(user_id)
+        .bind(&current.id)
+        .bind(title)
+        .bind(current.year)
+        .bind(current.year)
+        .bind(&current.guid)
+        .bind(&current.guid)
+        .bind(&current.tmdb_id)
+        .bind(&current.tmdb_id)
+        .bind(&current.imdb_id)
+        .bind(&current.imdb_id)
+        .execute(pool)
+        .await?
+    } else {
+        let title = current.title.trim();
+        sqlx::query(
+            r#"
+            UPDATE scrobbles
+            SET tags = ?, notes = ?
+            WHERE user_id = ?
+              AND media_type = ?
+              AND (
+                id = ?
+                OR TRIM(LOWER(title)) = TRIM(LOWER(?))
+                OR (? IS NOT NULL AND guid IS NOT NULL AND guid = ?)
+              )
+            "#
+        )
+        .bind(tags)
+        .bind(notes)
+        .bind(user_id)
+        .bind(&current.media_type)
+        .bind(&current.id)
+        .bind(title)
+        .bind(&current.guid)
+        .bind(&current.guid)
+        .execute(pool)
+        .await?
+    };
+
+    Ok(res.rows_affected())
+}
+
+pub async fn find_existing_user_data_for_item(
+    pool: &sqlx::SqlitePool,
+    user_id: &str,
+    media_type: &str,
+    title: &str,
+    grandparent_title: Option<&str>,
+    season_number: Option<i32>,
+    episode_number: Option<i32>,
+    year: Option<i32>,
+    guid: Option<&str>,
+    tvdb_id: Option<&str>,
+    tmdb_id: Option<&str>,
+    imdb_id: Option<&str>,
+) -> (Option<String>, Option<String>) {
+    let row = if media_type == "episode" {
+        let gp = grandparent_title.unwrap_or("").trim();
+        if let (Some(s), Some(e)) = (season_number, episode_number) {
+            if !gp.is_empty() {
+                sqlx::query_as::<_, (Option<String>, Option<String>)>(
+                    r#"
+                    SELECT tags, notes FROM scrobbles
+                    WHERE user_id = ?
+                      AND media_type = 'episode'
+                      AND (tags IS NOT NULL OR notes IS NOT NULL)
+                      AND (
+                        (TRIM(LOWER(COALESCE(grandparent_title, ''))) = TRIM(LOWER(?))
+                         AND season_number = ?
+                         AND episode_number = ?)
+                        OR (? IS NOT NULL AND guid IS NOT NULL AND guid = ?)
+                        OR (? IS NOT NULL AND tvdb_id IS NOT NULL AND tvdb_id = ? AND tvdb_id NOT LIKE 'series-%')
+                        OR (? IS NOT NULL AND tmdb_id IS NOT NULL AND tmdb_id = ?)
+                      )
+                    ORDER BY watched_at DESC
+                    LIMIT 1
+                    "#
+                )
+                .bind(user_id)
+                .bind(gp)
+                .bind(s)
+                .bind(e)
+                .bind(guid)
+                .bind(guid)
+                .bind(tvdb_id)
+                .bind(tvdb_id)
+                .bind(tmdb_id)
+                .bind(tmdb_id)
+                .fetch_optional(pool)
+                .await
+                .ok()
+                .flatten()
+            } else {
+                sqlx::query_as::<_, (Option<String>, Option<String>)>(
+                    r#"
+                    SELECT tags, notes FROM scrobbles
+                    WHERE user_id = ?
+                      AND media_type = 'episode'
+                      AND (tags IS NOT NULL OR notes IS NOT NULL)
+                      AND (
+                        (TRIM(LOWER(title)) = TRIM(LOWER(?))
+                         AND season_number = ?
+                         AND episode_number = ?)
+                        OR (? IS NOT NULL AND guid IS NOT NULL AND guid = ?)
+                        OR (? IS NOT NULL AND tvdb_id IS NOT NULL AND tvdb_id = ? AND tvdb_id NOT LIKE 'series-%')
+                        OR (? IS NOT NULL AND tmdb_id IS NOT NULL AND tmdb_id = ?)
+                      )
+                    ORDER BY watched_at DESC
+                    LIMIT 1
+                    "#
+                )
+                .bind(user_id)
+                .bind(title.trim())
+                .bind(s)
+                .bind(e)
+                .bind(guid)
+                .bind(guid)
+                .bind(tvdb_id)
+                .bind(tvdb_id)
+                .bind(tmdb_id)
+                .bind(tmdb_id)
+                .fetch_optional(pool)
+                .await
+                .ok()
+                .flatten()
+            }
+        } else {
+            None
+        }
+    } else if media_type == "movie" {
+        let t = title.trim();
+        sqlx::query_as::<_, (Option<String>, Option<String>)>(
+            r#"
+            SELECT tags, notes FROM scrobbles
+            WHERE user_id = ?
+              AND media_type = 'movie'
+              AND (tags IS NOT NULL OR notes IS NOT NULL)
+              AND (
+                (TRIM(LOWER(title)) = TRIM(LOWER(?))
+                 AND (? IS NULL OR year IS NULL OR year = ?))
+                OR (? IS NOT NULL AND guid IS NOT NULL AND guid = ?)
+                OR (? IS NOT NULL AND tmdb_id IS NOT NULL AND tmdb_id = ?)
+                OR (? IS NOT NULL AND imdb_id IS NOT NULL AND imdb_id = ?)
+              )
+            ORDER BY watched_at DESC
+            LIMIT 1
+            "#
+        )
+        .bind(user_id)
+        .bind(t)
+        .bind(year)
+        .bind(year)
+        .bind(guid)
+        .bind(guid)
+        .bind(tmdb_id)
+        .bind(tmdb_id)
+        .bind(imdb_id)
+        .bind(imdb_id)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()
+    } else {
+        None
+    };
+
+    match row {
+        Some((tags, notes)) => (tags, notes),
+        None => (None, None),
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -553,32 +1281,47 @@ pub async fn update_scrobble_user_data(
         .filter(|s| !s.is_empty())
         .map(|s| s.to_string());
 
-    let res = sqlx::query("UPDATE scrobbles SET tags = ?, notes = ? WHERE id = ? AND user_id = ?")
-        .bind(&clean_tags)
-        .bind(&clean_notes)
-        .bind(&id)
-        .bind(&auth.user_id)
-        .execute(&state.pool)
-        .await
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({ "error": format!("Database error updating user data: {}", e) })),
-            )
-        })?;
-
-    if res.rows_affected() == 0 {
-        return Err((
+    let current = sqlx::query_as::<_, Scrobble>(
+        "SELECT * FROM scrobbles WHERE id = ? AND user_id = ?"
+    )
+    .bind(&id)
+    .bind(&auth.user_id)
+    .fetch_optional(&state.pool)
+    .await
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": format!("Database error fetching scrobble: {}", e) })),
+        )
+    })?
+    .ok_or_else(|| {
+        (
             StatusCode::NOT_FOUND,
             Json(serde_json::json!({ "error": "Scrobble not found" })),
-        ));
-    }
+        )
+    })?;
+
+    let rows_affected = propagate_user_data_for_item(
+        &state.pool,
+        &auth.user_id,
+        &current,
+        clean_tags.as_deref(),
+        clean_notes.as_deref(),
+    )
+    .await
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": format!("Database error updating user data: {}", e) })),
+        )
+    })?;
 
     Ok(Json(serde_json::json!({
         "status": "success",
         "id": id,
         "tags": clean_tags,
         "notes": clean_notes,
+        "rows_affected": rows_affected
     })))
 }
 

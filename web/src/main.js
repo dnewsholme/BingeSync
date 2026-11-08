@@ -4465,6 +4465,7 @@ async function openDetailModal(item) {
         loadTimeline();
         loadHistory();
         loadStats();
+        loadItemWatches(item);
       } catch (err) {
         if (feedback) {
           feedback.textContent = `Error: ${err.message}`;
@@ -4518,6 +4519,7 @@ async function openDetailModal(item) {
         }
         loadTimeline();
         loadHistory();
+        loadItemWatches(item);
       } catch (err) {
         if (feedback) {
           feedback.textContent = `Error: ${err.message}`;

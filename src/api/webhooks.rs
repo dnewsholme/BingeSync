@@ -683,6 +683,38 @@ async fn process_webhook(
             && overview.as_deref().map(|o| !o.is_empty()).unwrap_or(false);
         let meta_updated = if has_full_meta { Some(now_str.clone()) } else { None };
 
+        let existing_rating = crate::api::history::find_existing_rating_for_item(
+            &state.pool,
+            &user.id,
+            &media_type,
+            &title,
+            grandparent_title.as_deref(),
+            season_number,
+            episode_number,
+            year,
+            guid.as_deref(),
+            tvdb_id.as_deref(),
+            tmdb_id.as_deref(),
+            imdb_id.as_deref(),
+        )
+        .await;
+
+        let (existing_tags, existing_notes) = crate::api::history::find_existing_user_data_for_item(
+            &state.pool,
+            &user.id,
+            &media_type,
+            &title,
+            grandparent_title.as_deref(),
+            season_number,
+            episode_number,
+            year,
+            guid.as_deref(),
+            tvdb_id.as_deref(),
+            tmdb_id.as_deref(),
+            imdb_id.as_deref(),
+        )
+        .await;
+
         sqlx::query(
             r#"
             INSERT INTO scrobbles (
@@ -690,13 +722,14 @@ async fn process_webhook(
                 season_number, episode_number, year, overview, thumb_url,
                 rating_key, guid, duration_ms, user_rating,
                 genres, directors, director, cinematographer, actors, watch_status, progress_percent, view_offset_ms,
+                tags, notes,
                 metadata_updated_at, source, source_user,
                 player_name, device_name, platform, is_local,
                 imdb_id, resolution, hdr_format, audio_codec, audio_channels, video_codec,
                 studio, original_language, content_rating, is_rewatch,
                 tvdb_id, tmdb_id,
                 watched_at, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             "#,
         )
         .bind(&new_id)
@@ -713,7 +746,7 @@ async fn process_webhook(
         .bind(&rating_key)
         .bind(&guid)
         .bind(duration_ms)
-        .bind(None::<i32>)
+        .bind(existing_rating)
         .bind(&genres)
         .bind(&directors)
         .bind(&director)
@@ -722,6 +755,8 @@ async fn process_webhook(
         .bind(watch_status)
         .bind(progress_percent)
         .bind(view_offset_val)
+        .bind(&existing_tags)
+        .bind(&existing_notes)
         .bind(meta_updated)
         .bind(&source_name)
         .bind(&resolved_source_user)
@@ -1526,6 +1561,38 @@ async fn process_jellyfin_or_emby_webhook(
             && overview.as_deref().map(|o| !o.is_empty()).unwrap_or(false);
         let meta_updated = if has_full_meta { Some(now_str.clone()) } else { None };
 
+        let existing_rating = crate::api::history::find_existing_rating_for_item(
+            &state.pool,
+            &user.id,
+            &media_type,
+            &title,
+            grandparent_title.as_deref(),
+            season_number,
+            episode_number,
+            year,
+            guid.as_deref(),
+            tvdb_id.as_deref(),
+            tmdb_id.as_deref(),
+            imdb_id.as_deref(),
+        )
+        .await;
+
+        let (existing_tags, existing_notes) = crate::api::history::find_existing_user_data_for_item(
+            &state.pool,
+            &user.id,
+            &media_type,
+            &title,
+            grandparent_title.as_deref(),
+            season_number,
+            episode_number,
+            year,
+            guid.as_deref(),
+            tvdb_id.as_deref(),
+            tmdb_id.as_deref(),
+            imdb_id.as_deref(),
+        )
+        .await;
+
         sqlx::query(
             r#"
             INSERT INTO scrobbles (
@@ -1533,13 +1600,14 @@ async fn process_jellyfin_or_emby_webhook(
                 season_number, episode_number, year, overview, thumb_url,
                 rating_key, guid, duration_ms, user_rating,
                 genres, directors, director, cinematographer, actors, watch_status, progress_percent, view_offset_ms,
+                tags, notes,
                 metadata_updated_at, source, source_user,
                 player_name, device_name, platform, is_local,
                 imdb_id, resolution, hdr_format, audio_codec, audio_channels, video_codec,
                 studio, original_language, content_rating, is_rewatch,
                 tvdb_id, tmdb_id,
                 watched_at, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             "#,
         )
         .bind(&new_id)
@@ -1556,7 +1624,7 @@ async fn process_jellyfin_or_emby_webhook(
         .bind(&rating_key)
         .bind(&guid)
         .bind(duration_ms)
-        .bind(None::<i32>)
+        .bind(existing_rating)
         .bind(&genres)
         .bind(None::<String>) // directors
         .bind(None::<String>) // director
@@ -1565,6 +1633,8 @@ async fn process_jellyfin_or_emby_webhook(
         .bind(watch_status)
         .bind(progress_percent)
         .bind(view_offset_val)
+        .bind(&existing_tags)
+        .bind(&existing_notes)
         .bind(meta_updated)
         .bind(&source_name)
         .bind(&resolved_source_user)

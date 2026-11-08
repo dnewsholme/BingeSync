@@ -1210,6 +1210,61 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     await expect(card.locator('.scrobble-rating')).toBeHidden();
   });
 
+  test('rating propagation: rating a film or episode updates other watches in modal and timeline', async ({ page }) => {
+    const userEmail = `rater_prop_${Date.now()}@bingesync.local`;
+    await page.goto('/');
+    await page.fill('#dev-email', userEmail);
+    await page.fill('#dev-name', 'Film Buff');
+    await page.click('#btn-dev-submit');
+
+    // 1. Log watch #1 of Movie "Memento" (unrated)
+    await page.click('#btn-open-log-modal');
+    await page.selectOption('#scrobble-media-type', 'movie');
+    await page.fill('#scrobble-title', 'Memento');
+    await page.fill('#scrobble-year', '2000');
+    await page.selectOption('#scrobble-rating', '');
+    await page.click('#btn-submit-scrobble');
+    await expect(page.locator('#modal-log-scrobble')).toBeHidden();
+    await expect(page.locator('#timeline-container .scrobble-card', { hasText: 'Memento' })).toBeVisible();
+
+    // 2. Log watch #2 of Movie "Memento" (unrated)
+    await page.click('#btn-open-log-modal');
+    await page.selectOption('#scrobble-media-type', 'movie');
+    await page.fill('#scrobble-title', 'Memento');
+    await page.fill('#scrobble-year', '2000');
+    await page.selectOption('#scrobble-rating', '');
+    await page.click('#btn-submit-scrobble');
+    await expect(page.locator('#modal-log-scrobble')).toBeHidden();
+
+    // 3. Navigate to History view where both watches are listed
+    await page.click('#tab-history');
+    await expect(page.locator('#history-list')).toBeVisible();
+
+    const historyCards = page.locator('#history-list .scrobble-card', { hasText: 'Memento' });
+    await expect(historyCards).toHaveCount(2);
+
+    // 4. Open first card in detail modal
+    await historyCards.first().click();
+    await expect(page.locator('#modal-item-detail')).toBeVisible();
+
+    // 5. Rate watch with 9/10
+    await page.selectOption('#detail-rating-select', '9');
+    await page.click('#btn-save-detail-rating');
+    await expect(page.locator('#detail-rating-feedback')).toContainText('Rating saved');
+    await expect(page.locator('#detail-rating-display')).toContainText('★ 9/10');
+
+    // 6. Verify "Other Watches" table inside the open modal shows the rating for watch #2!
+    const watchesSection = page.locator('#detail-watches-container');
+    await expect(watchesSection).toBeVisible();
+    await expect(watchesSection.locator('.other-watch-row .watch-star')).toContainText('★ 9/10');
+
+    // 7. Dismiss modal and verify BOTH cards in history now show ★ 9/10 badge!
+    await page.click('#btn-dismiss-detail-modal');
+    await expect(page.locator('#modal-item-detail')).toBeHidden();
+    await expect(historyCards.nth(0).locator('.scrobble-rating')).toContainText('★ 9/10');
+    await expect(historyCards.nth(1).locator('.scrobble-rating')).toContainText('★ 9/10');
+  });
+
   test('swagger ui & api documentation: verify /docs and openapi spec link', async ({ page, request }) => {
     // 1. Direct OpenAPI spec request
     const specRes = await request.get('/api/v1/openapi.json');
@@ -2234,6 +2289,55 @@ with zipfile.ZipFile('${tempZipPath}', 'w') as z:
     await expect(page.locator('.wrapped-card-poster').first()).toBeVisible();
     await page.click('#btn-close-wrapped-modal');
     await expect(page.locator('#modal-wrapped')).toBeHidden();
+  });
+
+  test('tags and notes propagation: saving tags or notes on a film or episode updates other watches', async ({ page }) => {
+    const userEmail = `tags_prop_${Date.now()}@bingesync.local`;
+    await page.goto('/');
+    await page.fill('#dev-email', userEmail);
+    await page.fill('#dev-name', 'Tag Buff');
+    await page.click('#btn-dev-submit');
+
+    // 1. Log watch #1 of Movie "Tenet" (no tags or notes)
+    await page.click('#btn-open-log-modal');
+    await page.selectOption('#scrobble-media-type', 'movie');
+    await page.fill('#scrobble-title', 'Tenet');
+    await page.fill('#scrobble-year', '2020');
+    await page.click('#btn-submit-scrobble');
+    await expect(page.locator('#modal-log-scrobble')).toBeHidden();
+    await expect(page.locator('#timeline-container .scrobble-card', { hasText: 'Tenet' })).toBeVisible();
+
+    // 2. Log watch #2 of Movie "Tenet" (no tags or notes)
+    await page.click('#btn-open-log-modal');
+    await page.selectOption('#scrobble-media-type', 'movie');
+    await page.fill('#scrobble-title', 'Tenet');
+    await page.fill('#scrobble-year', '2020');
+    await page.click('#btn-submit-scrobble');
+    await expect(page.locator('#modal-log-scrobble')).toBeHidden();
+
+    // 3. Navigate to History view
+    await page.click('#tab-history');
+    await expect(page.locator('#history-list')).toBeVisible();
+    const historyCards = page.locator('#history-list .scrobble-card', { hasText: 'Tenet' });
+    await expect(historyCards).toHaveCount(2);
+
+    // 4. Open first card in detail modal
+    await historyCards.first().click();
+    await expect(page.locator('#modal-item-detail')).toBeVisible();
+
+    // 5. Fill tags and notes and save
+    await page.fill('#detail-tags-input', 'Nolan, Time Inversion');
+    await page.fill('#detail-notes-input', 'Protagonist backwards bullet sequence is wild.');
+    await page.click('#btn-save-detail-user-data');
+    await expect(page.locator('#detail-user-data-feedback')).toContainText(/saved/i);
+
+    // 6. Dismiss modal and verify BOTH cards in history now display the tags and notes!
+    await page.click('#btn-dismiss-detail-modal');
+    await expect(page.locator('#modal-item-detail')).toBeHidden();
+    await expect(historyCards.nth(0).locator('.tag-chip-card', { hasText: 'Time Inversion' })).toBeVisible();
+    await expect(historyCards.nth(0).locator('.scrobble-card-notes')).toContainText('Protagonist backwards bullet');
+    await expect(historyCards.nth(1).locator('.tag-chip-card', { hasText: 'Time Inversion' })).toBeVisible();
+    await expect(historyCards.nth(1).locator('.scrobble-card-notes')).toContainText('Protagonist backwards bullet');
   });
 
   test('duplicate watch detector: scan for duplicate scrobbles and prune redundant watches', async ({ page }) => {

@@ -10932,3 +10932,593 @@ async fn test_tvdb_episode_id_resolution_for_tv_shows() {
         .unwrap();
     assert_eq!(s2.tvdb_id, Some("12057520".to_string()));
 }
+
+#[tokio::test]
+async fn test_rating_propagation_across_previous_watches_and_isolation() {
+    let (app, pool, _config) = setup_test_app().await;
+
+    // 1. Create User A and User B
+    let user_a = bingesync::api::auth::get_or_create_user(
+        &pool,
+        "rater_prop_a@bingesync.local",
+        "Rater Prop A",
+        None,
+        None,
+        false,
+    )
+    .await
+    .unwrap();
+    let token_a = create_jwt(
+        &user_a.id,
+        "rater_prop_a@bingesync.local",
+        "test-secret-key-12345",
+    )
+    .unwrap();
+
+    let user_b = bingesync::api::auth::get_or_create_user(
+        &pool,
+        "rater_prop_b@bingesync.local",
+        "Rater Prop B",
+        None,
+        None,
+        false,
+    )
+    .await
+    .unwrap();
+    let token_b = create_jwt(
+        &user_b.id,
+        "rater_prop_b@bingesync.local",
+        "test-secret-key-12345",
+    )
+    .unwrap();
+
+    // 2. User A logs 2 watches of movie "Oppenheimer" (2023) without rating
+    let w1_req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/history")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token_a))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(json!({
+            "title": "Oppenheimer",
+            "media_type": "movie",
+            "year": 2023,
+            "watched_at": "2024-01-01T20:00:00Z"
+        }).to_string()))
+        .unwrap();
+    let res = app.clone().oneshot(w1_req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::CREATED);
+    let w1_json: serde_json::Value = serde_json::from_slice(&axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let id_a1 = w1_json["id"].as_str().unwrap().to_string();
+
+    let w2_req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/history")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token_a))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(json!({
+            "title": "Oppenheimer",
+            "media_type": "movie",
+            "year": 2023,
+            "watched_at": "2024-02-01T20:00:00Z"
+        }).to_string()))
+        .unwrap();
+    let res = app.clone().oneshot(w2_req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::CREATED);
+    let w2_json: serde_json::Value = serde_json::from_slice(&axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let id_a2 = w2_json["id"].as_str().unwrap().to_string();
+
+    // 3. User B logs a watch of "Oppenheimer" (2023)
+    let wb_req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/history")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token_b))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(json!({
+            "title": "Oppenheimer",
+            "media_type": "movie",
+            "year": 2023,
+            "watched_at": "2024-01-15T20:00:00Z"
+        }).to_string()))
+        .unwrap();
+    let res = app.clone().oneshot(wb_req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::CREATED);
+    let wb_json: serde_json::Value = serde_json::from_slice(&axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let id_b1 = wb_json["id"].as_str().unwrap().to_string();
+
+    // 4. User A rates watch #2 as 9/10
+    let rate_req = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/history/{}/rate", id_a2))
+        .header(header::AUTHORIZATION, format!("Bearer {}", token_a))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(json!({ "rating": 9 }).to_string()))
+        .unwrap();
+    let res = app.clone().oneshot(rate_req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    // Verify User A watch #1 and watch #2 now both have rating 9!
+    let r_a1: Option<i32> = sqlx::query_scalar("SELECT user_rating FROM scrobbles WHERE id = ?")
+        .bind(&id_a1)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    let r_a2: Option<i32> = sqlx::query_scalar("SELECT user_rating FROM scrobbles WHERE id = ?")
+        .bind(&id_a2)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(r_a1, Some(9));
+    assert_eq!(r_a2, Some(9));
+
+    // Verify User B's watch is untouched (multi-user isolation)
+    let r_b1: Option<i32> = sqlx::query_scalar("SELECT user_rating FROM scrobbles WHERE id = ?")
+        .bind(&id_b1)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(r_b1, None);
+
+    // 5. User A logs a 3rd watch without rating -> automatically inherits rating 9
+    let w3_req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/history")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token_a))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(json!({
+            "title": "Oppenheimer",
+            "media_type": "movie",
+            "year": 2023,
+            "watched_at": "2024-03-01T20:00:00Z"
+        }).to_string()))
+        .unwrap();
+    let res = app.clone().oneshot(w3_req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::CREATED);
+    let w3_json: serde_json::Value = serde_json::from_slice(&axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(w3_json["user_rating"], 9);
+
+    // 6. Test TV episode propagation and episode-level strict scoping
+    // User A watches "The Bear" S02E06 twice and S02E07 once
+    let ep1_w1_req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/history")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token_a))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(json!({
+            "title": "Fishes",
+            "grandparent_title": "The Bear",
+            "media_type": "episode",
+            "season_number": 2,
+            "episode_number": 6,
+            "watched_at": "2024-04-01T21:00:00Z"
+        }).to_string()))
+        .unwrap();
+    let res = app.clone().oneshot(ep1_w1_req).await.unwrap();
+    let ep1_w1_json: serde_json::Value = serde_json::from_slice(&axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let id_ep6_w1 = ep1_w1_json["id"].as_str().unwrap().to_string();
+
+    let ep2_req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/history")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token_a))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(json!({
+            "title": "Forks",
+            "grandparent_title": "The Bear",
+            "media_type": "episode",
+            "season_number": 2,
+            "episode_number": 7,
+            "watched_at": "2024-04-02T21:00:00Z"
+        }).to_string()))
+        .unwrap();
+    let res = app.clone().oneshot(ep2_req).await.unwrap();
+    let ep2_json: serde_json::Value = serde_json::from_slice(&axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let id_ep7 = ep2_json["id"].as_str().unwrap().to_string();
+
+    let ep1_w2_req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/history")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token_a))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(json!({
+            "title": "Fishes",
+            "grandparent_title": "The Bear",
+            "media_type": "episode",
+            "season_number": 2,
+            "episode_number": 6,
+            "watched_at": "2024-04-05T21:00:00Z"
+        }).to_string()))
+        .unwrap();
+    let res = app.clone().oneshot(ep1_w2_req).await.unwrap();
+    let ep1_w2_json: serde_json::Value = serde_json::from_slice(&axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let id_ep6_w2 = ep1_w2_json["id"].as_str().unwrap().to_string();
+
+    // User A rates S02E06 watch #2 as 10/10
+    let rate_ep_req = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/history/{}/rate", id_ep6_w2))
+        .header(header::AUTHORIZATION, format!("Bearer {}", token_a))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(json!({ "rating": 10 }).to_string()))
+        .unwrap();
+    let res = app.clone().oneshot(rate_ep_req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    // S02E06 watch #1 is now 10/10
+    let r_ep6_w1: Option<i32> = sqlx::query_scalar("SELECT user_rating FROM scrobbles WHERE id = ?")
+        .bind(&id_ep6_w1)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    let r_ep6_w2: Option<i32> = sqlx::query_scalar("SELECT user_rating FROM scrobbles WHERE id = ?")
+        .bind(&id_ep6_w2)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(r_ep6_w1, Some(10));
+    assert_eq!(r_ep6_w2, Some(10));
+
+    // S02E07 is untouched and remains None!
+    let r_ep7: Option<i32> = sqlx::query_scalar("SELECT user_rating FROM scrobbles WHERE id = ?")
+        .bind(&id_ep7)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(r_ep7, None);
+
+    // 7. User A unrates Oppenheimer (sets rating: null) -> clears rating across all watches of Oppenheimer
+    let unrate_req = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/history/{}/rate", id_a1))
+        .header(header::AUTHORIZATION, format!("Bearer {}", token_a))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(json!({ "rating": null }).to_string()))
+        .unwrap();
+    let res = app.clone().oneshot(unrate_req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let cleared_a1: Option<i32> = sqlx::query_scalar("SELECT user_rating FROM scrobbles WHERE id = ?")
+        .bind(&id_a1)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    let cleared_a2: Option<i32> = sqlx::query_scalar("SELECT user_rating FROM scrobbles WHERE id = ?")
+        .bind(&id_a2)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(cleared_a1, None);
+    assert_eq!(cleared_a2, None);
+
+    // 8. Test retroactive migration:
+    // Insert 2 records for Dune directly in DB, watch 1 unrated, watch 2 rated 8
+    let id_dune1 = uuid::Uuid::new_v4().to_string();
+    let id_dune2 = uuid::Uuid::new_v4().to_string();
+    sqlx::query(
+        "INSERT INTO scrobbles (id, user_id, title, media_type, year, user_rating, watched_at) VALUES (?, ?, 'Dune', 'movie', 2021, NULL, '2023-01-01T12:00:00Z')"
+    )
+    .bind(&id_dune1)
+    .bind(&user_a.id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    sqlx::query(
+        "INSERT INTO scrobbles (id, user_id, title, media_type, year, user_rating, watched_at) VALUES (?, ?, 'Dune', 'movie', 2021, 8, '2023-02-01T12:00:00Z')"
+    )
+    .bind(&id_dune2)
+    .bind(&user_a.id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    // Run migrations
+    bingesync::db::migrations::run_migrations(&pool).await.unwrap();
+
+    // Verify Dune watch 1 now has rating 8
+    let dune_migrated: Option<i32> = sqlx::query_scalar("SELECT user_rating FROM scrobbles WHERE id = ?")
+        .bind(&id_dune1)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(dune_migrated, Some(8));
+}
+
+#[tokio::test]
+async fn test_tags_and_notes_propagation_across_previous_watches_and_isolation() {
+    let (app, pool, _config) = setup_test_app().await;
+
+    // 1. Create User A and User B
+    let user_a = bingesync::api::auth::get_or_create_user(
+        &pool,
+        "tags_prop_a@bingesync.local",
+        "Tags Prop A",
+        None,
+        None,
+        false,
+    )
+    .await
+    .unwrap();
+    let token_a = create_jwt(
+        &user_a.id,
+        "tags_prop_a@bingesync.local",
+        "test-secret-key-12345",
+    )
+    .unwrap();
+
+    let user_b = bingesync::api::auth::get_or_create_user(
+        &pool,
+        "tags_prop_b@bingesync.local",
+        "Tags Prop B",
+        None,
+        None,
+        false,
+    )
+    .await
+    .unwrap();
+    let token_b = create_jwt(
+        &user_b.id,
+        "tags_prop_b@bingesync.local",
+        "test-secret-key-12345",
+    )
+    .unwrap();
+
+    // 2. User A logs 2 watches of movie "Dunkirk" (2017) without tags or notes
+    let w1_req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/history")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token_a))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(json!({
+            "title": "Dunkirk",
+            "media_type": "movie",
+            "year": 2017,
+            "watched_at": "2024-01-01T20:00:00Z"
+        }).to_string()))
+        .unwrap();
+    let res = app.clone().oneshot(w1_req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::CREATED);
+    let w1_json: serde_json::Value = serde_json::from_slice(&axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let id_a1 = w1_json["id"].as_str().unwrap().to_string();
+
+    let w2_req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/history")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token_a))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(json!({
+            "title": "Dunkirk",
+            "media_type": "movie",
+            "year": 2017,
+            "watched_at": "2024-02-01T20:00:00Z"
+        }).to_string()))
+        .unwrap();
+    let res = app.clone().oneshot(w2_req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::CREATED);
+    let w2_json: serde_json::Value = serde_json::from_slice(&axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let id_a2 = w2_json["id"].as_str().unwrap().to_string();
+
+    // 3. User B logs a watch of "Dunkirk" (2017)
+    let wb_req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/history")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token_b))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(json!({
+            "title": "Dunkirk",
+            "media_type": "movie",
+            "year": 2017,
+            "watched_at": "2024-01-15T20:00:00Z"
+        }).to_string()))
+        .unwrap();
+    let res = app.clone().oneshot(wb_req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::CREATED);
+    let wb_json: serde_json::Value = serde_json::from_slice(&axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let id_b1 = wb_json["id"].as_str().unwrap().to_string();
+
+    // 4. User A updates watch #2 with tags and notes
+    let update_req = Request::builder()
+        .method("PUT")
+        .uri(format!("/api/v1/history/{}/user-data", id_a2))
+        .header(header::AUTHORIZATION, format!("Bearer {}", token_a))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(json!({
+            "tags": "WWII, IMAX",
+            "notes": "Amazing sound design in 70mm"
+        }).to_string()))
+        .unwrap();
+    let res = app.clone().oneshot(update_req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    // Verify User A watch #1 and watch #2 now both have tags and notes!
+    let (t_a1, n_a1): (Option<String>, Option<String>) = sqlx::query_as("SELECT tags, notes FROM scrobbles WHERE id = ?")
+        .bind(&id_a1)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    let (t_a2, n_a2): (Option<String>, Option<String>) = sqlx::query_as("SELECT tags, notes FROM scrobbles WHERE id = ?")
+        .bind(&id_a2)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(t_a1.as_deref(), Some("WWII, IMAX"));
+    assert_eq!(n_a1.as_deref(), Some("Amazing sound design in 70mm"));
+    assert_eq!(t_a2.as_deref(), Some("WWII, IMAX"));
+    assert_eq!(n_a2.as_deref(), Some("Amazing sound design in 70mm"));
+
+    // Verify User B's watch is untouched (multi-user isolation)
+    let (t_b1, n_b1): (Option<String>, Option<String>) = sqlx::query_as("SELECT tags, notes FROM scrobbles WHERE id = ?")
+        .bind(&id_b1)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(t_b1, None);
+    assert_eq!(n_b1, None);
+
+    // 5. User A logs a 3rd watch without tags/notes -> automatically inherits tags and notes
+    let w3_req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/history")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token_a))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(json!({
+            "title": "Dunkirk",
+            "media_type": "movie",
+            "year": 2017,
+            "watched_at": "2024-03-01T20:00:00Z"
+        }).to_string()))
+        .unwrap();
+    let res = app.clone().oneshot(w3_req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::CREATED);
+    let w3_json: serde_json::Value = serde_json::from_slice(&axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(w3_json["tags"], "WWII, IMAX");
+    assert_eq!(w3_json["notes"], "Amazing sound design in 70mm");
+
+    // 6. Test TV episode propagation and episode-level strict scoping
+    let ep1_w1_req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/history")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token_a))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(json!({
+            "title": "Connor's Wedding",
+            "grandparent_title": "Succession",
+            "media_type": "episode",
+            "season_number": 4,
+            "episode_number": 3,
+            "watched_at": "2024-04-01T21:00:00Z"
+        }).to_string()))
+        .unwrap();
+    let res = app.clone().oneshot(ep1_w1_req).await.unwrap();
+    let ep1_w1_json: serde_json::Value = serde_json::from_slice(&axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let id_ep3_w1 = ep1_w1_json["id"].as_str().unwrap().to_string();
+
+    let ep2_req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/history")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token_a))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(json!({
+            "title": "Honeymoon States",
+            "grandparent_title": "Succession",
+            "media_type": "episode",
+            "season_number": 4,
+            "episode_number": 4,
+            "watched_at": "2024-04-02T21:00:00Z"
+        }).to_string()))
+        .unwrap();
+    let res = app.clone().oneshot(ep2_req).await.unwrap();
+    let ep2_json: serde_json::Value = serde_json::from_slice(&axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let id_ep4 = ep2_json["id"].as_str().unwrap().to_string();
+
+    let ep1_w2_req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/history")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token_a))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(json!({
+            "title": "Connor's Wedding",
+            "grandparent_title": "Succession",
+            "media_type": "episode",
+            "season_number": 4,
+            "episode_number": 3,
+            "watched_at": "2024-04-05T21:00:00Z"
+        }).to_string()))
+        .unwrap();
+    let res = app.clone().oneshot(ep1_w2_req).await.unwrap();
+    let ep1_w2_json: serde_json::Value = serde_json::from_slice(&axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let id_ep3_w2 = ep1_w2_json["id"].as_str().unwrap().to_string();
+
+    // User A updates S04E03 watch #2 with tags and notes
+    let update_ep_req = Request::builder()
+        .method("PUT")
+        .uri(format!("/api/v1/history/{}/user-data", id_ep3_w2))
+        .header(header::AUTHORIZATION, format!("Bearer {}", token_a))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(json!({
+            "tags": "Masterpiece, Emotional",
+            "notes": "One-take scene on the plane was unforgettable."
+        }).to_string()))
+        .unwrap();
+    let res = app.clone().oneshot(update_ep_req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    // S04E03 watch #1 now has tags and notes
+    let (t_ep3_w1, n_ep3_w1): (Option<String>, Option<String>) = sqlx::query_as("SELECT tags, notes FROM scrobbles WHERE id = ?")
+        .bind(&id_ep3_w1)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(t_ep3_w1.as_deref(), Some("Masterpiece, Emotional"));
+    assert_eq!(n_ep3_w1.as_deref(), Some("One-take scene on the plane was unforgettable."));
+
+    // S04E04 is untouched and remains None
+    let (t_ep4, n_ep4): (Option<String>, Option<String>) = sqlx::query_as("SELECT tags, notes FROM scrobbles WHERE id = ?")
+        .bind(&id_ep4)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(t_ep4, None);
+    assert_eq!(n_ep4, None);
+
+    // 7. Clear tags and notes on Dunkirk
+    let clear_req = Request::builder()
+        .method("PUT")
+        .uri(format!("/api/v1/history/{}/user-data", id_a1))
+        .header(header::AUTHORIZATION, format!("Bearer {}", token_a))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(json!({
+            "tags": null,
+            "notes": null
+        }).to_string()))
+        .unwrap();
+    let res = app.clone().oneshot(clear_req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let (cleared_t1, cleared_n1): (Option<String>, Option<String>) = sqlx::query_as("SELECT tags, notes FROM scrobbles WHERE id = ?")
+        .bind(&id_a1)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    let (cleared_t2, cleared_n2): (Option<String>, Option<String>) = sqlx::query_as("SELECT tags, notes FROM scrobbles WHERE id = ?")
+        .bind(&id_a2)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(cleared_t1, None);
+    assert_eq!(cleared_n1, None);
+    assert_eq!(cleared_t2, None);
+    assert_eq!(cleared_n2, None);
+
+    // 8. Test retroactive migration for tags & notes
+    let id_glad1 = uuid::Uuid::new_v4().to_string();
+    let id_glad2 = uuid::Uuid::new_v4().to_string();
+    sqlx::query(
+        "INSERT INTO scrobbles (id, user_id, title, media_type, year, tags, notes, watched_at) VALUES (?, ?, 'Gladiator', 'movie', 2000, NULL, NULL, '2023-01-01T12:00:00Z')"
+    )
+    .bind(&id_glad1)
+    .bind(&user_a.id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    sqlx::query(
+        "INSERT INTO scrobbles (id, user_id, title, media_type, year, tags, notes, watched_at) VALUES (?, ?, 'Gladiator', 'movie', 2000, 'Epic, Classics', 'Are you not entertained?', '2023-02-01T12:00:00Z')"
+    )
+    .bind(&id_glad2)
+    .bind(&user_a.id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    // Run migrations
+    bingesync::db::migrations::run_migrations(&pool).await.unwrap();
+
+    // Verify Gladiator watch 1 now has tags and notes
+    let (glad_migrated_t, glad_migrated_n): (Option<String>, Option<String>) = sqlx::query_as("SELECT tags, notes FROM scrobbles WHERE id = ?")
+        .bind(&id_glad1)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(glad_migrated_t.as_deref(), Some("Epic, Classics"));
+    assert_eq!(glad_migrated_n.as_deref(), Some("Are you not entertained?"));
+}

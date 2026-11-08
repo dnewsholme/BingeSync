@@ -453,5 +453,239 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
         "#
     ).execute(pool).await;
 
+    // Retroactively propagate ratings across previous and subsequent watches of the same movie
+    let _ = sqlx::query(
+        r#"
+        UPDATE scrobbles
+        SET user_rating = (
+            SELECT s2.user_rating
+            FROM scrobbles s2
+            WHERE s2.user_id = scrobbles.user_id
+              AND s2.media_type = 'movie'
+              AND s2.user_rating IS NOT NULL
+              AND (
+                  (TRIM(LOWER(s2.title)) = TRIM(LOWER(scrobbles.title)) AND (scrobbles.year IS NULL OR s2.year IS NULL OR s2.year = scrobbles.year))
+                  OR (scrobbles.guid IS NOT NULL AND s2.guid = scrobbles.guid)
+                  OR (scrobbles.tmdb_id IS NOT NULL AND s2.tmdb_id = scrobbles.tmdb_id)
+                  OR (scrobbles.imdb_id IS NOT NULL AND s2.imdb_id = scrobbles.imdb_id)
+              )
+            ORDER BY s2.watched_at DESC
+            LIMIT 1
+        )
+        WHERE media_type = 'movie' AND user_rating IS NULL AND EXISTS (
+            SELECT 1
+            FROM scrobbles s2
+            WHERE s2.user_id = scrobbles.user_id
+              AND s2.media_type = 'movie'
+              AND s2.user_rating IS NOT NULL
+              AND (
+                  (TRIM(LOWER(s2.title)) = TRIM(LOWER(scrobbles.title)) AND (scrobbles.year IS NULL OR s2.year IS NULL OR s2.year = scrobbles.year))
+                  OR (scrobbles.guid IS NOT NULL AND s2.guid = scrobbles.guid)
+                  OR (scrobbles.tmdb_id IS NOT NULL AND s2.tmdb_id = scrobbles.tmdb_id)
+                  OR (scrobbles.imdb_id IS NOT NULL AND s2.imdb_id = scrobbles.imdb_id)
+              )
+        );
+        "#
+    ).execute(pool).await;
+
+    // Retroactively propagate ratings across previous and subsequent watches of the same TV episode
+    let _ = sqlx::query(
+        r#"
+        UPDATE scrobbles
+        SET user_rating = (
+            SELECT s2.user_rating
+            FROM scrobbles s2
+            WHERE s2.user_id = scrobbles.user_id
+              AND s2.media_type = 'episode'
+              AND s2.user_rating IS NOT NULL
+              AND (
+                  (
+                      scrobbles.season_number IS NOT NULL AND s2.season_number = scrobbles.season_number
+                      AND scrobbles.episode_number IS NOT NULL AND s2.episode_number = scrobbles.episode_number
+                      AND TRIM(LOWER(COALESCE(s2.grandparent_title, ''))) = TRIM(LOWER(COALESCE(scrobbles.grandparent_title, '')))
+                  )
+                  OR (scrobbles.guid IS NOT NULL AND s2.guid = scrobbles.guid)
+                  OR (scrobbles.tvdb_id IS NOT NULL AND s2.tvdb_id = scrobbles.tvdb_id AND scrobbles.tvdb_id NOT LIKE 'series-%')
+                  OR (scrobbles.tmdb_id IS NOT NULL AND s2.tmdb_id = scrobbles.tmdb_id)
+              )
+            ORDER BY s2.watched_at DESC
+            LIMIT 1
+        )
+        WHERE media_type = 'episode' AND user_rating IS NULL AND EXISTS (
+            SELECT 1
+            FROM scrobbles s2
+            WHERE s2.user_id = scrobbles.user_id
+              AND s2.media_type = 'episode'
+              AND s2.user_rating IS NOT NULL
+              AND (
+                  (
+                      scrobbles.season_number IS NOT NULL AND s2.season_number = scrobbles.season_number
+                      AND scrobbles.episode_number IS NOT NULL AND s2.episode_number = scrobbles.episode_number
+                      AND TRIM(LOWER(COALESCE(s2.grandparent_title, ''))) = TRIM(LOWER(COALESCE(scrobbles.grandparent_title, '')))
+                  )
+                  OR (scrobbles.guid IS NOT NULL AND s2.guid = scrobbles.guid)
+                  OR (scrobbles.tvdb_id IS NOT NULL AND s2.tvdb_id = scrobbles.tvdb_id AND scrobbles.tvdb_id NOT LIKE 'series-%')
+                  OR (scrobbles.tmdb_id IS NOT NULL AND s2.tmdb_id = scrobbles.tmdb_id)
+              )
+        );
+        "#
+    ).execute(pool).await;
+
+    // Retroactively propagate tags across previous and subsequent watches of the same movie
+    let _ = sqlx::query(
+        r#"
+        UPDATE scrobbles
+        SET tags = (
+            SELECT s2.tags
+            FROM scrobbles s2
+            WHERE s2.user_id = scrobbles.user_id
+              AND s2.media_type = 'movie'
+              AND s2.tags IS NOT NULL AND s2.tags != ''
+              AND (
+                  (TRIM(LOWER(s2.title)) = TRIM(LOWER(scrobbles.title)) AND (scrobbles.year IS NULL OR s2.year IS NULL OR s2.year = scrobbles.year))
+                  OR (scrobbles.guid IS NOT NULL AND s2.guid = scrobbles.guid)
+                  OR (scrobbles.tmdb_id IS NOT NULL AND s2.tmdb_id = scrobbles.tmdb_id)
+                  OR (scrobbles.imdb_id IS NOT NULL AND s2.imdb_id = scrobbles.imdb_id)
+              )
+            ORDER BY s2.watched_at DESC
+            LIMIT 1
+        )
+        WHERE media_type = 'movie' AND (tags IS NULL OR tags = '') AND EXISTS (
+            SELECT 1
+            FROM scrobbles s2
+            WHERE s2.user_id = scrobbles.user_id
+              AND s2.media_type = 'movie'
+              AND s2.tags IS NOT NULL AND s2.tags != ''
+              AND (
+                  (TRIM(LOWER(s2.title)) = TRIM(LOWER(scrobbles.title)) AND (scrobbles.year IS NULL OR s2.year IS NULL OR s2.year = scrobbles.year))
+                  OR (scrobbles.guid IS NOT NULL AND s2.guid = scrobbles.guid)
+                  OR (scrobbles.tmdb_id IS NOT NULL AND s2.tmdb_id = scrobbles.tmdb_id)
+                  OR (scrobbles.imdb_id IS NOT NULL AND s2.imdb_id = scrobbles.imdb_id)
+              )
+        );
+        "#
+    ).execute(pool).await;
+
+    // Retroactively propagate notes across previous and subsequent watches of the same movie
+    let _ = sqlx::query(
+        r#"
+        UPDATE scrobbles
+        SET notes = (
+            SELECT s2.notes
+            FROM scrobbles s2
+            WHERE s2.user_id = scrobbles.user_id
+              AND s2.media_type = 'movie'
+              AND s2.notes IS NOT NULL AND s2.notes != ''
+              AND (
+                  (TRIM(LOWER(s2.title)) = TRIM(LOWER(scrobbles.title)) AND (scrobbles.year IS NULL OR s2.year IS NULL OR s2.year = scrobbles.year))
+                  OR (scrobbles.guid IS NOT NULL AND s2.guid = scrobbles.guid)
+                  OR (scrobbles.tmdb_id IS NOT NULL AND s2.tmdb_id = scrobbles.tmdb_id)
+                  OR (scrobbles.imdb_id IS NOT NULL AND s2.imdb_id = scrobbles.imdb_id)
+              )
+            ORDER BY s2.watched_at DESC
+            LIMIT 1
+        )
+        WHERE media_type = 'movie' AND (notes IS NULL OR notes = '') AND EXISTS (
+            SELECT 1
+            FROM scrobbles s2
+            WHERE s2.user_id = scrobbles.user_id
+              AND s2.media_type = 'movie'
+              AND s2.notes IS NOT NULL AND s2.notes != ''
+              AND (
+                  (TRIM(LOWER(s2.title)) = TRIM(LOWER(scrobbles.title)) AND (scrobbles.year IS NULL OR s2.year IS NULL OR s2.year = scrobbles.year))
+                  OR (scrobbles.guid IS NOT NULL AND s2.guid = scrobbles.guid)
+                  OR (scrobbles.tmdb_id IS NOT NULL AND s2.tmdb_id = scrobbles.tmdb_id)
+                  OR (scrobbles.imdb_id IS NOT NULL AND s2.imdb_id = scrobbles.imdb_id)
+              )
+        );
+        "#
+    ).execute(pool).await;
+
+    // Retroactively propagate tags across previous and subsequent watches of the same TV episode
+    let _ = sqlx::query(
+        r#"
+        UPDATE scrobbles
+        SET tags = (
+            SELECT s2.tags
+            FROM scrobbles s2
+            WHERE s2.user_id = scrobbles.user_id
+              AND s2.media_type = 'episode'
+              AND s2.tags IS NOT NULL AND s2.tags != ''
+              AND (
+                  (
+                      scrobbles.season_number IS NOT NULL AND s2.season_number = scrobbles.season_number
+                      AND scrobbles.episode_number IS NOT NULL AND s2.episode_number = scrobbles.episode_number
+                      AND TRIM(LOWER(COALESCE(s2.grandparent_title, ''))) = TRIM(LOWER(COALESCE(scrobbles.grandparent_title, '')))
+                  )
+                  OR (scrobbles.guid IS NOT NULL AND s2.guid = scrobbles.guid)
+                  OR (scrobbles.tvdb_id IS NOT NULL AND s2.tvdb_id = scrobbles.tvdb_id AND scrobbles.tvdb_id NOT LIKE 'series-%')
+                  OR (scrobbles.tmdb_id IS NOT NULL AND s2.tmdb_id = scrobbles.tmdb_id)
+              )
+            ORDER BY s2.watched_at DESC
+            LIMIT 1
+        )
+        WHERE media_type = 'episode' AND (tags IS NULL OR tags = '') AND EXISTS (
+            SELECT 1
+            FROM scrobbles s2
+            WHERE s2.user_id = scrobbles.user_id
+              AND s2.media_type = 'episode'
+              AND s2.tags IS NOT NULL AND s2.tags != ''
+              AND (
+                  (
+                      scrobbles.season_number IS NOT NULL AND s2.season_number = scrobbles.season_number
+                      AND scrobbles.episode_number IS NOT NULL AND s2.episode_number = scrobbles.episode_number
+                      AND TRIM(LOWER(COALESCE(s2.grandparent_title, ''))) = TRIM(LOWER(COALESCE(scrobbles.grandparent_title, '')))
+                  )
+                  OR (scrobbles.guid IS NOT NULL AND s2.guid = scrobbles.guid)
+                  OR (scrobbles.tvdb_id IS NOT NULL AND s2.tvdb_id = scrobbles.tvdb_id AND scrobbles.tvdb_id NOT LIKE 'series-%')
+                  OR (scrobbles.tmdb_id IS NOT NULL AND s2.tmdb_id = scrobbles.tmdb_id)
+              )
+        );
+        "#
+    ).execute(pool).await;
+
+    // Retroactively propagate notes across previous and subsequent watches of the same TV episode
+    let _ = sqlx::query(
+        r#"
+        UPDATE scrobbles
+        SET notes = (
+            SELECT s2.notes
+            FROM scrobbles s2
+            WHERE s2.user_id = scrobbles.user_id
+              AND s2.media_type = 'episode'
+              AND s2.notes IS NOT NULL AND s2.notes != ''
+              AND (
+                  (
+                      scrobbles.season_number IS NOT NULL AND s2.season_number = scrobbles.season_number
+                      AND scrobbles.episode_number IS NOT NULL AND s2.episode_number = scrobbles.episode_number
+                      AND TRIM(LOWER(COALESCE(s2.grandparent_title, ''))) = TRIM(LOWER(COALESCE(scrobbles.grandparent_title, '')))
+                  )
+                  OR (scrobbles.guid IS NOT NULL AND s2.guid = scrobbles.guid)
+                  OR (scrobbles.tvdb_id IS NOT NULL AND s2.tvdb_id = scrobbles.tvdb_id AND scrobbles.tvdb_id NOT LIKE 'series-%')
+                  OR (scrobbles.tmdb_id IS NOT NULL AND s2.tmdb_id = scrobbles.tmdb_id)
+              )
+            ORDER BY s2.watched_at DESC
+            LIMIT 1
+        )
+        WHERE media_type = 'episode' AND (notes IS NULL OR notes = '') AND EXISTS (
+            SELECT 1
+            FROM scrobbles s2
+            WHERE s2.user_id = scrobbles.user_id
+              AND s2.media_type = 'episode'
+              AND s2.notes IS NOT NULL AND s2.notes != ''
+              AND (
+                  (
+                      scrobbles.season_number IS NOT NULL AND s2.season_number = scrobbles.season_number
+                      AND scrobbles.episode_number IS NOT NULL AND s2.episode_number = scrobbles.episode_number
+                      AND TRIM(LOWER(COALESCE(s2.grandparent_title, ''))) = TRIM(LOWER(COALESCE(scrobbles.grandparent_title, '')))
+                  )
+                  OR (scrobbles.guid IS NOT NULL AND s2.guid = scrobbles.guid)
+                  OR (scrobbles.tvdb_id IS NOT NULL AND s2.tvdb_id = scrobbles.tvdb_id AND scrobbles.tvdb_id NOT LIKE 'series-%')
+                  OR (scrobbles.tmdb_id IS NOT NULL AND s2.tmdb_id = scrobbles.tmdb_id)
+              )
+        );
+        "#
+    ).execute(pool).await;
+
     Ok(())
 }
