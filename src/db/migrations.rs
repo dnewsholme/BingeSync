@@ -376,7 +376,40 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
             WHEN guid LIKE 'com.plexapp.agents.thetvdb://%' THEN SUBSTR(guid, 30)
             ELSE tvdb_id
         END
-        WHERE (tvdb_id IS NULL OR tvdb_id = '') AND (guid LIKE 'tvdb://%' OR guid LIKE 'com.plexapp.agents.thetvdb://%');
+        WHERE (tvdb_id IS NULL OR tvdb_id = '') AND media_type = 'movie' AND (guid LIKE 'tvdb://%' OR guid LIKE 'com.plexapp.agents.thetvdb://%');
+        "#
+    ).execute(pool).await;
+
+    let _ = sqlx::query(
+        r#"
+        UPDATE scrobbles
+        SET tvdb_id = CASE
+            WHEN guid LIKE 'thetvdb.com/dereferrer/episode/%' THEN SUBSTR(guid, 32)
+            WHEN guid LIKE 'tvdb://episode/%' THEN SUBSTR(guid, 16)
+            ELSE tvdb_id
+        END
+        WHERE (tvdb_id IS NULL OR tvdb_id = '') AND media_type = 'episode' AND (guid LIKE 'thetvdb.com/dereferrer/episode/%' OR guid LIKE 'tvdb://episode/%');
+        "#
+    ).execute(pool).await;
+
+    // For TV episodes, clear any tvdb_id that was erroneously set to a series ID or shared across different episodes
+    let _ = sqlx::query(
+        r#"
+        UPDATE scrobbles
+        SET tvdb_id = NULL, metadata_updated_at = NULL
+        WHERE media_type = 'episode' AND tvdb_id IS NOT NULL AND tvdb_id != '' AND (
+            guid = 'tvdb://' || tvdb_id
+            OR guid LIKE 'tvdb://series/' || tvdb_id || '%'
+            OR guid LIKE 'com.plexapp.agents.thetvdb://' || tvdb_id || '%'
+            OR tvdb_id LIKE 'series-%'
+            OR tvdb_id IN (
+                SELECT s2.tvdb_id
+                FROM scrobbles s2
+                WHERE s2.media_type = 'episode' AND s2.tvdb_id IS NOT NULL AND s2.tvdb_id != ''
+                GROUP BY COALESCE(s2.grandparent_title, s2.title), s2.tvdb_id
+                HAVING COUNT(DISTINCT (COALESCE(s2.season_number, 0) || '-' || COALESCE(s2.episode_number, 0))) > 1
+            )
+        );
         "#
     ).execute(pool).await;
 

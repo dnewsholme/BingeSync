@@ -140,9 +140,15 @@ function getTvdbUrl(item) {
     const raw = String(item.tvdb_id).trim();
     const isEpisodePrefix = /^(?:episode|ep)-/i.test(raw);
     const isMoviePrefix = /^movie-/i.test(raw);
+    const isSeriesPrefix = /^series-/i.test(raw);
     const cleanId = raw.replace(/^(?:series|movie|tvdb|episode|ep)-/i, '').trim();
     if (cleanId) {
-      if (item.media_type === 'episode' || isEpisodePrefix) {
+      if (isSeriesPrefix) {
+        if (slug) {
+          return `https://www.thetvdb.com/series/${slug}`;
+        }
+        return `https://thetvdb.com/dereferrer/series/${cleanId}`;
+      } else if (item.media_type === 'episode' || isEpisodePrefix) {
         if (slug) {
           return `https://www.thetvdb.com/series/${slug}/episodes/${cleanId}`;
         }
@@ -163,13 +169,22 @@ function getTvdbUrl(item) {
     }
   }
   if (item.guid) {
-    const epMatch = item.guid.match(/(?:the)?tvdb:\/\/(?:episode\/)?(\d+)/i)
+    const epMatch = item.guid.match(/(?:the)?tvdb:\/\/(?:episode\/)(\d+)/i)
       || item.guid.match(/thetvdb\.com\/dereferrer\/episode\/(\d+)/i);
     if (epMatch && item.media_type === 'episode') {
       if (slug) {
         return `https://www.thetvdb.com/series/${slug}/episodes/${epMatch[1]}`;
       }
       return `https://thetvdb.com/dereferrer/episode/${epMatch[1]}`;
+    }
+    const seriesMatch = item.guid.match(/(?:the)?tvdb:\/\/(?:series\/)(\d+)/i)
+      || item.guid.match(/thetvdb\.com\/dereferrer\/series\/(\d+)/i)
+      || item.guid.match(/com\.plexapp\.agents\.(?:the)?tvdb:\/\/(\d+)/i);
+    if (seriesMatch) {
+      if (slug) {
+        return `https://www.thetvdb.com/series/${slug}`;
+      }
+      return `https://thetvdb.com/dereferrer/series/${seriesMatch[1]}`;
     }
     const match = item.guid.match(/(?:com\.plexapp\.agents\.)?(?:the)?tvdb:\/\/(?:series\/|movie\/)?(\d+)/i)
       || item.guid.match(/thetvdb\.com\/dereferrer\/(?:series|movie)\/(\d+)/i)
@@ -184,9 +199,9 @@ function getTvdbUrl(item) {
         return `https://thetvdb.com/dereferrer/movie/${match[1]}`;
       } else if (item.media_type === 'episode') {
         if (slug) {
-          return `https://www.thetvdb.com/series/${slug}/episodes/${match[1]}`;
+          return `https://www.thetvdb.com/series/${slug}`;
         }
-        return `https://thetvdb.com/dereferrer/episode/${match[1]}`;
+        return `https://thetvdb.com/dereferrer/series/${match[1]}`;
       } else {
         if (slug) {
           return `https://www.thetvdb.com/series/${slug}`;

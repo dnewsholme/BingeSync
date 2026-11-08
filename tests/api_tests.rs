@@ -10770,3 +10770,165 @@ async fn test_episode_tvdb_and_tmdb_id_resolution_and_links() {
     assert_eq!(ep2["tvdb_id"], "11141080");
     assert_eq!(ep2["tmdb_id"], "291361");
 }
+
+#[tokio::test]
+async fn test_tvdb_episode_id_resolution_for_tv_shows() {
+    let pool = init_db("sqlite::memory:").await.unwrap();
+
+    // 1. Mock TVDB v4 API server with search, series extended, and episodes endpoints
+    let mock_tvdb_router = axum::Router::new()
+        .route(
+            "/login",
+            axum::routing::post(|axum::Json(body): axum::Json<serde_json::Value>| async move {
+                if body.get("apikey").and_then(|v| v.as_str()) == Some("test_tvdb_key") {
+                    (
+                        StatusCode::OK,
+                        axum::Json(serde_json::json!({
+                            "status": "success",
+                            "data": { "token": "mock_tvdb_bearer_token" }
+                        })),
+                    )
+                } else {
+                    (
+                        StatusCode::UNAUTHORIZED,
+                        axum::Json(serde_json::json!({ "status": "error" })),
+                    )
+                }
+            }),
+        )
+        .route(
+            "/search",
+            axum::routing::get(|axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>| async move {
+                let query = params.get("query").map(|s| s.as_str()).unwrap_or("");
+                if query.eq_ignore_ascii_case("Rise of the Rockstar Chef") {
+                    axum::Json(serde_json::json!({
+                        "status": "success",
+                        "data": [
+                            {
+                                "tvdb_id": "484365",
+                                "name": "Rise of the Rockstar Chef",
+                                "overview": "A series about the world of fine dining and rockstar chefs.",
+                                "image_url": "https://artworks.thetvdb.com/banners/posters/484365-1.jpg"
+                            }
+                        ]
+                    }))
+                } else {
+                    axum::Json(serde_json::json!({ "status": "success", "data": [] }))
+                }
+            }),
+        )
+        .route(
+            "/series/484365/extended",
+            axum::routing::get(|| async move {
+                axum::Json(serde_json::json!({
+                    "status": "success",
+                    "data": {
+                        "id": 484365,
+                        "name": "Rise of the Rockstar Chef",
+                        "overview": "A series about the world of fine dining and rockstar chefs.",
+                        "genres": [ { "name": "Documentary" } ],
+                        "image": "https://artworks.thetvdb.com/banners/posters/484365-1.jpg"
+                    }
+                }))
+            }),
+        )
+        .route(
+            "/series/484365/episodes/default",
+            axum::routing::get(|| async move {
+                axum::Json(serde_json::json!({
+                    "status": "success",
+                    "data": {
+                        "series": { "id": 484365, "name": "Rise of the Rockstar Chef" },
+                        "episodes": [
+                            {
+                                "id": 12057519,
+                                "seriesId": 484365,
+                                "name": "Episode 1",
+                                "seasonNumber": 1,
+                                "number": 1,
+                                "overview": "The start of the culinary journey."
+                            },
+                            {
+                                "id": 12057520,
+                                "seriesId": 484365,
+                                "name": "Episode 2",
+                                "seasonNumber": 1,
+                                "number": 2,
+                                "overview": "The heat turns up in the kitchen."
+                            }
+                        ]
+                    }
+                }))
+            }),
+        );
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, mock_tvdb_router).await.unwrap();
+    });
+
+    let mut config = Config::from_env();
+    config.tvdb_api_key = Some("test_tvdb_key".to_string());
+    config.tvdb_base_url = format!("http://{}", addr);
+    let config = Arc::new(config);
+    let state = AppState::new(pool.clone(), config.clone(), None);
+
+    let user_id = "test_user_rockstar";
+    sqlx::query("INSERT INTO users (id, email, display_name, webhook_token) VALUES (?, ?, ?, ?)")
+        .bind(user_id)
+        .bind("rockstar@bingesync.local")
+        .bind("Rockstar Tester")
+        .bind("token_rockstar_123")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    // 2. Insert S1E1 with tvdb_id = "484365" (erroneously set to series ID)
+    let scrobble_id_1 = uuid::Uuid::new_v4().to_string();
+    sqlx::query(
+        r#"
+        INSERT INTO scrobbles (id, user_id, title, media_type, grandparent_title, season_number, episode_number, tvdb_id, metadata_updated_at)
+        VALUES (?, ?, 'Episode 1', 'episode', 'Rise of the Rockstar Chef', 1, 1, '484365', NULL)
+        "#
+    )
+    .bind(&scrobble_id_1)
+    .bind(user_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    // 3. Insert S1E2 with tvdb_id = NULL
+    let scrobble_id_2 = uuid::Uuid::new_v4().to_string();
+    sqlx::query(
+        r#"
+        INSERT INTO scrobbles (id, user_id, title, media_type, grandparent_title, season_number, episode_number, tvdb_id, metadata_updated_at)
+        VALUES (?, ?, 'Episode 2', 'episode', 'Rise of the Rockstar Chef', 1, 2, NULL, NULL)
+        "#
+    )
+    .bind(&scrobble_id_2)
+    .bind(user_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    // 4. Run TVDB metadata worker once
+    let processed = bingesync::api::tvdb::process_missing_metadata_once(&state).await;
+    assert!(processed >= 1);
+
+    // 5. Verify that S1E1 tvdb_id was resolved to the true episode ID "12057519", NOT the Series ID "484365"!
+    let s1: Scrobble = sqlx::query_as("SELECT * FROM scrobbles WHERE id = ?")
+        .bind(&scrobble_id_1)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(s1.tvdb_id, Some("12057519".to_string()));
+
+    // 6. Verify that sibling episode S1E2 was also updated with its true episode ID "12057520"!
+    let s2: Scrobble = sqlx::query_as("SELECT * FROM scrobbles WHERE id = ?")
+        .bind(&scrobble_id_2)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(s2.tvdb_id, Some("12057520".to_string()));
+}

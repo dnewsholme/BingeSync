@@ -1872,6 +1872,43 @@ pub async fn fix_match_handler(
             let pin = state.get_effective_tvdb_pin().await;
             let base_url = state.get_effective_tvdb_base_url().await;
             let client = crate::api::tvdb::TvdbClient::new(base_url, key, pin);
+            if is_episode {
+                if let Ok(episodes) = client.get_series_episodes(&clean_id, scrobble.season_number).await {
+                    let show_name = scrobble
+                        .grandparent_title
+                        .as_deref()
+                        .unwrap_or(&scrobble.title);
+                    for ep in &episodes {
+                        if let (Some(s), Some(e)) = (ep.season_number, ep.number) {
+                            let ep_id_str = ep.id.to_string();
+                            let _ = sqlx::query(
+                                r#"
+                                UPDATE scrobbles
+                                SET tvdb_id = ?
+                                WHERE user_id = ?
+                                  AND (grandparent_title IS NOT NULL AND LOWER(TRIM(grandparent_title)) = LOWER(TRIM(?)))
+                                  AND season_number = ? AND episode_number = ?
+                                "#
+                            )
+                            .bind(&ep_id_str)
+                            .bind(&scrobble.user_id)
+                            .bind(show_name)
+                            .bind(s)
+                            .bind(e)
+                            .execute(&state.pool)
+                            .await;
+
+                            if scrobble.season_number == Some(s) && scrobble.episode_number == Some(e) {
+                                let _ = sqlx::query("UPDATE scrobbles SET tvdb_id = ? WHERE id = ?")
+                                    .bind(&ep_id_str)
+                                    .bind(&scrobble.id)
+                                    .execute(&state.pool)
+                                    .await;
+                            }
+                        }
+                    }
+                }
+            }
             let meta_res = if is_episode {
                 match client.get_series_extended(&clean_id).await {
                     Ok(m) => Ok(m),

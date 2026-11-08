@@ -27,6 +27,19 @@ pub struct TvdbMetadata {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TvdbEpisodeRecord {
+    pub id: i64,
+    #[serde(rename = "seriesId")]
+    pub series_id: Option<i64>,
+    pub name: Option<String>,
+    pub overview: Option<String>,
+    #[serde(rename = "seasonNumber")]
+    pub season_number: Option<i32>,
+    pub number: Option<i32>,
+    pub image: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TvdbSearchResult {
     pub id: String,
     pub name: Option<String>,
@@ -445,6 +458,72 @@ impl TvdbClient {
 
         tracing::warn!(series_id = %clean_id, "TVDB series metadata lookup failed");
         Err(format!("TVDB series extended failed for ID {}", clean_id))
+    }
+
+    /// Fetch episodes for a series from TheTVDB API v4 (/series/{id}/episodes/default)
+    pub async fn get_series_episodes(
+        &self,
+        series_id: &str,
+        season_number: Option<i32>,
+    ) -> Result<Vec<TvdbEpisodeRecord>, String> {
+        let clean_id = series_id
+            .strip_prefix("series-")
+            .or_else(|| series_id.strip_prefix("movie-"))
+            .unwrap_or(series_id);
+
+        let token = self.get_token().await?;
+        let mut url = format!("{}/series/{}/episodes/default", self.base_url, clean_id);
+        if let Some(s) = season_number {
+            url.push_str(&format!("?season={}", s));
+        }
+
+        tracing::info!(series_id = %clean_id, season = ?season_number, "Fetching series episodes from TheTVDB");
+        let resp = self
+            .client
+            .get(&url)
+            .header("Authorization", format!("Bearer {}", token))
+            .header("Accept", "application/json")
+            .send()
+            .await
+            .map_err(|e| format!("Failed to fetch TVDB episodes: {}", e))?;
+
+        if !resp.status().is_success() {
+            if season_number.is_some() {
+                let fallback_url = format!("{}/series/{}/episodes/default", self.base_url, clean_id);
+                if let Ok(r2) = self
+                    .client
+                    .get(&fallback_url)
+                    .header("Authorization", format!("Bearer {}", token))
+                    .header("Accept", "application/json")
+                    .send()
+                    .await
+                {
+                    if r2.status().is_success() {
+                        if let Ok(json_val) = r2.json::<serde_json::Value>().await {
+                            if let Some(eps) = json_val.get("data").and_then(|d| d.get("episodes")) {
+                                if let Ok(parsed) = serde_json::from_value::<Vec<TvdbEpisodeRecord>>(eps.clone()) {
+                                    return Ok(parsed);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            return Err(format!("TVDB episodes returned status {}", resp.status()));
+        }
+
+        let json_val: serde_json::Value = resp
+            .json()
+            .await
+            .map_err(|e| format!("Failed to parse TVDB episodes: {}", e))?;
+
+        if let Some(eps) = json_val.get("data").and_then(|d| d.get("episodes")) {
+            if let Ok(parsed) = serde_json::from_value::<Vec<TvdbEpisodeRecord>>(eps.clone()) {
+                return Ok(parsed);
+            }
+        }
+
+        Ok(Vec::new())
     }
 
     /// Fetch extended movie information from /movies/{id}/extended with fallback to base /movies/{id}
@@ -961,6 +1040,17 @@ impl<'a> MetadataProvider<'a> {
             MetadataProvider::Tmdb(c) => c.get_movie_details(id).await,
         }
     }
+
+    pub async fn get_series_episodes(
+        &self,
+        series_id: &str,
+        season_number: Option<i32>,
+    ) -> Result<Vec<TvdbEpisodeRecord>, String> {
+        match self {
+            MetadataProvider::Tvdb(c) => c.get_series_episodes(series_id, season_number).await,
+            MetadataProvider::Tmdb(_) => Ok(Vec::new()),
+        }
+    }
 }
 
 pub enum MetadataProviderOwned {
@@ -974,6 +1064,14 @@ impl MetadataProviderOwned {
             MetadataProviderOwned::Tvdb(ref c) => MetadataProvider::Tvdb(c),
             MetadataProviderOwned::Tmdb(ref c) => MetadataProvider::Tmdb(c),
         }
+    }
+
+    pub async fn get_series_episodes(
+        &self,
+        series_id: &str,
+        season_number: Option<i32>,
+    ) -> Result<Vec<TvdbEpisodeRecord>, String> {
+        self.as_ref().get_series_episodes(series_id, season_number).await
     }
 }
 
@@ -1041,10 +1139,15 @@ pub fn start_metadata_worker(state: AppState) -> tokio::task::JoinHandle<()> {
 #[allow(dead_code)]
 struct MissingMetadataItem {
     id: String,
+    user_id: String,
     title: String,
     media_type: String,
     #[sqlx(default)]
     grandparent_title: Option<String>,
+    #[sqlx(default)]
+    season_number: Option<i32>,
+    #[sqlx(default)]
+    episode_number: Option<i32>,
     #[sqlx(default)]
     year: Option<i32>,
     #[sqlx(default)]
@@ -1080,7 +1183,7 @@ pub async fn process_missing_metadata_batch_provider(
 ) -> usize {
     let rows: Vec<MissingMetadataItem> = match sqlx::query_as(
         r#"
-        SELECT id, title, media_type, grandparent_title, year, overview, genres, actors, directors, thumb_url, tvdb_id, tmdb_id
+        SELECT id, user_id, title, media_type, grandparent_title, season_number, episode_number, year, overview, genres, actors, directors, thumb_url, tvdb_id, tmdb_id
         FROM scrobbles
         WHERE metadata_updated_at IS NULL
         ORDER BY watched_at DESC
@@ -1216,17 +1319,9 @@ pub async fn process_missing_metadata_batch_provider(
         };
 
         let effective_tvdb_id = if !is_tmdb && matched_id.is_some() {
-            if is_episode && item.tvdb_id.is_some() {
-                item.tvdb_id.clone()
-            } else {
-                matched_id.clone()
-            }
+            matched_id.clone()
         } else {
-            if is_episode && item.tvdb_id.is_some() {
-                item.tvdb_id.clone()
-            } else {
-                meta.tvdb_id.clone().or_else(|| item.tvdb_id.clone())
-            }
+            meta.tvdb_id.clone().or_else(|| item.tvdb_id.clone())
         };
 
         let effective_tmdb_id = if is_tmdb && matched_id.is_some() {
@@ -1236,8 +1331,54 @@ pub async fn process_missing_metadata_batch_provider(
         };
 
         if is_episode {
-            // Update all episodes for this series that have missing fields
             let show_name = item.grandparent_title.as_deref().unwrap_or(&item.title);
+
+            // 1. Resolve exact TheTVDB episode IDs from TheTVDB API
+            if !is_tmdb {
+                let series_tvdb_id = matched_id.clone().or_else(|| meta.tvdb_id.clone());
+                if let Some(ref sid) = series_tvdb_id {
+                    let clean_sid = sid
+                        .strip_prefix("series-")
+                        .or_else(|| sid.strip_prefix("movie-"))
+                        .unwrap_or(sid);
+
+                    if let Ok(episodes) = client.get_series_episodes(clean_sid, item.season_number).await {
+                        for ep in &episodes {
+                            if let (Some(s), Some(e)) = (ep.season_number, ep.number) {
+                                let ep_id_str = ep.id.to_string();
+                                let _ = sqlx::query(
+                                    r#"
+                                    UPDATE scrobbles
+                                    SET tvdb_id = ?
+                                    WHERE user_id = ?
+                                      AND (grandparent_title IS NOT NULL AND LOWER(TRIM(grandparent_title)) = LOWER(TRIM(?)))
+                                      AND season_number = ? AND episode_number = ?
+                                      AND (tvdb_id IS NULL OR tvdb_id = '' OR tvdb_id = ? OR tvdb_id LIKE 'series-%')
+                                    "#
+                                )
+                                .bind(&ep_id_str)
+                                .bind(&item.user_id)
+                                .bind(show_name)
+                                .bind(s)
+                                .bind(e)
+                                .bind(clean_sid)
+                                .execute(&state.pool)
+                                .await;
+
+                                if item.season_number == Some(s) && item.episode_number == Some(e) {
+                                    let _ = sqlx::query("UPDATE scrobbles SET tvdb_id = ? WHERE id = ?")
+                                        .bind(&ep_id_str)
+                                        .bind(&item.id)
+                                        .execute(&state.pool)
+                                        .await;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 2. Update show-wide metadata across all episodes for this series
             let _ = sqlx::query(
                 r#"
                 UPDATE scrobbles
@@ -1252,7 +1393,6 @@ pub async fn process_missing_metadata_batch_provider(
                         THEN ? 
                         ELSE thumb_url 
                     END,
-                    tvdb_id = COALESCE(NULLIF(?, ''), NULLIF(tvdb_id, '')),
                     tmdb_id = COALESCE(NULLIF(?, ''), NULLIF(tmdb_id, '')),
                     imdb_id = COALESCE(NULLIF(?, ''), NULLIF(imdb_id, '')),
                     studio = COALESCE(NULLIF(?, ''), NULLIF(studio, '')),
@@ -1270,7 +1410,6 @@ pub async fn process_missing_metadata_batch_provider(
             .bind(&meta.overview)
             .bind(&meta.image_url)
             .bind(&meta.image_url)
-            .bind(&effective_tvdb_id)
             .bind(&effective_tmdb_id)
             .bind(&meta.imdb_id)
             .bind(&meta.studio)

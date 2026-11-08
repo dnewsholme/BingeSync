@@ -251,25 +251,54 @@ impl JellyfinWebhookPayload {
     }
 
     pub fn resolved_tvdb_id(&self) -> Option<String> {
+        let is_episode = self.item_type.as_deref().map(|t| t.eq_ignore_ascii_case("Episode")).unwrap_or(false)
+            || self.series_name.is_some();
+
+        let mut candidate_id = None;
         if let Some(ref id) = self.provider_tvdb {
             if !id.trim().is_empty() {
-                return Some(id.trim().to_string());
+                candidate_id = Some(id.trim().to_string());
             }
         }
-        let p_ids = self.provider_ids.as_ref().or_else(|| self.item.as_ref().and_then(|it| it.get("ProviderIds")));
-        if let Some(serde_json::Value::Object(map)) = p_ids {
-            for key in ["Tvdb", "tvdb", "TVDB"] {
-                if let Some(serde_json::Value::String(s)) = map.get(key) {
-                    if !s.trim().is_empty() {
-                        return Some(s.trim().to_string());
+        if candidate_id.is_none() {
+            let p_ids = self.provider_ids.as_ref().or_else(|| self.item.as_ref().and_then(|it| it.get("ProviderIds")));
+            if let Some(serde_json::Value::Object(map)) = p_ids {
+                for key in ["Tvdb", "tvdb", "TVDB"] {
+                    if let Some(serde_json::Value::String(s)) = map.get(key) {
+                        if !s.trim().is_empty() {
+                            candidate_id = Some(s.trim().to_string());
+                            break;
+                        }
+                    }
+                    if let Some(serde_json::Value::Number(n)) = map.get(key) {
+                        candidate_id = Some(n.to_string());
+                        break;
                     }
                 }
-                if let Some(serde_json::Value::Number(n)) = map.get(key) {
-                    return Some(n.to_string());
+            }
+        }
+
+        if is_episode {
+            if let Some(ref cid) = candidate_id {
+                let s_ids = self.series_provider_ids.as_ref().or_else(|| self.item.as_ref().and_then(|it| it.get("SeriesProviderIds")));
+                if let Some(serde_json::Value::Object(map)) = s_ids {
+                    for key in ["Tvdb", "tvdb", "TVDB"] {
+                        if let Some(serde_json::Value::String(s)) = map.get(key) {
+                            if s.trim() == cid {
+                                return None;
+                            }
+                        }
+                        if let Some(serde_json::Value::Number(n)) = map.get(key) {
+                            if &n.to_string() == cid {
+                                return None;
+                            }
+                        }
+                    }
                 }
             }
         }
-        None
+
+        candidate_id
     }
 
     pub fn resolved_tmdb_id(&self) -> Option<String> {

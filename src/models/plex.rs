@@ -201,6 +201,8 @@ impl PlexMetadata {
 
     /// Resolves canonical TheTVDB ID from Plex GUIDs or main guid.
     pub fn resolved_tvdb_id(&self) -> Option<String> {
+        let is_episode = self.media_type.as_deref() == Some("episode");
+
         if let Some(ref list) = self.guids {
             for item in list {
                 if let Some(ref gid) = item.id {
@@ -215,6 +217,25 @@ impl PlexMetadata {
             }
         }
         if let Some(ref g) = self.guid {
+            if is_episode {
+                if let Some(idx) = g.find("tvdb://episode/") {
+                    let sub = &g[idx + 15..];
+                    let num_len = sub.chars().take_while(|c| c.is_ascii_digit()).count();
+                    if num_len > 0 {
+                        return Some(sub[..num_len].to_string());
+                    }
+                }
+                if let Some(idx) = g.find("thetvdb.com/dereferrer/episode/") {
+                    let sub = &g[idx + 31..];
+                    let num_len = sub.chars().take_while(|c| c.is_ascii_digit()).count();
+                    if num_len > 0 {
+                        return Some(sub[..num_len].to_string());
+                    }
+                }
+                // Do NOT extract series IDs from legacy agent episode guids like com.plexapp.agents.thetvdb://484365/1/1
+                return None;
+            }
+
             if let Some(idx) = g.find("tvdb://") {
                 let sub = &g[idx + 7..];
                 let num_len = sub.chars().take_while(|c| c.is_ascii_digit()).count();
