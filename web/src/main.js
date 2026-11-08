@@ -143,7 +143,9 @@ function getTvdbUrl(item) {
     const isSeriesPrefix = /^series-/i.test(raw);
     const cleanId = raw.replace(/^(?:series|movie|tvdb|episode|ep)-/i, '').trim();
     if (cleanId) {
-      if (isSeriesPrefix) {
+      const isNumeric = /^\d+$/.test(cleanId);
+      const isLikelySeriesId = isSeriesPrefix || (item.media_type === 'episode' && !isEpisodePrefix && isNumeric && parseInt(cleanId, 10) < 1000000);
+      if (isLikelySeriesId) {
         if (slug) {
           return `https://www.thetvdb.com/series/${slug}`;
         }

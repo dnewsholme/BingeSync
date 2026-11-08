@@ -1342,6 +1342,7 @@ pub async fn process_missing_metadata_batch_provider(
                         .or_else(|| sid.strip_prefix("movie-"))
                         .unwrap_or(sid);
 
+                    let mut matched_episode = false;
                     if let Ok(episodes) = client.get_series_episodes(clean_sid, item.season_number).await {
                         for ep in &episodes {
                             if let (Some(s), Some(e)) = (ep.season_number, ep.number) {
@@ -1366,6 +1367,7 @@ pub async fn process_missing_metadata_batch_provider(
                                 .await;
 
                                 if item.season_number == Some(s) && item.episode_number == Some(e) {
+                                    matched_episode = true;
                                     let _ = sqlx::query("UPDATE scrobbles SET tvdb_id = ? WHERE id = ?")
                                         .bind(&ep_id_str)
                                         .bind(&item.id)
@@ -1374,6 +1376,15 @@ pub async fn process_missing_metadata_batch_provider(
                                 }
                             }
                         }
+                    }
+
+                    if !matched_episode && (item.tvdb_id.is_none() || item.tvdb_id.as_deref() == Some("")) {
+                        let series_tag = format!("series-{}", clean_sid);
+                        let _ = sqlx::query("UPDATE scrobbles SET tvdb_id = ? WHERE id = ?")
+                            .bind(&series_tag)
+                            .bind(&item.id)
+                            .execute(&state.pool)
+                            .await;
                     }
                 }
             }

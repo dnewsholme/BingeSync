@@ -1465,6 +1465,49 @@ pub async fn refresh_scrobble_metadata(
                     .grandparent_title
                     .as_deref()
                     .unwrap_or(&scrobble.title);
+
+                // Resolve exact TVDB episode IDs from TheTVDB API
+                if let Some(ref sid) = meta.tvdb_id.clone().or_else(|| scrobble.tvdb_id.clone()) {
+                    let clean_sid = sid
+                        .strip_prefix("series-")
+                        .or_else(|| sid.strip_prefix("movie-"))
+                        .unwrap_or(sid);
+
+                    if let Ok(episodes) = provider.get_series_episodes(clean_sid, scrobble.season_number).await {
+                        for ep in &episodes {
+                            if let (Some(s), Some(e)) = (ep.season_number, ep.number) {
+                                let ep_id_str = ep.id.to_string();
+                                let _ = sqlx::query(
+                                    r#"
+                                    UPDATE scrobbles
+                                    SET tvdb_id = ?
+                                    WHERE user_id = ?
+                                      AND (grandparent_title IS NOT NULL AND LOWER(TRIM(grandparent_title)) = LOWER(TRIM(?)))
+                                      AND season_number = ? AND episode_number = ?
+                                      AND (tvdb_id IS NULL OR tvdb_id = '' OR tvdb_id = ? OR tvdb_id LIKE 'series-%' OR CAST(tvdb_id AS INTEGER) < 1000000)
+                                    "#
+                                )
+                                .bind(&ep_id_str)
+                                .bind(&scrobble.user_id)
+                                .bind(show_name)
+                                .bind(s)
+                                .bind(e)
+                                .bind(clean_sid)
+                                .execute(&state.pool)
+                                .await;
+
+                                if scrobble.season_number == Some(s) && scrobble.episode_number == Some(e) {
+                                    let _ = sqlx::query("UPDATE scrobbles SET tvdb_id = ? WHERE id = ?")
+                                        .bind(&ep_id_str)
+                                        .bind(&scrobble.id)
+                                        .execute(&state.pool)
+                                        .await;
+                                }
+                            }
+                        }
+                    }
+                }
+
                 let _ = sqlx::query(
                         r#"
                         UPDATE scrobbles

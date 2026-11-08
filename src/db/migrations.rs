@@ -392,23 +392,25 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
         "#
     ).execute(pool).await;
 
-    // For TV episodes, clear any tvdb_id that was erroneously set to a series ID or shared across different episodes
+    // For TV episodes, fix existing scrobbles:
+    // If tvdb_id is empty, NULL, or was set to a series ID (< 1,000,000),
+    // mark tvdb_id as series-{id} and reset metadata_updated_at to NULL so background worker enriches it
     let _ = sqlx::query(
         r#"
         UPDATE scrobbles
-        SET tvdb_id = NULL, metadata_updated_at = NULL
-        WHERE media_type = 'episode' AND tvdb_id IS NOT NULL AND tvdb_id != '' AND (
-            guid = 'tvdb://' || tvdb_id
-            OR guid LIKE 'tvdb://series/' || tvdb_id || '%'
-            OR guid LIKE 'com.plexapp.agents.thetvdb://' || tvdb_id || '%'
+        SET metadata_updated_at = NULL,
+            tvdb_id = CASE
+                WHEN tvdb_id IS NOT NULL AND tvdb_id != '' AND tvdb_id NOT LIKE 'series-%' AND tvdb_id NOT LIKE 'episode-%' AND tvdb_id NOT LIKE 'ep-%' AND CAST(tvdb_id AS INTEGER) > 0 AND CAST(tvdb_id AS INTEGER) < 1000000
+                THEN 'series-' || tvdb_id
+                ELSE tvdb_id
+            END
+        WHERE media_type = 'episode' AND (
+            tvdb_id IS NULL
+            OR tvdb_id = ''
             OR tvdb_id LIKE 'series-%'
-            OR tvdb_id IN (
-                SELECT s2.tvdb_id
-                FROM scrobbles s2
-                WHERE s2.media_type = 'episode' AND s2.tvdb_id IS NOT NULL AND s2.tvdb_id != ''
-                GROUP BY COALESCE(s2.grandparent_title, s2.title), s2.tvdb_id
-                HAVING COUNT(DISTINCT (COALESCE(s2.season_number, 0) || '-' || COALESCE(s2.episode_number, 0))) > 1
-            )
+            OR (CAST(tvdb_id AS INTEGER) > 0 AND CAST(tvdb_id AS INTEGER) < 1000000)
+            OR guid = 'tvdb://' || tvdb_id
+            OR guid LIKE 'com.plexapp.agents.thetvdb://%'
         );
         "#
     ).execute(pool).await;
