@@ -130,7 +130,7 @@ Plex webhooks send:
 ```bash
 cargo test
 ```
-Tests in `tests/api_tests.rs` (72 integration tests) cover:
+Tests in `tests/api_tests.rs` (75 integration tests) cover:
 - Dev login and `/api/v1/auth/me`
 - Plex movie and TV episode scrobbling
 - Plex and Jellyfin pre-play trailer, cinema intro, and clip filtering and exclusion
@@ -200,6 +200,8 @@ Tests in `tests/api_tests.rs` (72 integration tests) cover:
 - Detailed structured logging & advanced log explorer: 5,000-entry in-memory circular buffer with default `DEBUG` level tracing, structured key=value metadata formatting (`[user_id=... event=...]`), multi-service categorization (`webhooks`, `auth`, `metadata`, `sync`, `tautulli`, `images`, `integrations`, `maintenance`, `backup`, `users`), time cutoffs (`15m`, `1h`, `6h`, `24h`), level filters (`DEBUG & Above`, `INFO & Above`, `WARN & ERROR`, `ERROR Only`), limit clamping up to 2,000 entries, clipboard copy, and `.log` file export
 - Rich scrobble metadata & stream specifications: playback device & client context (`player_name`, `device_name`, `platform`, `is_local`), canonical `imdb_id` parsing and 1-click links, stream quality technical specs (`resolution`, `hdr_format`, `audio_codec`, `audio_channels`, `video_codec`), production studio & TV network (`studio`), original audio language (`original_language`), age certification (`content_rating`), and automatic rewatch tracking (`is_rewatch`) across Plex, Jellyfin, Emby, and Trakt with card spec pills and detail modal inspection
 - Legacy database schema upgrades: backward compatibility when existing records have `NULL` values for newly added columns (`is_rewatch`, `player_name`, specs) ensuring decoding and JSON serialization never fail across history and timeline
+- Rating propagation across all watches: applying or clearing a rating on an episode or movie updates all previous and subsequent watches of the exact same item for that user, inherits rating on rewatch, and retroactively backfills unrated watches via SQLite migrations
+- Tags and review notes propagation across all watches: applying or updating custom tags or notes on an episode or movie updates all previous and subsequent watches of the exact same item for that user, inherits user data on rewatch and incoming webhooks, and retroactively backfills watches via SQLite migrations
 
 ### Run Playwright E2E UI Tests
 ```bash
@@ -207,7 +209,7 @@ cd web
 npm install
 npx playwright test
 ```
-Playwright tests in `web/tests/e2e.spec.js` (50 browser E2E tests) cover:
+Playwright tests in `web/tests/e2e.spec.js` (52 browser E2E tests) cover:
 - User sign-in flow, "+ Log Watch" modal, and timeline rendering
 - Multi-user separation in the web UI
 - Trakt history and rating import flow in the web UI (pasted JSON)
@@ -228,6 +230,8 @@ Playwright tests in `web/tests/e2e.spec.js` (50 browser E2E tests) cover:
 - Tautulli history import modal, username defaulting, and deduplication
 - Timeline hierarchical drill-down navigation: Year -> Month -> Dates
 - Rating watched items in detail modal, update, and unrating
+- Rating propagation across all watches: rating or clearing a rating on an episode or movie dynamically updates other watches in the modal and timeline cards
+- Tags and notes propagation across all watches: saving tags or notes on an episode or movie dynamically updates other watches in the modal and timeline/history cards
 - Swagger UI interactive documentation at `/docs` and OpenAPI JSON endpoint
 - User settings: configure personal radarr, sonarr, and tautulli with secret redaction
 - Jellyfin webhooks: displays Jellyfin webhook URL, supports username filtering, and processes scrobbles
