@@ -405,8 +405,8 @@ pub async fn restore_database_backup(state: &AppState, filename: &str) -> Result
 /// Background worker loop for periodic database backups
 pub fn start_db_backup_worker(state: AppState) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
-        // Initial delay after startup before running first check
-        tokio::time::sleep(Duration::from_secs(5)).await;
+        // Staggered startup delay so background workers do not spike CPU on boot
+        crate::api::wait_for_startup_delay(Duration::from_secs(90), &state.db_backup_notify).await;
 
         loop {
             let interval_hours = state.get_task_interval_hours("db_backup").await;

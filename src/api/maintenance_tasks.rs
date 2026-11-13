@@ -31,7 +31,7 @@ pub async fn run_session_reaper(state: &AppState) -> Result<String, String> {
 /// Runs hourly by default (every 1 hour) or upon notification.
 pub fn start_session_reaper_worker(state: AppState) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
-        tokio::time::sleep(Duration::from_secs(5)).await;
+        crate::api::wait_for_startup_delay(Duration::from_secs(120), &state.session_reaper_notify).await;
 
         loop {
             state.task_tracker.set_session_reaper_running(Some(&state.pool), "Reaping stale active playback sessions...").await;
@@ -133,7 +133,7 @@ pub async fn run_image_prune(state: &AppState) -> Result<String, String> {
 /// Runs daily by default (every 24 hours) or upon notification.
 pub fn start_image_prune_worker(state: AppState) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
-        tokio::time::sleep(Duration::from_secs(8)).await;
+        crate::api::wait_for_startup_delay(Duration::from_secs(150), &state.image_prune_notify).await;
 
         loop {
             state.task_tracker.set_image_prune_running(Some(&state.pool), "Pruning orphaned image cache files...").await;
@@ -197,7 +197,7 @@ pub async fn run_duplicate_pruner(state: &AppState) -> Result<String, String> {
 /// Runs daily by default (every 24 hours) or upon notification.
 pub fn start_duplicate_pruner_worker(state: AppState) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
-        tokio::time::sleep(Duration::from_secs(12)).await;
+        crate::api::wait_for_startup_delay(Duration::from_secs(180), &state.duplicate_pruner_notify).await;
 
         loop {
             state.task_tracker.set_duplicate_pruner_running(Some(&state.pool), "Scanning and cleaning duplicate scrobbles...").await;
@@ -300,7 +300,7 @@ pub async fn run_metadata_backfill(state: &AppState) -> Result<String, String> {
 /// Runs daily by default (every 24 hours) or upon notification.
 pub fn start_metadata_backfill_worker(state: AppState) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
-        tokio::time::sleep(Duration::from_secs(15)).await;
+        crate::api::wait_for_startup_delay(Duration::from_secs(210), &state.metadata_backfill_notify).await;
 
         loop {
             state.task_tracker.set_metadata_backfill_running(Some(&state.pool), "Backfilling missing metadata & refreshing ratings...").await;
@@ -358,7 +358,7 @@ pub async fn run_version_check(state: &AppState) -> Result<String, String> {
 /// Runs daily by default (every 24 hours) or upon notification.
 pub fn start_version_check_worker(state: AppState) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
-        tokio::time::sleep(Duration::from_secs(18)).await;
+        crate::api::wait_for_startup_delay(Duration::from_secs(240), &state.version_check_notify).await;
 
         loop {
             state.task_tracker.set_version_check_running(Some(&state.pool), "Checking GitHub API for releases...").await;
@@ -415,7 +415,7 @@ pub async fn run_library_audit(state: &AppState) -> Result<String, String> {
 /// Runs daily by default (every 24 hours) or upon notification.
 pub fn start_library_audit_worker(state: AppState) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
-        tokio::time::sleep(Duration::from_secs(20)).await;
+        crate::api::wait_for_startup_delay(Duration::from_secs(270), &state.library_audit_notify).await;
 
         loop {
             state.task_tracker.set_library_audit_running(Some(&state.pool), "Auditing connected Radarr & Sonarr libraries...").await;

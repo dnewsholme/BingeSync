@@ -40,6 +40,18 @@ use tower_http::cors::{Any, CorsLayer};
 
 use crate::{auth::OidcClient, config::Config};
 
+/// Waits for a staggered startup delay before a background worker's first run,
+/// while still waking immediately if a manual trigger notification arrives.
+pub async fn wait_for_startup_delay(delay: std::time::Duration, notify: &tokio::sync::Notify) {
+    if delay.is_zero() {
+        return;
+    }
+    tokio::select! {
+        _ = tokio::time::sleep(delay) => {}
+        _ = notify.notified() => {}
+    }
+}
+
 #[derive(Clone)]
 pub struct AppState {
     pub pool: SqlitePool,
@@ -537,4 +549,32 @@ pub fn create_api_router(state: AppState) -> Router {
         .layer(cors)
         .layer(Extension(state.clone()))
         .with_state(state)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::wait_for_startup_delay;
+    use std::sync::Arc;
+    use std::time::{Duration, Instant};
+
+    #[tokio::test]
+    async fn wait_for_startup_delay_waits_full_duration_without_notify() {
+        let notify = tokio::sync::Notify::new();
+        let start = Instant::now();
+        wait_for_startup_delay(Duration::from_millis(40), &notify).await;
+        assert!(start.elapsed() >= Duration::from_millis(35));
+    }
+
+    #[tokio::test]
+    async fn wait_for_startup_delay_wakes_early_on_notify() {
+        let notify = Arc::new(tokio::sync::Notify::new());
+        let notify_clone = notify.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+            notify_clone.notify_one();
+        });
+        let start = Instant::now();
+        wait_for_startup_delay(Duration::from_secs(10), &notify).await;
+        assert!(start.elapsed() < Duration::from_secs(1));
+    }
 }

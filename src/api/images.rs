@@ -57,6 +57,9 @@ pub fn start_image_cache_worker(state: AppState) -> tokio::task::JoinHandle<()> 
 
         let mut failed_lookups: HashSet<String> = HashSet::new();
 
+        // Staggered startup delay so background workers do not spike CPU on boot
+        crate::api::wait_for_startup_delay(Duration::from_secs(30), &state.image_notify).await;
+
         loop {
             state.task_tracker.set_image_running(Some(&state.pool), "Scanning for scrobbles without thumbnails...").await;
             let processed = process_missing_images_batch(&state, &client, &mut failed_lookups).await;

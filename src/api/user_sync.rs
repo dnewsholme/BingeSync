@@ -9,8 +9,8 @@ pub fn start_user_cache_worker(state: AppState) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let client = state.http_client.clone();
 
-        // Initial delay to let application start up cleanly
-        tokio::time::sleep(Duration::from_secs(2)).await;
+        // Staggered startup delay so background workers do not spike CPU on boot
+        crate::api::wait_for_startup_delay(Duration::from_secs(60), &state.user_sync_notify).await;
 
         loop {
             state

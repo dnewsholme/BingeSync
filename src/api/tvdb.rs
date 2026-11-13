@@ -1080,6 +1080,9 @@ pub fn start_metadata_worker(state: AppState) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let mut failed_lookups: HashSet<String> = HashSet::new();
 
+        // Staggered startup delay so background workers do not spike CPU on boot
+        crate::api::wait_for_startup_delay(Duration::from_secs(45), &state.metadata_notify).await;
+
         loop {
             let metadata_source = state.get_effective_metadata_source().await;
             let (provider_opt, provider_name) = if metadata_source == "tmdb" {
