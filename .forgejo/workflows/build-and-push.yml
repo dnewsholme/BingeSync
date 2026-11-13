@@ -1,0 +1,140 @@
+name: Build and Publish Container
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths-ignore:
+      - 'wiki/**'
+      - 'wiki'
+      - 'docs/**'
+      - 'docs'
+  pull_request:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run tests in builder container
+        run: |
+          docker build --target backend-builder -t bingesync-builder:test -f Dockerfile .
+          trap 'docker rm -f bingesync-test-tmp >/dev/null 2>&1 || true' EXIT
+          docker rm -f bingesync-test-tmp >/dev/null 2>&1 || true
+          docker create --name bingesync-test-tmp bingesync-builder:test cargo test
+          docker cp "${PWD}/tests" bingesync-test-tmp:/app/tests
+          docker start -a bingesync-test-tmp
+
+  build-and-push:
+    name: Build & Push Container to Forgejo Packages
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Full history required for GitVersion SemVer calculation
+
+      - name: Calculate SemVer with GitVersion
+        id: gitversion
+        run: |
+          # Use docker cp instead of -v "${PWD}:/repo" so this works with DinD sidecars
+          # where the runner's workspace path does not exist on the Docker daemon host.
+          trap 'docker rm -f gitversion-tmp >/dev/null 2>&1 || true' EXIT
+          docker rm -f gitversion-tmp >/dev/null 2>&1 || true
+          docker create --name gitversion-tmp gittools/gitversion:latest /repo >/dev/null
+          docker cp "${PWD}/." gitversion-tmp:/repo
+          GV_JSON=$(docker start -a gitversion-tmp)
+          echo "$GV_JSON"
+          SEMVER=$(echo "$GV_JSON" | grep -o '"SemVer": *"[^"]*"' | head -n1 | cut -d'"' -f4)
+          FULL_SEMVER=$(echo "$GV_JSON" | grep -o '"FullSemVer": *"[^"]*"' | head -n1 | cut -d'"' -f4)
+          if [ -z "$SEMVER" ]; then
+            echo "Failed to parse SemVer from GitVersion output"
+            exit 1
+          fi
+          echo "semver=${SEMVER}" >> "$GITHUB_OUTPUT"
+          echo "full_semver=${FULL_SEMVER}" >> "$GITHUB_OUTPUT"
+          echo "Calculated SemVer: ${SEMVER} (FullSemVer: ${FULL_SEMVER})"
+
+      - name: Resolve Registry and Tag Metadata
+        id: meta
+        run: |
+          # Strip http:// or https:// from server_url to get the registry host
+          REGISTRY_HOST=$(echo "${{ github.server_url }}" | sed -e 's|^https\?://||')
+
+          # Container image names in OCI registries must be strictly lowercase
+          REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          IMAGE_BASE="${REGISTRY_HOST}/${REPO_LOWER}"
+
+          echo "registry_host=${REGISTRY_HOST}" >> "$GITHUB_OUTPUT"
+          echo "image_base=${IMAGE_BASE}" >> "$GITHUB_OUTPUT"
+
+          # Commit SHA tag
+          SHA_SHORT=$(echo "${{ github.sha }}" | cut -c1-8)
+          echo "tag_sha=${SHA_SHORT}" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to Forgejo Package Registry
+        run: |
+          echo "${{ secrets.CONTAINER_TOKEN || secrets.GITHUB_TOKEN }}" | docker login "${{ steps.meta.outputs.registry_host }}" -u "${{ github.actor }}" --password-stdin
+
+      - name: Build Docker Image
+        run: |
+          IMAGE_BASE="${{ steps.meta.outputs.image_base }}"
+          SEMVER="${{ steps.gitversion.outputs.semver }}"
+          SHA_TAG="${{ steps.meta.outputs.tag_sha }}"
+
+          # Sanitize SemVer for Docker tag (replace '+' with '-')
+          DOCKER_SEMVER=$(echo "${SEMVER}" | tr '+' '-')
+
+          BUILD_TAGS="-t ${IMAGE_BASE}:${DOCKER_SEMVER} -t ${IMAGE_BASE}:latest -t ${IMAGE_BASE}:${SHA_TAG}"
+
+          echo "Building version ${SEMVER} with tags: ${BUILD_TAGS}"
+          docker build \
+            --build-arg "APP_VERSION=${SEMVER}" \
+            -f Dockerfile \
+            ${BUILD_TAGS} .
+
+      - name: Push Container to Forgejo Package Registry
+        run: |
+          IMAGE_BASE="${{ steps.meta.outputs.image_base }}"
+          SEMVER="${{ steps.gitversion.outputs.semver }}"
+          SHA_TAG="${{ steps.meta.outputs.tag_sha }}"
+          DOCKER_SEMVER=$(echo "${SEMVER}" | tr '+' '-')
+
+          echo "Pushing ${IMAGE_BASE}:${DOCKER_SEMVER}"
+          docker push "${IMAGE_BASE}:${DOCKER_SEMVER}"
+
+          echo "Pushing ${IMAGE_BASE}:latest"
+          docker push "${IMAGE_BASE}:latest"
+
+          echo "Pushing ${IMAGE_BASE}:${SHA_TAG}"
+          docker push "${IMAGE_BASE}:${SHA_TAG}"
+
+      - name: Tag Git Repository with Build Version
+        if: "!startsWith(github.ref, 'refs/tags/')"
+        run: |
+          SEMVER="${{ steps.gitversion.outputs.semver }}"
+          TAG_NAME="v${SEMVER}"
+
+          if git rev-parse -q --verify "refs/tags/${TAG_NAME}" >/dev/null; then
+            echo "Git tag ${TAG_NAME} already exists, skipping."
+            exit 0
+          fi
+
+          git config user.name "${GITHUB_ACTOR:-forgejo-actions}"
+          git config user.email "${GITHUB_ACTOR:-forgejo-actions}@users.noreply.${{ steps.meta.outputs.registry_host }}"
+          git tag -a "${TAG_NAME}" -m "Release ${TAG_NAME}"
+          git push origin "refs/tags/${TAG_NAME}"
+          echo "Created and pushed Git tag ${TAG_NAME}"
+

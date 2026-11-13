@@ -107,15 +107,61 @@ pub async fn check_is_rewatch(
     // Only previous completed watches qualify an item as a rewatch.
     // Incomplete or in-progress watches (< 80% or watch_status = 'in_progress') must never trigger rewatch status.
     if media_type == "episode" {
-        if let (Some(gp), Some(s), Some(e)) = (grandparent_title, season_number, episode_number) {
+        let gp = grandparent_title.map(str::trim).unwrap_or("");
+        if let (Some(s), Some(e)) = (season_number, episode_number) {
+            let count: i64 = if !gp.is_empty() {
+                sqlx::query_scalar(
+                    r#"
+                    SELECT COUNT(*) FROM scrobbles
+                    WHERE user_id = ?
+                      AND media_type = 'episode'
+                      AND TRIM(LOWER(COALESCE(grandparent_title, ''))) = TRIM(LOWER(?))
+                      AND season_number = ?
+                      AND episode_number = ?
+                      AND watched_at < ?
+                      AND (watch_status = 'completed' OR (watch_status != 'in_progress' AND (progress_percent IS NULL OR progress_percent >= 80)))
+                    "#,
+                )
+                .bind(user_id)
+                .bind(gp)
+                .bind(s)
+                .bind(e)
+                .bind(watched_at)
+                .fetch_one(pool)
+                .await
+                .unwrap_or(0)
+            } else {
+                sqlx::query_scalar(
+                    r#"
+                    SELECT COUNT(*) FROM scrobbles
+                    WHERE user_id = ?
+                      AND media_type = 'episode'
+                      AND (grandparent_title IS NULL OR TRIM(grandparent_title) = '')
+                      AND TRIM(LOWER(title)) = TRIM(LOWER(?))
+                      AND season_number = ?
+                      AND episode_number = ?
+                      AND watched_at < ?
+                      AND (watch_status = 'completed' OR (watch_status != 'in_progress' AND (progress_percent IS NULL OR progress_percent >= 80)))
+                    "#,
+                )
+                .bind(user_id)
+                .bind(title)
+                .bind(s)
+                .bind(e)
+                .bind(watched_at)
+                .fetch_one(pool)
+                .await
+                .unwrap_or(0)
+            };
+            return count > 0;
+        } else if !gp.is_empty() {
             let count: i64 = sqlx::query_scalar(
                 r#"
                 SELECT COUNT(*) FROM scrobbles
                 WHERE user_id = ?
                   AND media_type = 'episode'
-                  AND (grandparent_title = ? OR title = ?)
-                  AND season_number = ?
-                  AND episode_number = ?
+                  AND TRIM(LOWER(COALESCE(grandparent_title, ''))) = TRIM(LOWER(?))
+                  AND TRIM(LOWER(title)) = TRIM(LOWER(?))
                   AND watched_at < ?
                   AND (watch_status = 'completed' OR (watch_status != 'in_progress' AND (progress_percent IS NULL OR progress_percent >= 80)))
                 "#,
@@ -123,15 +169,13 @@ pub async fn check_is_rewatch(
             .bind(user_id)
             .bind(gp)
             .bind(title)
-            .bind(s)
-            .bind(e)
             .bind(watched_at)
             .fetch_one(pool)
             .await
             .unwrap_or(0);
             return count > 0;
         }
-    } else {
+    } else if media_type == "movie" {
         let count: i64 = if let Some(y) = year {
             sqlx::query_scalar(
                 r#"

@@ -10559,6 +10559,98 @@ async fn test_incomplete_watch_does_not_count_as_rewatch_or_duplicate() {
 }
 
 #[tokio::test]
+async fn test_episode_with_same_title_from_different_show_is_not_rewatch() {
+    let (app, pool, config) = setup_test_app().await;
+
+    let user_id = uuid::Uuid::new_v4().to_string();
+    let token = "test-token-same-ep-title-123";
+    sqlx::query("INSERT INTO users (id, email, display_name, webhook_token, role) VALUES (?, ?, ?, ?, 'user')")
+        .bind(&user_id)
+        .bind("ep_title_tester@example.com")
+        .bind("Episode Title Tester")
+        .bind(token)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let auth_token = create_jwt(&user_id, "ep_title_tester@example.com", &config.jwt_secret).unwrap();
+
+    // 1. Insert completed watch of "Lost" S01E01 ("Pilot")
+    let lost_id = uuid::Uuid::new_v4().to_string();
+    sqlx::query(
+        r#"
+        INSERT INTO scrobbles (
+            id, user_id, title, media_type, grandparent_title, season_number, episode_number,
+            watched_at, created_at, watch_status, progress_percent, is_rewatch
+        ) VALUES (?, ?, 'Pilot', 'episode', 'Lost', 1, 1, '2024-05-01T20:00:00Z', '2024-05-01T20:00:00Z', 'completed', 100, 0)
+        "#,
+    )
+    .bind(&lost_id)
+    .bind(&user_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    // 2. Scrobble "Breaking Bad" S01E01 ("Pilot") -> MUST NOT be flagged as rewatch
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/history")
+        .header(header::AUTHORIZATION, format!("Bearer {}", auth_token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(
+            json!({
+                "title": "Pilot",
+                "media_type": "episode",
+                "grandparent_title": "Breaking Bad",
+                "season_number": 1,
+                "episode_number": 1,
+                "watch_status": "completed",
+                "progress_percent": 100,
+                "watched_at": "2024-06-01T20:00:00Z"
+            })
+            .to_string(),
+        ))
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::CREATED);
+    let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let bb_first: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    assert_eq!(
+        bb_first["is_rewatch"], false,
+        "Episode from a different show with the same episode title ('Pilot') must not be tagged as a rewatch"
+    );
+
+    // 3. Scrobble "breaking bad" S01E01 ("Pilot") again at a later time -> MUST be flagged as rewatch
+    let req2 = Request::builder()
+        .method("POST")
+        .uri("/api/v1/history")
+        .header(header::AUTHORIZATION, format!("Bearer {}", auth_token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(
+            json!({
+                "title": "Pilot",
+                "media_type": "episode",
+                "grandparent_title": "breaking bad",
+                "season_number": 1,
+                "episode_number": 1,
+                "watch_status": "completed",
+                "progress_percent": 100,
+                "watched_at": "2024-07-01T20:00:00Z"
+            })
+            .to_string(),
+        ))
+        .unwrap();
+    let res2 = app.clone().oneshot(req2).await.unwrap();
+    assert_eq!(res2.status(), StatusCode::CREATED);
+    let body_bytes2 = axum::body::to_bytes(res2.into_body(), usize::MAX).await.unwrap();
+    let bb_second: serde_json::Value = serde_json::from_slice(&body_bytes2).unwrap();
+    assert_eq!(
+        bb_second["is_rewatch"], true,
+        "Second completed watch of the same show's episode must be tagged as a rewatch"
+    );
+}
+
+#[tokio::test]
 async fn test_aliveness_healthchecks_succeed_during_migrations() {
     let pool = bingesync::db::create_pool("sqlite::memory:")
         .await
