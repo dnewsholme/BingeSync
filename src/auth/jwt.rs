@@ -158,9 +158,7 @@ where
 
         // 4. Try Cookie if header not found
         if token.is_none() {
-            let jar = CookieJar::from_request_parts(parts, state)
-                .await
-                .map_err(|e| e.into_response())?;
+            let Ok(jar) = CookieJar::from_request_parts(parts, state).await;
             if let Some(cookie) = jar.get("bingesync_token") {
                 token = Some(cookie.value().to_string());
             }
