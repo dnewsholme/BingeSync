@@ -31,12 +31,28 @@ pub struct TraktWatchItem {
     pub season_number: Option<i32>,
     pub episode_number: Option<i32>,
     pub year: Option<i32>,
+    pub duration_ms: Option<i64>,
     pub user_rating: Option<i32>,
     pub genres: Option<String>,
     pub directors: Option<String>,
     pub actors: Option<String>,
     pub guid: Option<String>,
     pub watched_at: String,
+}
+
+fn parse_runtime_minutes_to_ms(val: Option<&serde_json::Value>) -> Option<i64> {
+    let mins = match val? {
+        serde_json::Value::Number(n) => n.as_i64().or_else(|| n.as_f64().map(|f| f.round() as i64)),
+        serde_json::Value::String(s) => {
+            let trimmed = s.trim();
+            trimmed
+                .parse::<i64>()
+                .ok()
+                .or_else(|| trimmed.parse::<f64>().ok().map(|f| f.round() as i64))
+        }
+        _ => None,
+    }?;
+    if mins > 0 { Some(mins * 60_000) } else { None }
 }
 
 #[derive(Default, Debug)]
@@ -133,11 +149,13 @@ pub async fn import_trakt_handler(
         user_rating: Option<i32>,
         watch_status: Option<String>,
         progress_percent: Option<i64>,
+        duration_ms: Option<i64>,
+        view_offset_ms: Option<i64>,
     }
 
     let existing_records = sqlx::query_as::<_, ExistingScrobble>(
         r#"
-        SELECT id, media_type, title, grandparent_title, season_number, episode_number, watched_at, user_rating, watch_status, progress_percent
+        SELECT id, media_type, title, grandparent_title, season_number, episode_number, watched_at, user_rating, watch_status, progress_percent, duration_ms, view_offset_ms
         FROM scrobbles
         WHERE user_id = ?
         "#,
@@ -147,7 +165,7 @@ pub async fn import_trakt_handler(
     .await
     .unwrap_or_default();
 
-    let mut existing_map: HashMap<String, (String, Option<i32>)> = HashMap::new();
+    let mut existing_map: HashMap<String, (String, Option<i32>, Option<i64>, Option<i64>)> = HashMap::new();
     let mut seen_media_items: HashSet<String> = HashSet::new();
 
     for rec in existing_records {
@@ -167,7 +185,7 @@ pub async fn import_trakt_handler(
             }
             format!("mv:{}:{}", t, rec.watched_at)
         };
-        existing_map.insert(key, (rec.id, rec.user_rating));
+        existing_map.insert(key, (rec.id, rec.user_rating, rec.duration_ms, rec.view_offset_ms));
     }
 
     // Execute in a single atomic database transaction for lightning-fast batch insertion
@@ -196,16 +214,42 @@ pub async fn import_trakt_handler(
             format!("mv:{}:{}", item.title.to_lowercase().trim(), item.watched_at)
         };
 
-        if let Some((existing_id, existing_rating)) = existing_map.get(&key) {
-            // If item exists but new rating is provided, update rating
-            if item.user_rating.is_some() && *existing_rating != item.user_rating {
+        if let Some((existing_id, existing_rating, existing_dur, existing_offset)) = existing_map.get(&key).cloned() {
+            let mut changed = false;
+            if item.user_rating.is_some() && existing_rating != item.user_rating {
                 let _ = sqlx::query("UPDATE scrobbles SET user_rating = ? WHERE id = ?")
                     .bind(item.user_rating)
-                    .bind(existing_id)
+                    .bind(&existing_id)
                     .execute(&mut *tx)
                     .await;
                 updated_count += 1;
-                existing_map.insert(key, (existing_id.clone(), item.user_rating));
+                changed = true;
+            }
+            if let Some(dur) = item.duration_ms.filter(|&d| d > 0) {
+                if existing_dur.unwrap_or(0) <= 0 || existing_offset.unwrap_or(0) <= 0 {
+                    let _ = sqlx::query(
+                        r#"
+                        UPDATE scrobbles
+                        SET duration_ms = COALESCE(NULLIF(duration_ms, 0), ?),
+                            view_offset_ms = CASE
+                                WHEN view_offset_ms IS NULL OR view_offset_ms = 0 THEN ?
+                                ELSE view_offset_ms
+                            END
+                        WHERE id = ?
+                        "#,
+                    )
+                    .bind(dur)
+                    .bind(dur)
+                    .bind(&existing_id)
+                    .execute(&mut *tx)
+                    .await;
+                }
+            }
+            if changed {
+                existing_map.insert(
+                    key,
+                    (existing_id, item.user_rating, item.duration_ms.or(existing_dur), item.duration_ms.or(existing_offset)),
+                );
             } else {
                 skipped_count += 1;
             }
@@ -243,10 +287,10 @@ pub async fn import_trakt_handler(
                 id, user_id, title, media_type, grandparent_title, parent_title,
                 season_number, episode_number, year, overview, thumb_url,
                 rating_key, guid, duration_ms, user_rating,
-                genres, directors, director, cinematographer, actors, watch_status,
+                genres, directors, director, cinematographer, actors, watch_status, progress_percent, view_offset_ms,
                 source, source_user, imported_from, imdb_id, is_rewatch,
                 watched_at, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             "#,
         )
         .bind(&scrobble_id)
@@ -262,7 +306,7 @@ pub async fn import_trakt_handler(
         .bind(None::<String>) // thumb_url
         .bind(None::<String>) // rating_key
         .bind(&item.guid)     // guid (e.g. imdb://tt1234567)
-        .bind(None::<i64>)    // duration_ms
+        .bind(item.duration_ms)
         .bind(item.user_rating)
         .bind(&item.genres)
         .bind(&item.directors)
@@ -270,6 +314,8 @@ pub async fn import_trakt_handler(
         .bind(None::<String>) // cinematographer
         .bind(&item.actors)
         .bind("completed")
+        .bind(100_i64)
+        .bind(item.duration_ms.unwrap_or(0))
         .bind(&source_name)
         .bind(&source_user)
         .bind(&imported_from)
@@ -283,7 +329,7 @@ pub async fn import_trakt_handler(
         match insert_res {
             Ok(_) => {
                 imported_count += 1;
-                existing_map.insert(key, (scrobble_id, item.user_rating));
+                existing_map.insert(key, (scrobble_id, item.user_rating, item.duration_ms, item.duration_ms));
             }
             Err(e) => {
                 tracing::error!(error = %e, title = %item.title, "Database error inserting Trakt scrobble during import");
@@ -736,6 +782,13 @@ fn parse_trakt_json_with_ratings(
                 }
             }
 
+            let duration_ms = parse_runtime_minutes_to_ms(
+                ep_obj
+                    .and_then(|e| e.get("runtime"))
+                    .or_else(|| show_obj.and_then(|s| s.get("runtime")))
+                    .or_else(|| item.get("runtime")),
+            );
+
             result.push(TraktWatchItem {
                 title,
                 media_type: "episode".to_string(),
@@ -744,6 +797,7 @@ fn parse_trakt_json_with_ratings(
                 season_number,
                 episode_number,
                 year,
+                duration_ms,
                 user_rating,
                 genres,
                 directors,
@@ -787,6 +841,12 @@ fn parse_trakt_json_with_ratings(
                 }
             }
 
+            let duration_ms = parse_runtime_minutes_to_ms(
+                movie_obj
+                    .and_then(|m| m.get("runtime"))
+                    .or_else(|| item.get("runtime")),
+            );
+
             result.push(TraktWatchItem {
                 title,
                 media_type: "movie".to_string(),
@@ -795,6 +855,7 @@ fn parse_trakt_json_with_ratings(
                 season_number: None,
                 episode_number: None,
                 year,
+                duration_ms,
                 user_rating,
                 genres,
                 directors,
@@ -944,6 +1005,11 @@ fn parse_trakt_watched_movies_json(
             .map(|imdb| format!("imdb://{}", imdb));
 
         let user_rating = ratings.and_then(|r| find_movie_rating(movie_ids, &title, year, r));
+        let duration_ms = parse_runtime_minutes_to_ms(
+            movie_obj
+                .get("runtime")
+                .or_else(|| item.get("runtime")),
+        );
 
         result.push(TraktWatchItem {
             title,
@@ -953,6 +1019,7 @@ fn parse_trakt_watched_movies_json(
             season_number: None,
             episode_number: None,
             year,
+            duration_ms,
             user_rating,
             genres: None,
             directors: None,
@@ -1008,6 +1075,11 @@ fn parse_trakt_watched_shows_json(
                         let user_rating = ratings.and_then(|r| {
                             find_episode_rating(None, show_ids, Some(&show_title), Some(season_num), Some(ep_num), r)
                         });
+                        let duration_ms = parse_runtime_minutes_to_ms(
+                            ep_item
+                                .get("runtime")
+                                .or_else(|| show_obj.get("runtime")),
+                        );
 
                         result.push(TraktWatchItem {
                             title: format!("Episode {}", ep_num),
@@ -1017,6 +1089,7 @@ fn parse_trakt_watched_shows_json(
                             season_number: Some(season_num),
                             episode_number: Some(ep_num),
                             year: show_year,
+                            duration_ms,
                             user_rating,
                             genres: None,
                             directors: None,
@@ -1068,6 +1141,9 @@ pub fn parse_trakt_csv(csv_str: &str) -> Result<Vec<TraktWatchItem>, String> {
     let type_idx = headers
         .iter()
         .position(|h| h == "type" || h == "mediatype");
+    let runtime_idx = headers
+        .iter()
+        .position(|h| h == "runtime" || h == "runtimemins" || h == "runtimeminutes");
 
     let mut result = Vec::new();
 
@@ -1094,6 +1170,10 @@ pub fn parse_trakt_csv(csv_str: &str) -> Result<Vec<TraktWatchItem>, String> {
 
         let user_rating = get_val(rating_idx).and_then(|r| r.parse::<i32>().ok());
         let year = get_val(year_idx).and_then(|y| y.parse::<i32>().ok());
+        let duration_ms = get_val(runtime_idx)
+            .and_then(|r| r.parse::<i64>().ok())
+            .filter(|&m| m > 0)
+            .map(|m| m * 60_000);
 
         if is_episode {
             let grandparent_title = show_val;
@@ -1114,6 +1194,7 @@ pub fn parse_trakt_csv(csv_str: &str) -> Result<Vec<TraktWatchItem>, String> {
                 season_number,
                 episode_number,
                 year,
+                duration_ms,
                 user_rating,
                 genres: None,
                 directors: None,
@@ -1131,6 +1212,7 @@ pub fn parse_trakt_csv(csv_str: &str) -> Result<Vec<TraktWatchItem>, String> {
                 season_number: None,
                 episode_number: None,
                 year,
+                duration_ms,
                 user_rating,
                 genres: None,
                 directors: None,

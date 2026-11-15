@@ -43,7 +43,15 @@ pub struct PlexPlayer {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PlexMediaPart {
+    pub duration: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlexMediaStream {
+    pub duration: Option<i64>,
+    #[serde(rename = "Part")]
+    pub part: Option<Vec<PlexMediaPart>>,
     #[serde(rename = "videoResolution")]
     pub video_resolution: Option<String>,
     #[serde(rename = "videoCodec")]
@@ -121,6 +129,17 @@ pub struct PlexTag {
 }
 
 impl PlexMetadata {
+    /// Resolves item duration in milliseconds from top-level metadata, Media streams, or Media parts.
+    pub fn resolved_duration(&self) -> Option<i64> {
+        self.duration.filter(|&d| d > 0).or_else(|| {
+            self.media.as_ref()?.iter().find_map(|m| {
+                m.duration.filter(|&d| d > 0).or_else(|| {
+                    m.part.as_ref()?.iter().find_map(|p| p.duration.filter(|&d| d > 0))
+                })
+            })
+        })
+    }
+
     /// Determines whether this Plex metadata represents an auxiliary trailer, clip, extra, or cinema pre-roll.
     pub fn is_trailer_or_extra(&self) -> bool {
         // 1. Explicit subtype check (e.g. "trailer", "behindTheScenes", "deletedScene", "clip", "preroll")

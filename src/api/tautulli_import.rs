@@ -369,6 +369,7 @@ pub async fn insert_tautulli_watch_items(
 
     #[derive(sqlx::FromRow)]
     struct ExistingScrobble {
+        id: String,
         title: String,
         media_type: String,
         grandparent_title: Option<String>,
@@ -378,11 +379,13 @@ pub async fn insert_tautulli_watch_items(
         rating_key: Option<String>,
         watch_status: Option<String>,
         progress_percent: Option<i64>,
+        duration_ms: Option<i64>,
+        view_offset_ms: Option<i64>,
     }
 
     let existing_records: Vec<ExistingScrobble> = sqlx::query_as(
         r#"
-        SELECT title, media_type, grandparent_title, season_number, episode_number, watched_at, rating_key, watch_status, progress_percent
+        SELECT id, title, media_type, grandparent_title, season_number, episode_number, watched_at, rating_key, watch_status, progress_percent, duration_ms, view_offset_ms
         FROM scrobbles
         WHERE user_id = ?
         "#
@@ -392,39 +395,40 @@ pub async fn insert_tautulli_watch_items(
     .await
     .unwrap_or_default();
 
-    let mut exact_set: HashSet<String> = HashSet::new();
-    let mut day_set: HashSet<String> = HashSet::new();
-    let mut rating_key_day_set: HashSet<String> = HashSet::new();
+    let mut exact_map: HashMap<String, (String, Option<i64>, Option<i64>)> = HashMap::new();
+    let mut day_map: HashMap<String, (String, Option<i64>, Option<i64>)> = HashMap::new();
+    let mut rating_key_day_map: HashMap<String, (String, Option<i64>, Option<i64>)> = HashMap::new();
     let mut seen_media_items: HashSet<String> = HashSet::new();
 
     for rec in existing_records {
         let day_prefix = if rec.watched_at.len() >= 10 { &rec.watched_at[..10] } else { "" };
         let is_completed = rec.watch_status.as_deref() != Some("in_progress") && rec.progress_percent.unwrap_or(100) >= 80;
+        let rec_info = (rec.id.clone(), rec.duration_ms, rec.view_offset_ms);
 
         if rec.media_type == "episode" {
             let show = rec.grandparent_title.as_deref().unwrap_or("").to_lowercase().trim().to_string();
             let s = rec.season_number.unwrap_or(0);
             let ep = rec.episode_number.unwrap_or(0);
-            exact_set.insert(format!("ep:{}:{}:{}:{}", show, s, ep, rec.watched_at));
+            exact_map.insert(format!("ep:{}:{}:{}:{}", show, s, ep, rec.watched_at), rec_info.clone());
             if is_completed {
                 seen_media_items.insert(format!("ep:{}:{}:{}", show, s, ep));
             }
             if !day_prefix.is_empty() {
-                day_set.insert(format!("ep_day:{}:{}:{}:{}", show, s, ep, day_prefix));
+                day_map.insert(format!("ep_day:{}:{}:{}:{}", show, s, ep, day_prefix), rec_info.clone());
             }
         } else {
             let t = rec.title.to_lowercase().trim().to_string();
-            exact_set.insert(format!("mv:{}:{}", t, rec.watched_at));
+            exact_map.insert(format!("mv:{}:{}", t, rec.watched_at), rec_info.clone());
             if is_completed {
                 seen_media_items.insert(format!("mv:{}", t));
             }
             if !day_prefix.is_empty() {
-                day_set.insert(format!("mv_day:{}:{}", t, day_prefix));
+                day_map.insert(format!("mv_day:{}:{}", t, day_prefix), rec_info.clone());
             }
         }
         if let Some(ref rk) = rec.rating_key {
             if !day_prefix.is_empty() {
-                rating_key_day_set.insert(format!("rk_day:{}:{}", rk, day_prefix));
+                rating_key_day_map.insert(format!("rk_day:{}:{}", rk, day_prefix), rec_info);
             }
         }
     }
@@ -465,11 +469,34 @@ pub async fn insert_tautulli_watch_items(
         // 1. Exact match on title/show, season, episode, watched_at
         // 2. Same-day match on title/show, season, episode
         // 3. Same-day match on Plex rating_key
-        let is_dup = exact_set.contains(&exact_key)
-            || (!day_prefix.is_empty() && day_set.contains(&day_key))
-            || (rk_key.as_ref().map(|k| rating_key_day_set.contains(k)).unwrap_or(false));
+        let dup_match = exact_map
+            .get(&exact_key)
+            .or_else(|| if !day_prefix.is_empty() { day_map.get(&day_key) } else { None })
+            .or_else(|| rk_key.as_ref().and_then(|k| rating_key_day_map.get(k)));
 
-        if is_dup {
+        if let Some((existing_id, existing_dur, existing_offset)) = dup_match {
+            if let Some(dur) = item.duration_ms.filter(|&d| d > 0) {
+                if existing_dur.unwrap_or(0) <= 0 || existing_offset.unwrap_or(0) <= 0 {
+                    let _ = sqlx::query(
+                        r#"
+                        UPDATE scrobbles
+                        SET duration_ms = COALESCE(NULLIF(duration_ms, 0), ?),
+                            view_offset_ms = CASE
+                                WHEN view_offset_ms IS NULL OR view_offset_ms = 0 THEN ?
+                                ELSE view_offset_ms
+                            END,
+                            progress_percent = COALESCE(progress_percent, ?)
+                        WHERE id = ?
+                        "#,
+                    )
+                    .bind(dur)
+                    .bind(dur)
+                    .bind(item.progress_percent)
+                    .bind(existing_id)
+                    .execute(&mut *tx)
+                    .await;
+                }
+            }
             skipped_count += 1;
             continue;
         }
@@ -538,12 +565,13 @@ pub async fn insert_tautulli_watch_items(
         match insert_res {
             Ok(_) => {
                 imported_count += 1;
-                exact_set.insert(exact_key);
+                let inserted_info = (scrobble_id, item.duration_ms, item.duration_ms);
+                exact_map.insert(exact_key, inserted_info.clone());
                 if !day_prefix.is_empty() {
-                    day_set.insert(day_key);
+                    day_map.insert(day_key, inserted_info.clone());
                 }
                 if let Some(rk) = rk_key {
-                    rating_key_day_set.insert(rk);
+                    rating_key_day_map.insert(rk, inserted_info);
                 }
             }
             Err(e) => {
@@ -901,16 +929,29 @@ fn parse_tautulli_row_value(row: &serde_json::Value, username_filter: &str) -> O
         }
     });
 
-    let duration_ms = row.get("duration").and_then(|d| {
-        if let Some(n) = d.as_i64() {
-            // Tautulli duration is in seconds
-            Some(n * 1000)
-        } else if let Some(s) = d.as_str() {
-            s.parse::<i64>().ok().map(|n| n * 1000)
+    let parse_seconds_val = |v: &serde_json::Value| -> Option<i64> {
+        if let Some(n) = v.as_i64() {
+            Some(n)
+        } else if let Some(f) = v.as_f64() {
+            Some(f.round() as i64)
+        } else if let Some(s) = v.as_str() {
+            let trimmed = s.trim();
+            trimmed
+                .parse::<i64>()
+                .ok()
+                .or_else(|| trimmed.parse::<f64>().ok().map(|f| f.round() as i64))
         } else {
             None
         }
-    });
+    };
+
+    let duration_ms = row
+        .get("duration")
+        .and_then(parse_seconds_val)
+        .filter(|&s| s > 0)
+        .or_else(|| row.get("play_duration").and_then(parse_seconds_val).filter(|&s| s > 0))
+        .or_else(|| row.get("full_duration").and_then(parse_seconds_val).filter(|&s| s > 0))
+        .map(|s| s * 1000);
 
     let rating_key = row.get("rating_key").map(|r| {
         if let Some(n) = r.as_i64() {
@@ -937,6 +978,17 @@ fn parse_tautulli_row_value(row: &serde_json::Value, username_filter: &str) -> O
             None
         }
     });
+
+    let watched_status = row
+        .get("watched_status")
+        .and_then(|w| w.as_i64().or_else(|| w.as_str().and_then(|s| s.parse::<i64>().ok())))
+        .unwrap_or(0);
+
+    if let Some(play_secs) = row.get("play_duration").and_then(parse_seconds_val) {
+        if (0..60).contains(&play_secs) && progress_percent.unwrap_or(0) < 80 && watched_status < 1 {
+            return None;
+        }
+    }
 
     Some(TautulliWatchItem {
         title,
@@ -1054,10 +1106,27 @@ fn parse_tautulli_csv(
         let season_number = get_field(&["parent_media_index", "season_num"]).and_then(|s| s.parse::<i32>().ok());
         let episode_number = get_field(&["media_index", "episode_num"]).and_then(|e| e.parse::<i32>().ok());
 
-        let duration_ms = get_field(&["duration"]).and_then(|d| d.parse::<i64>().ok()).map(|s| s * 1000);
+        let duration_ms = get_field(&["duration", "play_duration", "full_duration"])
+            .and_then(|d| {
+                d.parse::<i64>()
+                    .ok()
+                    .or_else(|| d.parse::<f64>().ok().map(|f| f.round() as i64))
+            })
+            .filter(|&s| s > 0)
+            .map(|s| s * 1000);
         let rating_key = get_field(&["rating_key"]);
         let thumb_url = get_field(&["thumb", "grandparent_thumb", "parent_thumb"]);
         let progress_percent = get_field(&["percent_complete"]).and_then(|p| p.parse::<i64>().ok());
+        let watched_status = get_field(&["watched_status"]).and_then(|w| w.parse::<i64>().ok()).unwrap_or(0);
+        if let Some(play_secs) = get_field(&["play_duration"]).and_then(|d| {
+            d.parse::<i64>()
+                .ok()
+                .or_else(|| d.parse::<f64>().ok().map(|f| f.round() as i64))
+        }) {
+            if (0..60).contains(&play_secs) && progress_percent.unwrap_or(0) < 80 && watched_status < 1 {
+                continue;
+            }
+        }
 
         items.push(TautulliWatchItem {
             title,

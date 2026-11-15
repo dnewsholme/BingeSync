@@ -24,6 +24,7 @@ pub struct TvdbMetadata {
     pub studio: Option<String>,
     pub original_language: Option<String>,
     pub content_rating: Option<String>,
+    pub duration_ms: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -37,6 +38,8 @@ pub struct TvdbEpisodeRecord {
     pub season_number: Option<i32>,
     pub number: Option<i32>,
     pub image: Option<String>,
+    #[serde(default)]
+    pub runtime: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -980,6 +983,23 @@ fn parse_extended_metadata(data: &serde_json::Value) -> TvdbMetadata {
             })
         });
 
+    let duration_ms = data
+        .get("runtime")
+        .or_else(|| data.get("averageRuntime"))
+        .and_then(|v| {
+            if let Some(n) = v.as_i64() {
+                Some(n)
+            } else if let Some(f) = v.as_f64() {
+                Some(f.round() as i64)
+            } else if let Some(s) = v.as_str() {
+                s.trim().parse::<i64>().ok()
+            } else {
+                None
+            }
+        })
+        .filter(|&mins| mins > 0)
+        .map(|mins| mins * 60_000);
+
     TvdbMetadata {
         overview,
         genres,
@@ -994,6 +1014,7 @@ fn parse_extended_metadata(data: &serde_json::Value) -> TvdbMetadata {
         studio,
         original_language,
         content_rating,
+        duration_ms,
     }
 }
 
@@ -1350,32 +1371,68 @@ pub async fn process_missing_metadata_batch_provider(
                         for ep in &episodes {
                             if let (Some(s), Some(e)) = (ep.season_number, ep.number) {
                                 let ep_id_str = ep.id.to_string();
+                                let ep_dur_ms = ep.runtime.filter(|&r| r > 0).map(|r| r * 60_000);
                                 let _ = sqlx::query(
                                     r#"
                                     UPDATE scrobbles
-                                    SET tvdb_id = ?
+                                    SET tvdb_id = CASE
+                                            WHEN tvdb_id IS NULL OR tvdb_id = '' OR tvdb_id = ? OR tvdb_id LIKE 'series-%'
+                                            THEN ?
+                                            ELSE tvdb_id
+                                        END,
+                                        duration_ms = CASE
+                                            WHEN (duration_ms IS NULL OR duration_ms = 0) AND ? IS NOT NULL
+                                            THEN ?
+                                            ELSE duration_ms
+                                        END,
+                                        view_offset_ms = CASE
+                                            WHEN watch_status = 'completed' AND (view_offset_ms IS NULL OR view_offset_ms = 0)
+                                            THEN COALESCE(NULLIF(duration_ms, 0), ?, view_offset_ms)
+                                            ELSE view_offset_ms
+                                        END
                                     WHERE user_id = ?
                                       AND (grandparent_title IS NOT NULL AND LOWER(TRIM(grandparent_title)) = LOWER(TRIM(?)))
                                       AND season_number = ? AND episode_number = ?
-                                      AND (tvdb_id IS NULL OR tvdb_id = '' OR tvdb_id = ? OR tvdb_id LIKE 'series-%')
                                     "#
                                 )
+                                .bind(clean_sid)
                                 .bind(&ep_id_str)
+                                .bind(ep_dur_ms)
+                                .bind(ep_dur_ms)
+                                .bind(ep_dur_ms)
                                 .bind(&item.user_id)
                                 .bind(show_name)
                                 .bind(s)
                                 .bind(e)
-                                .bind(clean_sid)
                                 .execute(&state.pool)
                                 .await;
 
                                 if item.season_number == Some(s) && item.episode_number == Some(e) {
                                     matched_episode = true;
-                                    let _ = sqlx::query("UPDATE scrobbles SET tvdb_id = ? WHERE id = ?")
-                                        .bind(&ep_id_str)
-                                        .bind(&item.id)
-                                        .execute(&state.pool)
-                                        .await;
+                                    let _ = sqlx::query(
+                                        r#"
+                                        UPDATE scrobbles
+                                        SET tvdb_id = ?,
+                                            duration_ms = CASE
+                                                WHEN (duration_ms IS NULL OR duration_ms = 0) AND ? IS NOT NULL
+                                                THEN ?
+                                                ELSE duration_ms
+                                            END,
+                                            view_offset_ms = CASE
+                                                WHEN watch_status = 'completed' AND (view_offset_ms IS NULL OR view_offset_ms = 0)
+                                                THEN COALESCE(NULLIF(duration_ms, 0), ?, view_offset_ms)
+                                                ELSE view_offset_ms
+                                            END
+                                        WHERE id = ?
+                                        "#
+                                    )
+                                    .bind(&ep_id_str)
+                                    .bind(ep_dur_ms)
+                                    .bind(ep_dur_ms)
+                                    .bind(ep_dur_ms)
+                                    .bind(&item.id)
+                                    .execute(&state.pool)
+                                    .await;
                                 }
                             }
                         }
@@ -1412,6 +1469,12 @@ pub async fn process_missing_metadata_batch_provider(
                     studio = COALESCE(NULLIF(?, ''), NULLIF(studio, '')),
                     original_language = COALESCE(NULLIF(?, ''), NULLIF(original_language, '')),
                     content_rating = COALESCE(NULLIF(?, ''), NULLIF(content_rating, '')),
+                    duration_ms = CASE WHEN (duration_ms IS NULL OR duration_ms = 0) AND ? IS NOT NULL THEN ? ELSE duration_ms END,
+                    view_offset_ms = CASE
+                        WHEN watch_status = 'completed' AND (view_offset_ms IS NULL OR view_offset_ms = 0)
+                        THEN COALESCE(NULLIF(duration_ms, 0), ?, view_offset_ms)
+                        ELSE view_offset_ms
+                    END,
                     metadata_updated_at = datetime('now')
                 WHERE id = ? OR (grandparent_title IS NOT NULL AND LOWER(TRIM(grandparent_title)) = LOWER(TRIM(?))) OR (media_type = 'episode' AND LOWER(TRIM(title)) = LOWER(TRIM(?)))
                 "#
@@ -1429,6 +1492,9 @@ pub async fn process_missing_metadata_batch_provider(
             .bind(&meta.studio)
             .bind(&meta.original_language)
             .bind(&meta.content_rating)
+            .bind(meta.duration_ms)
+            .bind(meta.duration_ms)
+            .bind(meta.duration_ms)
             .bind(&item.id)
             .bind(show_name)
             .bind(show_name)
@@ -1456,6 +1522,12 @@ pub async fn process_missing_metadata_batch_provider(
                     studio = COALESCE(NULLIF(?, ''), NULLIF(studio, '')),
                     original_language = COALESCE(NULLIF(?, ''), NULLIF(original_language, '')),
                     content_rating = COALESCE(NULLIF(?, ''), NULLIF(content_rating, '')),
+                    duration_ms = CASE WHEN (duration_ms IS NULL OR duration_ms = 0) AND ? IS NOT NULL THEN ? ELSE duration_ms END,
+                    view_offset_ms = CASE
+                        WHEN watch_status = 'completed' AND (view_offset_ms IS NULL OR view_offset_ms = 0)
+                        THEN COALESCE(NULLIF(duration_ms, 0), ?, view_offset_ms)
+                        ELSE view_offset_ms
+                    END,
                     metadata_updated_at = datetime('now')
                 WHERE id = ?
                 "#
@@ -1474,6 +1546,9 @@ pub async fn process_missing_metadata_batch_provider(
             .bind(&meta.studio)
             .bind(&meta.original_language)
             .bind(&meta.content_rating)
+            .bind(meta.duration_ms)
+            .bind(meta.duration_ms)
+            .bind(meta.duration_ms)
             .bind(&item.id)
             .execute(&state.pool)
             .await;

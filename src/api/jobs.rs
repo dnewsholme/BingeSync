@@ -578,7 +578,7 @@ impl BackgroundTaskTracker {
         .unwrap_or(0);
 
         let pending_metadata: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM scrobbles WHERE metadata_updated_at IS NULL AND ((genres IS NULL OR genres = '') OR (overview IS NULL OR overview = '') OR (actors IS NULL OR actors = ''))"
+            "SELECT COUNT(*) FROM scrobbles WHERE metadata_updated_at IS NULL AND ((genres IS NULL OR genres = '') OR (overview IS NULL OR overview = '') OR (actors IS NULL OR actors = '') OR (duration_ms IS NULL OR duration_ms = 0))"
         )
         .fetch_one(pool)
         .await

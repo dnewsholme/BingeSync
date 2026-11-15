@@ -27,10 +27,16 @@ pub struct JellyfinWebhookPayload {
     pub overview: Option<String>,
 
     #[serde(alias = "RunTimeTicks", alias = "runTimeTicks", alias = "DurationTicks", alias = "durationTicks")]
-    pub runtime_ticks: Option<i64>,
+    pub runtime_ticks: Option<serde_json::Value>,
 
     #[serde(alias = "PlaybackPositionTicks", alias = "playbackPositionTicks", alias = "PositionTicks", alias = "positionTicks")]
-    pub playback_position_ticks: Option<i64>,
+    pub playback_position_ticks: Option<serde_json::Value>,
+
+    #[serde(alias = "RunTime", alias = "runTime")]
+    pub run_time: Option<String>,
+
+    #[serde(alias = "PlaybackPosition", alias = "playbackPosition")]
+    pub playback_position: Option<String>,
 
     #[serde(alias = "PlayedToCompletion", alias = "playedToCompletion")]
     pub played_to_completion: Option<bool>,
@@ -85,6 +91,56 @@ pub struct JellyfinWebhookPayload {
 
     #[serde(alias = "PlaybackInfo", alias = "playbackInfo", default)]
     pub playback_info: Option<serde_json::Value>,
+
+    #[serde(alias = "Session", alias = "session", default)]
+    pub session: Option<serde_json::Value>,
+
+    #[serde(alias = "PlayState", alias = "playState", default)]
+    pub play_state: Option<serde_json::Value>,
+}
+
+fn parse_ticks_json(val: &serde_json::Value) -> Option<i64> {
+    match val {
+        serde_json::Value::Number(n) => n.as_i64().or_else(|| n.as_f64().map(|f| f.round() as i64)),
+        serde_json::Value::String(s) => {
+            let trimmed = s.trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                trimmed
+                    .parse::<i64>()
+                    .ok()
+                    .or_else(|| trimmed.parse::<f64>().ok().map(|f| f.round() as i64))
+            }
+        }
+        _ => None,
+    }
+}
+
+fn parse_hms_to_ticks(hms: &str) -> Option<i64> {
+    let trimmed = hms.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let parts: Vec<&str> = trimmed.split(':').collect();
+    let total_secs = match parts.as_slice() {
+        [h, m, s] => {
+            let hours: f64 = h.trim().parse().ok()?;
+            let mins: f64 = m.trim().parse().ok()?;
+            let secs: f64 = s.trim().parse().ok()?;
+            hours * 3600.0 + mins * 60.0 + secs
+        }
+        [m, s] => {
+            let mins: f64 = m.trim().parse().ok()?;
+            let secs: f64 = s.trim().parse().ok()?;
+            mins * 60.0 + secs
+        }
+        _ => return None,
+    };
+    if total_secs < 0.0 || !total_secs.is_finite() {
+        return None;
+    }
+    Some((total_secs * 10_000_000.0).round() as i64)
 }
 
 impl JellyfinWebhookPayload {
@@ -163,23 +219,87 @@ impl JellyfinWebhookPayload {
     }
 
     pub fn resolved_runtime_ticks(&self) -> Option<i64> {
-        self.runtime_ticks.or_else(|| {
-            self.item.as_ref().and_then(|it| {
-                it.get("RunTimeTicks")
-                    .or_else(|| it.get("DurationTicks"))
-                    .and_then(|v| v.as_i64())
+        self.runtime_ticks
+            .as_ref()
+            .and_then(parse_ticks_json)
+            .filter(|&t| t > 0)
+            .or_else(|| {
+                self.item.as_ref().and_then(|it| {
+                    it.get("RunTimeTicks")
+                        .or_else(|| it.get("DurationTicks"))
+                        .and_then(parse_ticks_json)
+                        .filter(|&t| t > 0)
+                        .or_else(|| {
+                            it.get("MediaSources")
+                                .and_then(|ms| ms.as_array()?.first()?.get("RunTimeTicks"))
+                                .and_then(parse_ticks_json)
+                                .filter(|&t| t > 0)
+                        })
+                })
             })
-        })
+            .or_else(|| {
+                self.playback_info.as_ref().and_then(|pb| {
+                    pb.get("RunTimeTicks")
+                        .or_else(|| pb.get("DurationTicks"))
+                        .and_then(parse_ticks_json)
+                        .filter(|&t| t > 0)
+                })
+            })
+            .or_else(|| self.run_time.as_deref().and_then(parse_hms_to_ticks).filter(|&t| t > 0))
+            .or_else(|| {
+                self.item
+                    .as_ref()
+                    .and_then(|it| it.get("RunTime").and_then(|v| v.as_str()))
+                    .and_then(parse_hms_to_ticks)
+                    .filter(|&t| t > 0)
+            })
     }
 
     pub fn resolved_playback_position_ticks(&self) -> Option<i64> {
-        self.playback_position_ticks.or_else(|| {
-            self.playback_info.as_ref().and_then(|pb| {
-                pb.get("PositionTicks")
-                    .or_else(|| pb.get("PlaybackPositionTicks"))
-                    .and_then(|v| v.as_i64())
+        self.playback_position_ticks
+            .as_ref()
+            .and_then(parse_ticks_json)
+            .filter(|&t| t >= 0)
+            .or_else(|| {
+                self.playback_info.as_ref().and_then(|pb| {
+                    pb.get("PositionTicks")
+                        .or_else(|| pb.get("PlaybackPositionTicks"))
+                        .and_then(parse_ticks_json)
+                        .filter(|&t| t >= 0)
+                })
             })
-        })
+            .or_else(|| {
+                self.play_state.as_ref().and_then(|ps| {
+                    ps.get("PositionTicks")
+                        .or_else(|| ps.get("PlaybackPositionTicks"))
+                        .and_then(parse_ticks_json)
+                        .filter(|&t| t >= 0)
+                })
+            })
+            .or_else(|| {
+                self.session.as_ref().and_then(|s| {
+                    s.get("PlayState").and_then(|ps| {
+                        ps.get("PositionTicks")
+                            .or_else(|| ps.get("PlaybackPositionTicks"))
+                            .and_then(parse_ticks_json)
+                            .filter(|&t| t >= 0)
+                    })
+                })
+            })
+            .or_else(|| {
+                self.item.as_ref().and_then(|it| {
+                    it.get("UserData")
+                        .and_then(|ud| ud.get("PlaybackPositionTicks"))
+                        .and_then(parse_ticks_json)
+                        .filter(|&t| t >= 0)
+                })
+            })
+            .or_else(|| {
+                self.playback_position
+                    .as_deref()
+                    .and_then(parse_hms_to_ticks)
+                    .filter(|&t| t >= 0)
+            })
     }
 
     pub fn resolved_notification_username(&self) -> Option<String> {

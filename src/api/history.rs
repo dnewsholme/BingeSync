@@ -342,6 +342,36 @@ pub async fn create_scrobble(
         }
     };
 
+    let duration_ms = match payload.duration_ms.filter(|&d| d > 0) {
+        Some(d) => Some(d),
+        None => {
+            crate::api::webhooks::resolve_fallback_duration_ms(
+                &state.pool,
+                &auth.user_id,
+                &payload.media_type,
+                &payload.title,
+                payload.grandparent_title.as_deref(),
+                payload.season_number,
+                payload.episode_number,
+                None,
+                None,
+            )
+            .await
+        }
+    };
+
+    let progress_percent = match payload.progress_percent {
+        Some(p) => Some(p),
+        None if watch_status == "completed" => Some(100),
+        None => None,
+    };
+
+    let view_offset_ms = match payload.view_offset_ms.filter(|&v| v > 0) {
+        Some(v) => Some(v),
+        None if watch_status == "completed" => duration_ms.or(payload.view_offset_ms),
+        None => payload.view_offset_ms,
+    };
+
     sqlx::query(
         r#"
         INSERT INTO scrobbles (
@@ -371,7 +401,7 @@ pub async fn create_scrobble(
     .bind(&payload.thumb_url)
     .bind(None::<String>)
     .bind(None::<String>)
-    .bind(payload.duration_ms)
+    .bind(duration_ms)
     .bind(rating_to_use)
     .bind(&payload.genres)
     .bind(&directors)
@@ -379,8 +409,8 @@ pub async fn create_scrobble(
     .bind(&cinematographer)
     .bind(&payload.actors)
     .bind(&watch_status)
-    .bind(payload.progress_percent)
-    .bind(payload.view_offset_ms)
+    .bind(progress_percent)
+    .bind(view_offset_ms)
     .bind(&tags)
     .bind(&notes)
     .bind(&source)
@@ -2220,31 +2250,67 @@ pub async fn refresh_scrobble_metadata(
                         for ep in &episodes {
                             if let (Some(s), Some(e)) = (ep.season_number, ep.number) {
                                 let ep_id_str = ep.id.to_string();
+                                let ep_dur_ms = ep.runtime.filter(|&r| r > 0).map(|r| r * 60_000);
                                 let _ = sqlx::query(
                                     r#"
                                     UPDATE scrobbles
-                                    SET tvdb_id = ?
+                                    SET tvdb_id = CASE
+                                            WHEN tvdb_id IS NULL OR tvdb_id = '' OR tvdb_id = ? OR tvdb_id LIKE 'series-%' OR CAST(tvdb_id AS INTEGER) < 1000000
+                                            THEN ?
+                                            ELSE tvdb_id
+                                        END,
+                                        duration_ms = CASE
+                                            WHEN (duration_ms IS NULL OR duration_ms = 0) AND ? IS NOT NULL
+                                            THEN ?
+                                            ELSE duration_ms
+                                        END,
+                                        view_offset_ms = CASE
+                                            WHEN watch_status = 'completed' AND (view_offset_ms IS NULL OR view_offset_ms = 0)
+                                            THEN COALESCE(NULLIF(duration_ms, 0), ?, view_offset_ms)
+                                            ELSE view_offset_ms
+                                        END
                                     WHERE user_id = ?
                                       AND (grandparent_title IS NOT NULL AND LOWER(TRIM(grandparent_title)) = LOWER(TRIM(?)))
                                       AND season_number = ? AND episode_number = ?
-                                      AND (tvdb_id IS NULL OR tvdb_id = '' OR tvdb_id = ? OR tvdb_id LIKE 'series-%' OR CAST(tvdb_id AS INTEGER) < 1000000)
                                     "#
                                 )
+                                .bind(clean_sid)
                                 .bind(&ep_id_str)
+                                .bind(ep_dur_ms)
+                                .bind(ep_dur_ms)
+                                .bind(ep_dur_ms)
                                 .bind(&scrobble.user_id)
                                 .bind(show_name)
                                 .bind(s)
                                 .bind(e)
-                                .bind(clean_sid)
                                 .execute(&state.pool)
                                 .await;
 
                                 if scrobble.season_number == Some(s) && scrobble.episode_number == Some(e) {
-                                    let _ = sqlx::query("UPDATE scrobbles SET tvdb_id = ? WHERE id = ?")
-                                        .bind(&ep_id_str)
-                                        .bind(&scrobble.id)
-                                        .execute(&state.pool)
-                                        .await;
+                                    let _ = sqlx::query(
+                                        r#"
+                                        UPDATE scrobbles
+                                        SET tvdb_id = ?,
+                                            duration_ms = CASE
+                                                WHEN (duration_ms IS NULL OR duration_ms = 0) AND ? IS NOT NULL
+                                                THEN ?
+                                                ELSE duration_ms
+                                            END,
+                                            view_offset_ms = CASE
+                                                WHEN watch_status = 'completed' AND (view_offset_ms IS NULL OR view_offset_ms = 0)
+                                                THEN COALESCE(NULLIF(duration_ms, 0), ?, view_offset_ms)
+                                                ELSE view_offset_ms
+                                            END
+                                        WHERE id = ?
+                                        "#
+                                    )
+                                    .bind(&ep_id_str)
+                                    .bind(ep_dur_ms)
+                                    .bind(ep_dur_ms)
+                                    .bind(ep_dur_ms)
+                                    .bind(&scrobble.id)
+                                    .execute(&state.pool)
+                                    .await;
                                 }
                             }
                         }
@@ -2265,6 +2331,12 @@ pub async fn refresh_scrobble_metadata(
                                 THEN ? 
                                 ELSE thumb_url 
                             END,
+                            duration_ms = CASE WHEN (duration_ms IS NULL OR duration_ms = 0) AND ? IS NOT NULL THEN ? ELSE duration_ms END,
+                            view_offset_ms = CASE
+                                WHEN watch_status = 'completed' AND (view_offset_ms IS NULL OR view_offset_ms = 0)
+                                THEN COALESCE(NULLIF(duration_ms, 0), ?, view_offset_ms)
+                                ELSE view_offset_ms
+                            END,
                             metadata_updated_at = ?
                         WHERE id = ? OR (grandparent_title IS NOT NULL AND LOWER(TRIM(grandparent_title)) = LOWER(TRIM(?))) OR (media_type = 'episode' AND LOWER(TRIM(title)) = LOWER(TRIM(?)))
                         "#,
@@ -2277,6 +2349,9 @@ pub async fn refresh_scrobble_metadata(
                     .bind(&meta.overview)
                     .bind(&meta.image_url)
                     .bind(&meta.image_url)
+                    .bind(meta.duration_ms)
+                    .bind(meta.duration_ms)
+                    .bind(meta.duration_ms)
                     .bind(&now_str)
                     .bind(&scrobble.id)
                     .bind(show_name)
@@ -2298,6 +2373,12 @@ pub async fn refresh_scrobble_metadata(
                                 THEN ? 
                                 ELSE thumb_url 
                             END,
+                            duration_ms = CASE WHEN (duration_ms IS NULL OR duration_ms = 0) AND ? IS NOT NULL THEN ? ELSE duration_ms END,
+                            view_offset_ms = CASE
+                                WHEN watch_status = 'completed' AND (view_offset_ms IS NULL OR view_offset_ms = 0)
+                                THEN COALESCE(NULLIF(duration_ms, 0), ?, view_offset_ms)
+                                ELSE view_offset_ms
+                            END,
                             metadata_updated_at = ?
                         WHERE id = ?
                         "#,
@@ -2310,6 +2391,9 @@ pub async fn refresh_scrobble_metadata(
                     .bind(&meta.overview)
                     .bind(&meta.image_url)
                     .bind(&meta.image_url)
+                    .bind(meta.duration_ms)
+                    .bind(meta.duration_ms)
+                    .bind(meta.duration_ms)
                     .bind(&now_str)
                     .bind(&scrobble.id)
                     .execute(&state.pool)
@@ -2734,6 +2818,12 @@ pub async fn fix_match_handler(
                     tvdb_id = COALESCE(NULLIF(?, ''), tvdb_id),
                     tmdb_id = COALESCE(NULLIF(?, ''), tmdb_id),
                     imdb_id = COALESCE(NULLIF(?, ''), imdb_id),
+                    duration_ms = CASE WHEN (duration_ms IS NULL OR duration_ms = 0) AND ? IS NOT NULL THEN ? ELSE duration_ms END,
+                    view_offset_ms = CASE
+                        WHEN watch_status = 'completed' AND (view_offset_ms IS NULL OR view_offset_ms = 0)
+                        THEN COALESCE(NULLIF(duration_ms, 0), ?, view_offset_ms)
+                        ELSE view_offset_ms
+                    END,
                     metadata_updated_at = ?
                 WHERE id = ? OR (grandparent_title IS NOT NULL AND LOWER(TRIM(grandparent_title)) = LOWER(TRIM(?))) OR (media_type = 'episode' AND LOWER(TRIM(title)) = LOWER(TRIM(?)))
                 "#
@@ -2748,6 +2838,9 @@ pub async fn fix_match_handler(
             .bind(&meta.tvdb_id)
             .bind(&meta.tmdb_id)
             .bind(&meta.imdb_id)
+            .bind(meta.duration_ms)
+            .bind(meta.duration_ms)
+            .bind(meta.duration_ms)
             .bind(&now_str)
             .bind(&scrobble.id)
             .bind(show_name)
@@ -2768,6 +2861,12 @@ pub async fn fix_match_handler(
                     tvdb_id = COALESCE(NULLIF(?, ''), tvdb_id),
                     tmdb_id = COALESCE(NULLIF(?, ''), tmdb_id),
                     imdb_id = COALESCE(NULLIF(?, ''), imdb_id),
+                    duration_ms = CASE WHEN (duration_ms IS NULL OR duration_ms = 0) AND ? IS NOT NULL THEN ? ELSE duration_ms END,
+                    view_offset_ms = CASE
+                        WHEN watch_status = 'completed' AND (view_offset_ms IS NULL OR view_offset_ms = 0)
+                        THEN COALESCE(NULLIF(duration_ms, 0), ?, view_offset_ms)
+                        ELSE view_offset_ms
+                    END,
                     metadata_updated_at = ?
                 WHERE id = ?
                 "#,
@@ -2782,6 +2881,9 @@ pub async fn fix_match_handler(
             .bind(&meta.tvdb_id)
             .bind(&meta.tmdb_id)
             .bind(&meta.imdb_id)
+            .bind(meta.duration_ms)
+            .bind(meta.duration_ms)
+            .bind(meta.duration_ms)
             .bind(&now_str)
             .bind(&scrobble.id)
             .execute(&state.pool)

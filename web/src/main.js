@@ -1872,7 +1872,11 @@ function renderScrobbleCard(item, isHistory = false) {
     ? `S${String(item.season_number || 1).padStart(2, '0')}E${String(item.episode_number || 1).padStart(2, '0')}`
     : t('history.movie');
 
-  const durationMin = item.duration_ms ? `${Math.round(item.duration_ms / 60000)}m` : '';
+  const watchedMinVal = item.view_offset_ms > 0 ? Math.max(1, Math.round(item.view_offset_ms / 60000)) : 0;
+  const totalMinVal = item.duration_ms > 0 ? Math.max(1, Math.round(item.duration_ms / 60000)) : 0;
+  const durationMin = (item.watch_status === 'in_progress' && watchedMinVal > 0 && totalMinVal > 0)
+    ? `${watchedMinVal}m / ${totalMinVal}m`
+    : (totalMinVal > 0 ? `${totalMinVal}m` : (watchedMinVal > 0 ? `${watchedMinVal}m watched` : ''));
 
   const baseSub = isEpisode && item.grandparent_title
     ? `${item.grandparent_title}`
@@ -4303,7 +4307,17 @@ async function openDetailModal(item) {
     ? `<div style="color:var(--text-muted);font-weight:600;margin-bottom:12px;">${escapeHtml(showTitle)} &bull; S${item.season_number || 1}E${item.episode_number || 1}</div>`
     : '';
 
-  const durationStr = item.duration_ms ? `${Math.round(item.duration_ms / 60000)} minutes` : 'Unknown duration';
+  const durationStr = item.duration_ms > 0
+    ? `${Math.max(1, Math.round(item.duration_ms / 60000))} minutes`
+    : (item.view_offset_ms > 0 ? `${Math.max(1, Math.round(item.view_offset_ms / 60000))} minutes (watched)` : 'Unknown duration');
+  const watchedDurationMs = item.view_offset_ms > 0
+    ? item.view_offset_ms
+    : (item.watch_status === 'completed' && item.duration_ms > 0 ? item.duration_ms : 0);
+  const watchedDurationStr = watchedDurationMs > 0
+    ? (item.duration_ms > 0 && watchedDurationMs < item.duration_ms
+      ? `${Math.max(1, Math.round(watchedDurationMs / 60000))} / ${Math.max(1, Math.round(item.duration_ms / 60000))} minutes`
+      : `${Math.max(1, Math.round(watchedDurationMs / 60000))} minutes`)
+    : null;
   const yearStr = item.year ? `${item.year}` : 'Unknown year';
   const watchedStr = new Date(item.watched_at).toLocaleString();
   const ratingBadge = `<div id="detail-rating-display" style="font-size:0.85rem;color:var(--text-dim);">${
@@ -4343,6 +4357,7 @@ async function openDetailModal(item) {
         <div style="display:flex;gap:12px;margin-bottom:12px;flex-wrap:wrap;">
           <div style="font-size:0.85rem;color:var(--text-dim);">Release: <strong style="color:#fff;">${yearStr}</strong></div>
           <div style="font-size:0.85rem;color:var(--text-dim);">Duration: <strong style="color:#fff;">${durationStr}</strong></div>
+          ${watchedDurationStr ? `<div style="font-size:0.85rem;color:var(--text-dim);">Watch Time: <strong style="color:#38bdf8;">⏱️ ${watchedDurationStr}</strong></div>` : ''}
           <div style="font-size:0.85rem;color:var(--text-dim);">Watched: <strong style="color:#fff;">${watchedStr}</strong></div>
           ${item.source ? (() => {
             const si = getSourceBadgeInfo(item.source);

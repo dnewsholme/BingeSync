@@ -244,8 +244,14 @@ pub async fn run_metadata_backfill(state: &AppState) -> Result<String, String> {
     state.log_buffer.push("INFO", "bingesync::tasks::metadata_backfill", "Scanning for scrobbles requiring metadata backfill or score refresh... [task=metadata_backfill]");
     tracing::info!("Starting missing metadata backfill & stale rating refresh");
 
+    let _ = sqlx::query(
+        "UPDATE scrobbles SET view_offset_ms = duration_ms WHERE watch_status = 'completed' AND duration_ms IS NOT NULL AND duration_ms > 0 AND (view_offset_ms IS NULL OR view_offset_ms = 0)"
+    )
+    .execute(&state.pool)
+    .await;
+
     let res1 = sqlx::query(
-        "UPDATE scrobbles SET metadata_updated_at = NULL WHERE (overview IS NULL OR overview = '') OR (genres IS NULL OR genres = '') OR (actors IS NULL OR actors = '')"
+        "UPDATE scrobbles SET metadata_updated_at = NULL WHERE (overview IS NULL OR overview = '') OR (genres IS NULL OR genres = '') OR (actors IS NULL OR actors = '') OR (duration_ms IS NULL OR duration_ms = 0)"
     )
     .execute(&state.pool)
     .await
@@ -271,12 +277,18 @@ pub async fn run_metadata_backfill(state: &AppState) -> Result<String, String> {
         tokio::time::sleep(Duration::from_millis(150)).await;
     }
 
+    let _ = sqlx::query(
+        "UPDATE scrobbles SET view_offset_ms = duration_ms WHERE watch_status = 'completed' AND duration_ms IS NOT NULL AND duration_ms > 0 AND (view_offset_ms IS NULL OR view_offset_ms = 0)"
+    )
+    .execute(&state.pool)
+    .await;
+
     if total_enriched > 0 {
         state.image_notify.notify_one();
     }
 
     let still_pending: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM scrobbles WHERE metadata_updated_at IS NULL AND ((overview IS NULL OR overview = '') OR (genres IS NULL OR genres = '') OR (actors IS NULL OR actors = ''))"
+        "SELECT COUNT(*) FROM scrobbles WHERE metadata_updated_at IS NULL AND ((overview IS NULL OR overview = '') OR (genres IS NULL OR genres = '') OR (actors IS NULL OR actors = '') OR (duration_ms IS NULL OR duration_ms = 0))"
     )
     .fetch_one(&state.pool)
     .await

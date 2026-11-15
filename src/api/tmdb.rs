@@ -546,6 +546,23 @@ fn parse_tmdb_metadata(data: &serde_json::Value) -> TvdbMetadata {
             })
         });
 
+    let duration_ms = data
+        .get("runtime")
+        .and_then(|v| v.as_i64().or_else(|| v.as_f64().map(|f| f.round() as i64)))
+        .filter(|&mins| mins > 0)
+        .or_else(|| {
+            data.get("episode_run_time")
+                .and_then(|v| v.as_array())
+                .and_then(|arr| arr.iter().filter_map(|x| x.as_i64()).find(|&mins| mins > 0))
+        })
+        .or_else(|| {
+            data.get("last_episode_to_air")
+                .and_then(|ep| ep.get("runtime"))
+                .and_then(|v| v.as_i64())
+                .filter(|&mins| mins > 0)
+        })
+        .map(|mins| mins * 60_000);
+
     TvdbMetadata {
         overview,
         genres,
@@ -560,5 +577,6 @@ fn parse_tmdb_metadata(data: &serde_json::Value) -> TvdbMetadata {
         studio,
         original_language,
         content_rating,
+        duration_ms,
     }
 }

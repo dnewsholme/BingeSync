@@ -1516,8 +1516,7 @@ async fn test_admin_user_management_and_cascading_deletion() {
             json!({
                 "event": "media.play",
                 "Player": { "title": "Living Room TV" },
-                "Metadata": { "type": "movie", "title": "Interstellar", "duration": 10000 },
-                "viewOffset": 2000
+                "Metadata": { "type": "movie", "title": "Interstellar", "duration": 10000, "viewOffset": 2000 }
             })
             .to_string(),
         ))
@@ -11613,4 +11612,423 @@ async fn test_tags_and_notes_propagation_across_previous_watches_and_isolation()
         .unwrap();
     assert_eq!(glad_migrated_t.as_deref(), Some("Epic, Classics"));
     assert_eq!(glad_migrated_n.as_deref(), Some("Are you not entertained?"));
+}
+
+#[tokio::test]
+async fn test_plex_watch_duration_media_fallback_and_cross_midnight_scrobble() {
+    let (app, pool, _config) = setup_test_app().await;
+
+    let user_id = "user_plex_dur";
+    let webhook_token = "wh_plex_dur_token";
+    sqlx::query(
+        "INSERT INTO users (id, email, display_name, preferred_username, webhook_token, role) VALUES (?, ?, ?, 'alice_plex', ?, 'user')",
+    )
+    .bind(user_id)
+    .bind("plexdur@test.local")
+    .bind("Plex Dur User")
+    .bind(webhook_token)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    // 1. media.play provides duration only under Media[0].Part[0].duration (no top-level Metadata.duration)
+    let play_payload = json!({
+        "event": "media.play",
+        "user": true,
+        "owner": true,
+        "Account": { "title": "alice_plex" },
+        "Player": { "title": "Apple TV", "uuid": "player-uuid-1" },
+        "Metadata": {
+            "type": "episode",
+            "title": "The Rains of Castamere",
+            "grandparentTitle": "Game of Thrones",
+            "parentTitle": "Season 3",
+            "parentIndex": 3,
+            "index": 9,
+            "year": 2013,
+            "ratingKey": "rk_got_309",
+            "Media": [
+                {
+                    "Part": [
+                        { "duration": 3240000 }
+                    ]
+                }
+            ]
+        }
+    });
+
+    let req = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/webhooks/plex/{}", webhook_token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(play_payload.to_string()))
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let active_dur: i64 = sqlx::query_scalar(
+        "SELECT duration_ms FROM active_sessions WHERE user_id = ? AND title = 'The Rains of Castamere'",
+    )
+    .bind(user_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(active_dur, 3_240_000);
+
+    // 2. media.pause omits duration completely but sends viewOffset -> resolves duration from active_sessions
+    let pause_payload = json!({
+        "event": "media.pause",
+        "user": true,
+        "owner": true,
+        "Account": { "title": "alice_plex" },
+        "Player": { "title": "Apple TV", "uuid": "player-uuid-1" },
+        "Metadata": {
+            "type": "episode",
+            "title": "The Rains of Castamere",
+            "grandparentTitle": "Game of Thrones",
+            "parentTitle": "Season 3",
+            "parentIndex": 3,
+            "index": 9,
+            "year": 2013,
+            "ratingKey": "rk_got_309",
+            "viewOffset": 1620000
+        }
+    });
+
+    let req = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/webhooks/plex/{}", webhook_token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(pause_payload.to_string()))
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let (scrobble_id, status, dur, offset, pct): (String, String, Option<i64>, Option<i64>, Option<i32>) = sqlx::query_as(
+        "SELECT id, watch_status, duration_ms, view_offset_ms, progress_percent FROM scrobbles WHERE user_id = ?",
+    )
+    .bind(user_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(status, "in_progress");
+    assert_eq!(dur, Some(3_240_000));
+    assert_eq!(offset, Some(1_620_000));
+    assert_eq!(pct, Some(50));
+
+    // Backdate watched_at by 2 hours to ensure active in_progress lookup works across recent sessions
+    let two_hours_ago = (chrono::Utc::now() - chrono::Duration::hours(2)).to_rfc3339();
+    sqlx::query("UPDATE scrobbles SET watched_at = ? WHERE id = ?")
+        .bind(&two_hours_ago)
+        .bind(&scrobble_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    // 3. media.scrobble arrives without duration or viewOffset -> updates existing row in place and completes watch duration
+    let scrobble_payload = json!({
+        "event": "media.scrobble",
+        "user": true,
+        "owner": true,
+        "Account": { "title": "alice_plex" },
+        "Player": { "title": "Apple TV", "uuid": "player-uuid-1" },
+        "Metadata": {
+            "type": "episode",
+            "title": "The Rains of Castamere",
+            "grandparentTitle": "Game of Thrones",
+            "parentTitle": "Season 3",
+            "parentIndex": 3,
+            "index": 9,
+            "year": 2013,
+            "ratingKey": "rk_got_309"
+        }
+    });
+
+    let req = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/webhooks/plex/{}", webhook_token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(scrobble_payload.to_string()))
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::CREATED);
+
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE user_id = ?")
+        .bind(user_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(count, 1);
+
+    let (status, dur, offset, pct): (String, Option<i64>, Option<i64>, Option<i32>) = sqlx::query_as(
+        "SELECT watch_status, duration_ms, view_offset_ms, progress_percent FROM scrobbles WHERE id = ?",
+    )
+    .bind(&scrobble_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(status, "completed");
+    assert_eq!(dur, Some(3_240_000));
+    assert_eq!(offset, Some(3_240_000));
+    assert_eq!(pct, Some(100));
+}
+
+#[tokio::test]
+async fn test_tautulli_duplicate_import_backfills_missing_duration() {
+    let (app, pool, config) = setup_test_app().await;
+
+    let user_id = "test_user_tautulli_dur";
+    let token = create_jwt(user_id, "tautulli_dur@test.local", &config.jwt_secret).unwrap();
+
+    sqlx::query(
+        "INSERT INTO users (id, email, display_name, preferred_username, webhook_token, role) VALUES (?, ?, ?, ?, ?, 'user')",
+    )
+    .bind(user_id)
+    .bind("tautulli_dur@test.local")
+    .bind("Tautulli Dur Fan")
+    .bind("daryl_tautulli")
+    .bind("tautulli_dur_wh")
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let existing_id = uuid::Uuid::new_v4().to_string();
+    sqlx::query(
+        "INSERT INTO scrobbles (id, user_id, title, media_type, year, watch_status, duration_ms, view_offset_ms, rating_key, watched_at) VALUES (?, ?, 'Dune: Part Two', 'movie', 2024, 'completed', NULL, 0, '9001', '2023-01-02T08:00:00Z')",
+    )
+    .bind(&existing_id)
+    .bind(user_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let tautulli_json = json!({
+        "response": {
+            "result": "success",
+            "data": {
+                "data": [
+                    {
+                        "user": "daryl_tautulli",
+                        "media_type": "movie",
+                        "title": "Dune: Part Two",
+                        "year": 2024,
+                        "date": 1672617600,
+                        "play_duration": "2700",
+                        "rating_key": "9001",
+                        "percent_complete": 100
+                    }
+                ]
+            }
+        }
+    });
+
+    let import_req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/import/tautulli")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(
+            serde_json::to_vec(&json!({
+                "username": "daryl_tautulli",
+                "content": tautulli_json.to_string(),
+            }))
+            .unwrap(),
+        ))
+        .unwrap();
+
+    let import_resp = app.clone().oneshot(import_req).await.unwrap();
+    assert_eq!(import_resp.status(), StatusCode::OK);
+    let import_body: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(import_resp.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(import_body["status"], "success");
+    assert_eq!(import_body["imported"], 0);
+    assert_eq!(import_body["skipped"], 1);
+
+    let (dur, offset, pct): (Option<i64>, Option<i64>, Option<i32>) = sqlx::query_as(
+        "SELECT duration_ms, view_offset_ms, progress_percent FROM scrobbles WHERE id = ?",
+    )
+    .bind(&existing_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(dur, Some(2_700_000));
+    assert_eq!(offset, Some(2_700_000));
+    assert_eq!(pct, Some(100));
+}
+
+#[tokio::test]
+async fn test_jellyfin_string_ticks_and_completed_watch_duration() {
+    let (app, pool, _config) = setup_test_app().await;
+
+    let user_id = "user_jf_str_ticks";
+    let webhook_token = "wh_jf_str_ticks";
+    sqlx::query(
+        "INSERT INTO users (id, email, display_name, webhook_token, role) VALUES (?, ?, ?, ?, 'user')",
+    )
+    .bind(user_id)
+    .bind("jf_ticks@test.local")
+    .bind("JF Ticks User")
+    .bind(webhook_token)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let payload = json!({
+        "NotificationType": "PlaybackStop",
+        "ItemType": "Movie",
+        "Name": "Arrival",
+        "Year": 2016,
+        "RunTimeTicks": "54000000000",
+        "PlaybackPositionTicks": "0",
+        "PlayedToCompletion": true,
+        "ItemId": "jelly-arrival-1"
+    });
+
+    let req = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/webhooks/jellyfin/{}", webhook_token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(payload.to_string()))
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::CREATED);
+
+    let (status, dur, offset, pct): (String, Option<i64>, Option<i64>, Option<i32>) = sqlx::query_as(
+        "SELECT watch_status, duration_ms, view_offset_ms, progress_percent FROM scrobbles WHERE user_id = ?",
+    )
+    .bind(user_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(status, "completed");
+    assert_eq!(dur, Some(5_400_000));
+    assert_eq!(offset, Some(5_400_000));
+    assert_eq!(pct, Some(100));
+}
+
+#[tokio::test]
+async fn test_reopened_paused_item_under_one_minute_not_scrobbled() {
+    let (app, pool, _config) = setup_test_app().await;
+
+    let user_id = "user_paused_reopen";
+    let webhook_token = "wh_paused_reopen";
+    sqlx::query(
+        "INSERT INTO users (id, email, display_name, webhook_token, role) VALUES (?, ?, ?, ?, 'user')",
+    )
+    .bind(user_id)
+    .bind("paused_reopen@test.local")
+    .bind("Paused Reopen User")
+    .bind(webhook_token)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let send_plex_event = |event: &str, view_offset: i64| {
+        let app = app.clone();
+        let token = webhook_token.to_string();
+        let payload = json!({
+            "event": event,
+            "Player": { "title": "Chrome" },
+            "Metadata": {
+                "type": "movie",
+                "title": "Little Shop of Horrors",
+                "year": 1986,
+                "duration": 5_640_000,
+                "viewOffset": view_offset,
+                "ratingKey": "rk-little-shop"
+            }
+        });
+        async move {
+            let req = Request::builder()
+                .method("POST")
+                .uri(format!("/api/v1/webhooks/plex/{}", token))
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(payload.to_string()))
+                .unwrap();
+            app.oneshot(req).await.unwrap()
+        }
+    };
+
+    // Case 1: Orphan media.pause + media.stop (re-opened paused player tab with 0m watched)
+    let res = send_plex_event("media.pause", 0).await;
+    assert_eq!(res.status(), StatusCode::OK);
+    let sess_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM active_sessions WHERE user_id = ?")
+        .bind(user_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(sess_count, 0);
+
+    let res = send_plex_event("media.stop", 0).await;
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE user_id = ?")
+        .bind(user_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(count, 0);
+
+    // Case 2: Existing paused scrobble from an earlier day; re-opening and watching < 1 minute must not log/bump
+    let old_watched_at = "2026-10-31T23:03:54Z";
+    sqlx::query(
+        "INSERT INTO scrobbles (id, user_id, title, media_type, year, rating_key, duration_ms, view_offset_ms, progress_percent, watch_status, watched_at, created_at) VALUES (?, ?, 'Little Shop of Horrors', 'movie', 1986, 'rk-little-shop', 5640000, 2280000, 40, 'in_progress', ?, ?)",
+    )
+    .bind("old-paused-scrobble")
+    .bind(user_id)
+    .bind(old_watched_at)
+    .bind(old_watched_at)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    // Even an orphan media.pause / media.stop carrying the stale paused viewOffset (2280000) must not create a new scrobble
+    assert_eq!(send_plex_event("media.pause", 2_280_000).await.status(), StatusCode::OK);
+    assert_eq!(send_plex_event("media.stop", 2_280_000).await.status(), StatusCode::OK);
+
+    // Re-opened via media.play at previous offset, then paused/stopped after only +15s watched (< 60s)
+    assert_eq!(send_plex_event("media.play", 2_280_000).await.status(), StatusCode::OK);
+    assert_eq!(send_plex_event("media.pause", 2_295_000).await.status(), StatusCode::OK);
+    assert_eq!(send_plex_event("media.stop", 2_295_000).await.status(), StatusCode::OK);
+    assert_eq!(send_plex_event("media.stop", 0).await.status(), StatusCode::OK);
+
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE user_id = ?")
+        .bind(user_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(count, 1);
+
+    let (stored_watched_at, stored_offset): (String, Option<i64>) = sqlx::query_as(
+        "SELECT watched_at, view_offset_ms FROM scrobbles WHERE id = 'old-paused-scrobble'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(stored_watched_at, old_watched_at);
+    assert_eq!(stored_offset, Some(2_280_000));
+
+    // Case 3: Actually watching >= 1 minute (+3 minutes = 2460000) DOES log the watch
+    assert_eq!(send_plex_event("media.play", 2_280_000).await.status(), StatusCode::OK);
+    assert_eq!(send_plex_event("media.pause", 2_460_000).await.status(), StatusCode::OK);
+
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM scrobbles WHERE user_id = ?")
+        .bind(user_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(count, 2);
+
+    let latest_offset: Option<i64> = sqlx::query_scalar(
+        "SELECT view_offset_ms FROM scrobbles WHERE user_id = ? AND id != 'old-paused-scrobble'",
+    )
+    .bind(user_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(latest_offset, Some(2_460_000));
 }
